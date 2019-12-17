@@ -126,8 +126,8 @@ public:
         consensus.nCONSENSUS_CHANGE_BLOCK = 1612000;
         consensus.nStakeMinAge = 4 * 60 * 60;
         consensus.nStakeMaxAge = 10* 24 * 60 * 60;
-        consensus.nCOIN_YEAR_REWARD = 200 * CENT;
-        consensus.nCOIN_YEAR_REWARD_NEW  = 10 * CENT;
+        consensus.nCOIN_YEAR_REWARD = 200 * COIN/100;
+        consensus.nCOIN_YEAR_REWARD_NEW  = 10 * COIN/100;
         consensus.nPowTargetTimespan = 60; // two weeks
         consensus.nPowTargetSpacing = 60;
         consensus.fPowAllowMinDifficultyBlocks = false;
@@ -163,7 +163,7 @@ public:
         pchMessageStart[1] = 0xfa;
         pchMessageStart[2] = 0xfc;
         pchMessageStart[3] = 0xfd;
-        nDefaultPort = 8372;
+        nDefaultPort = 23373;
         nPruneAfterHeight = 100000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
