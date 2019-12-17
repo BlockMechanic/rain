@@ -173,9 +173,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     m_last_block_num_txs = nBlockTx;
     m_last_block_weight = nBlockWeight;
     
-    uint256 prevhash = pindexPrev->GetBlockHash();
-
-    CAmount reward = GetBlockSubsidy(nHeight, chainparams.GetConsensus(), prevhash);
+    CAmount reward = GetBlockSubsidy(nHeight, chainparams.GetConsensus(), pindexPrev->GetBlockHash());
     //CAmount devsubsidy = reward *0.1;
     //reward-=devsubsidy;
 
@@ -283,8 +281,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateEmptyBlock(const CScript& 
 
     nLastBlockTx = nBlockTx;
     nLastBlockWeight = nBlockWeight;
-    uint256 prevhash = pindexPrev->GetBlockHash();
-    CAmount reward = GetBlockSubsidy(nHeight, chainparams.GetConsensus(), prevhash);
+    CAmount reward = GetBlockSubsidy(nHeight, chainparams.GetConsensus(), pindexPrev->GetBlockHash());
 //    CAmount devsubsidy = reward *0.1;
 //    reward-=devsubsidy;
 

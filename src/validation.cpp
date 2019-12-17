@@ -55,6 +55,8 @@
 #include <string>
 
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/uniform_int_distribution.hpp>
 #include <boost/thread.hpp>
 
 #if defined(NDEBUG)
@@ -1071,12 +1073,56 @@ bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const CBlockIndex* pindex
 
 int static generateMTRandom(unsigned int s, int range)
 {
-	random::mt19937 gen(s);
-    random::uniform_int_distribution<> dist(1, range);
+	boost::random::mt19937 gen(s);
+    boost::random::uniform_int_distribution<> dist(1, range);
     return dist(gen);
 }
 
-CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, uint256& prevHash, bool fProofofStake, int64_t nCoinAge, int64_t nFees, int64_t supply)
+static const long hextable[] = 
+{
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,		// 10-19
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,		// 30-39
+	-1, -1, -1, -1, -1, -1, -1, -1,  0,  1,
+	 2,  3,  4,  5,  6,  7,  8,  9, -1, -1,		// 50-59
+	-1, -1, -1, -1, -1, 10, 11, 12, 13, 14,
+	15, -1, -1, -1, -1, -1, -1, -1, -1, -1,		// 70-79
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, 10, 11, 12,		// 90-99
+	13, 14, 15, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,		// 110-109
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,		// 130-139
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,		// 150-159
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,		// 170-179
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,		// 190-199
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,		// 210-219
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,		// 230-239
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1
+};
+
+
+long hex2long(const char* hexString)
+{
+	long ret = 0; 
+
+	while (*hexString && ret >= 0) 
+	{
+		ret = (ret << 4) | hextable[*hexString++];
+	}
+
+	return ret; 
+}
+
+
+CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, uint256 prevHash, bool fProofofStake, int64_t nCoinAge, int64_t nFees, int64_t supply)
 {
     CAmount nSubsidy = 0;
 	std::string cseed_str = prevHash.ToString().substr(7,7);
@@ -2131,14 +2177,14 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
 	bool paidToDev = false;
 
     if(block.IsProofOfWork()){
-        devsubsidy = GetBlockSubsidy(::ChainActive().Height(), chainparams.GetConsensus()) * 0.1;
+        devsubsidy = GetBlockSubsidy(::ChainActive().Height(), chainparams.GetConsensus(), ::ChainActive().Tip()->GetBlockHash()) * 0.1;
 		for(const auto& txout : block.vtx[0]->vout)
 		    if(txout.scriptPubKey == dev_script && txout.nValue == devsubsidy)
 			    paidToDev=true;
 
-        if(pindex->nHeight > 1 && block.vtx[0]->GetValueOut() > GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus()))
+        if(pindex->nHeight > 1 && block.vtx[0]->GetValueOut() > GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus(), pindex->GetBlockHash()))
             return state.Invalid(ValidationInvalidReason::CONSENSUS, error("ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d , at height =%d)",
-                               block.vtx[0]->GetValueOut(), GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus()), pindex->nHeight), REJECT_INVALID, "bad-cb-amount");
+                               block.vtx[0]->GetValueOut(), GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus(), pindex->GetBlockHash())), REJECT_INVALID, "bad-cb-amount");
 
 	}
 
