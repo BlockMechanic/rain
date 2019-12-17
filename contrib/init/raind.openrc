@@ -1,0 +1,92 @@
+#!/sbin/openrc-run
+
+# backward compatibility for existing gentoo layout 
+#
+if [ -d "/var/lib/rain/.rain" ]; then
+	SUPERCOIND_DEFAULT_DATADIR="/var/lib/rain/.rain"
+else
+	SUPERCOIND_DEFAULT_DATADIR="/var/lib/raind"
+fi
+
+SUPERCOIND_CONFIGFILE=${SUPERCOIND_CONFIGFILE:-/etc/rain/rain.conf}
+SUPERCOIND_PIDDIR=${SUPERCOIND_PIDDIR:-/var/run/raind}
+SUPERCOIND_PIDFILE=${SUPERCOIND_PIDFILE:-${SUPERCOIND_PIDDIR}/raind.pid}
+SUPERCOIND_DATADIR=${SUPERCOIND_DATADIR:-${SUPERCOIND_DEFAULT_DATADIR}}
+SUPERCOIND_USER=${SUPERCOIND_USER:-${SUPERCOIN_USER:-rain}}
+SUPERCOIND_GROUP=${SUPERCOIND_GROUP:-rain}
+SUPERCOIND_BIN=${SUPERCOIND_BIN:-/usr/bin/raind}
+SUPERCOIND_NICE=${SUPERCOIND_NICE:-${NICELEVEL:-0}}
+SUPERCOIND_OPTS="${SUPERCOIND_OPTS:-${SUPERCOIN_OPTS}}"
+
+name="Rain Core Daemon"
+description="Rain cryptocurrency P2P network daemon"
+
+command="/usr/bin/raind"
+command_args="-pid=\"${SUPERCOIND_PIDFILE}\" \
+		-conf=\"${SUPERCOIND_CONFIGFILE}\" \
+		-datadir=\"${SUPERCOIND_DATADIR}\" \
+		-daemon \
+		${SUPERCOIND_OPTS}"
+
+required_files="${SUPERCOIND_CONFIGFILE}"
+start_stop_daemon_args="-u ${SUPERCOIND_USER} \
+			-N ${SUPERCOIND_NICE} -w 2000"
+pidfile="${SUPERCOIND_PIDFILE}"
+
+# The retry schedule to use when stopping the daemon. Could be either
+# a timeout in seconds or multiple signal/timeout pairs (like
+# "SIGKILL/180 SIGTERM/300")
+retry="${SUPERCOIND_SIGTERM_TIMEOUT}"
+
+depend() {
+	need localmount net
+}
+
+# verify
+# 1) that the datadir exists and is writable (or create it)
+# 2) that a directory for the pid exists and is writable
+# 3) ownership and permissions on the config file
+start_pre() {
+	checkpath \
+	-d \
+	--mode 0750 \
+	--owner "${SUPERCOIND_USER}:${SUPERCOIND_GROUP}" \
+	"${SUPERCOIND_DATADIR}"
+
+	checkpath \
+	-d \
+	--mode 0755 \
+	--owner "${SUPERCOIND_USER}:${SUPERCOIND_GROUP}" \
+	"${SUPERCOIND_PIDDIR}"
+
+	checkpath -f \
+	-o ${SUPERCOIND_USER}:${SUPERCOIND_GROUP} \
+	-m 0660 \
+	${SUPERCOIND_CONFIGFILE}
+
+	checkconfig || return 1
+}
+
+checkconfig()
+{
+	if ! grep -qs '^rpcpassword=' "${SUPERCOIND_CONFIGFILE}" ; then
+		eerror ""
+		eerror "ERROR: You must set a secure rpcpassword to run raind."
+		eerror "The setting must appear in ${SUPERCOIND_CONFIGFILE}"
+		eerror ""
+		eerror "This password is security critical to securing wallets "
+		eerror "and must not be the same as the rpcuser setting."
+		eerror "You can generate a suitable random password using the following "
+		eerror "command from the shell:"
+		eerror ""
+		eerror "bash -c 'tr -dc a-zA-Z0-9 < /dev/urandom | head -c32 && echo'"
+		eerror ""
+		eerror "It is recommended that you also set alertnotify so you are "
+		eerror "notified of problems:"
+		eerror ""
+		eerror "ie: alertnotify=echo %%s | mail -s \"Rain Alert\"" \
+			"admin@foo.com"
+		eerror ""
+		return 1
+	fi
+}

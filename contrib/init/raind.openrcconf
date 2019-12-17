@@ -1,0 +1,33 @@
+# /etc/conf.d/raind: config file for /etc/init.d/raind
+
+# Config file location
+#SUPERCOIND_CONFIGFILE="/etc/rain/rain.conf"
+
+# What directory to write pidfile to?  (created and owned by $SUPERCOIND_USER)
+#SUPERCOIND_PIDDIR="/var/run/raind"
+
+# What filename to give the pidfile
+#SUPERCOIND_PIDFILE="${SUPERCOIND_PIDDIR}/raind.pid"
+
+# Where to write raind data (be mindful that the blockchain is large)
+#SUPERCOIND_DATADIR="/var/lib/raind"
+
+# User and group to own raind process
+#SUPERCOIND_USER="rain"
+#SUPERCOIND_GROUP="rain"
+
+# Path to raind executable
+#SUPERCOIND_BIN="/usr/bin/raind"
+
+# Nice value to run raind under
+#SUPERCOIND_NICE=0
+
+# Additional options (avoid -conf and -datadir, use flags above)
+#SUPERCOIND_OPTS=""
+
+# The timeout in seconds OpenRC will wait for raind to terminate
+# after a SIGTERM has been raised.
+# Note that this will be mapped as argument to start-stop-daemon's
+# '--retry' option, which means you can specify a retry schedule
+# here. For more information see man 8 start-stop-daemon.
+SUPERCOIND_SIGTERM_TIMEOUT=60
