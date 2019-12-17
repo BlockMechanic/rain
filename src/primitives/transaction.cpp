@@ -84,7 +84,7 @@ uint256 CTransaction::ComputeHash() const
 
         CHashWriter ss(SER_GETHASH, PROTOCOL_VERSION);
         ss << nVersion << nTime << vin << vout << nLockTime;
-        std::cout << ss.GetHash().ToString().c_str() << std::endl;
+        //std::cout << ss.GetHash().ToString().c_str() << std::endl;
 //        return ss.GetHash();
     return SerializeHash(*this, SER_GETHASH, SERIALIZE_TRANSACTION_NO_WITNESS);
 

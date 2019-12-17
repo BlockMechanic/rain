@@ -302,7 +302,7 @@ static UniValue getsubsidy(const JSONRPCRequest& request)
     if (nTarget < 0)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Block height out of range");
     const Consensus::Params& consensusParams = Params().GetConsensus();
-    return (uint64_t)GetBlockSubsidy(nTarget, consensusParams);
+    return (uint64_t)GetBlockSubsidy(nTarget, consensusParams, ::ChainActive().Tip()->GetBlockHash());
 }
 
 static UniValue getmininginfo(const JSONRPCRequest& request)
@@ -356,7 +356,7 @@ static UniValue getmininginfo(const JSONRPCRequest& request)
     diff.pushKV("search-interval", (int)lastCoinStakeSearchInterval);
     obj.pushKV("difficulty",       diff);
 
-    obj.pushKV("blockvalue",    (uint64_t)GetBlockSubsidy(::ChainActive().Height(), Params().GetConsensus()));
+    obj.pushKV("blockvalue",    (uint64_t)GetBlockSubsidy(::ChainActive().Height(), Params().GetConsensus(), ::ChainActive().Tip()->GetBlockHash()));
 
     obj.pushKV("netmhashps",       GetPoWMHashPS());
     obj.pushKV("netstakeweight",   GetPoSKernelPS());

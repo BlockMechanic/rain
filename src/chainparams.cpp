@@ -179,7 +179,7 @@ public:
         //MineNewGenesisBlock(consensus,genesis);
         //std::cout << genesis.vtx[0]->GetHash().c_str() << std::endl;
         //std::cout << genesis.vtx[0]->hash.ToString().c_str() << std::endl;
-        std::cout << genesis.ToString().c_str() << std::endl;
+        //std::cout << genesis.ToString().c_str() << std::endl;
         assert(consensus.hashGenesisBlock == uint256S("0x00000214a121e055869d35aa132433027b11242914a7f5910327b123d6939d7b"));
         assert(genesis.hashMerkleRoot == uint256S("0x7a61ff14d15fc4012428b95e91512f05271da4e4618fe4776beeca2faf42799b"));
 
@@ -188,15 +188,10 @@ public:
         // This is fine at runtime as we'll fall back to using them as a oneshot if they don't support the
         // service bits we want, but we should get them updated to support all service bits wanted by any
         // release ASAP to avoid it where possible.
-        vSeeds.emplace_back("192.3.83.68"); 
-        vSeeds.emplace_back("193.29.56.90"); 
-        vSeeds.emplace_back("192.3.83.8"); 
-        vSeeds.emplace_back("192.3.83.87"); 
-//temporary seeds
-        vSeeds.emplace_back("101.164.53.246"); 
-        vSeeds.emplace_back("212.125.247.46"); 
-        vSeeds.emplace_back("46.101.235.143"); 
-        vSeeds.emplace_back("5.186.125.185");
+        vSeeds.emplace_back("153.231.140.35"); 
+        vSeeds.emplace_back("113.158.55.169"); 
+        vSeeds.emplace_back("81.197.120.173"); 
+        vSeeds.emplace_back("37.97.136.239"); 
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,65);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,5);
