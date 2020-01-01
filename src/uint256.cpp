@@ -116,3 +116,14 @@ template void base_blob<256>::SetHex(const std::string&);
 template std::string base_blob<256>::GetReverseHex() const;
 template void base_blob<256>::SetReverseHex(const char*);
 template void base_blob<256>::SetReverseHex(const std::string&);
+
+// Explicit instantiations for base_blob<512>
+template base_blob<512>::base_blob(const std::vector<unsigned char>&);
+template std::string base_blob<512>::GetHex() const;
+template std::string base_blob<512>::ToString() const;
+template void base_blob<512>::SetHex(const char*);
+template void base_blob<512>::SetHex(const std::string&);
+template std::string base_blob<512>::GetReverseHex() const;
+template void base_blob<512>::SetReverseHex(const char*);
+template void base_blob<512>::SetReverseHex(const std::string&);
+

@@ -5325,10 +5325,10 @@ bool CWallet::SelectCoinsForStaking(CAmount& nTargetValue, std::set<std::pair<co
 }
 
 
-bool CWallet::CreateCoinStake(unsigned int nBits, const CAmount& nTotalFees, uint32_t nTimeBlock, CMutableTransaction& tx, CKey& key)
+bool CWallet::CreateCoinStake(CBlock * block, const CAmount& nTotalFees, CMutableTransaction& tx, CKey& key)
 {
 	arith_uint256 bnTargetPerCoinDay;
-    bnTargetPerCoinDay.SetCompact(nBits);
+    bnTargetPerCoinDay.SetCompact(block->nBits);
 
     struct CMutableTransaction txNew(tx);
     txNew.vin.clear();
@@ -5370,7 +5370,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits, const CAmount& nTotalFees, uin
         {
             boost::this_thread::interruption_point();
             COutPoint prevoutStake = COutPoint(pcoin.first->GetHash(), pcoin.second);
-            locked_chain->cacheKernel(stakeCache, prevoutStake); //this will do a 2 disk loads per op
+            //locked_chain->cacheKernel(stakeCache, prevoutStake); //this will do a 2 disk loads per op
         }
     }
     int64_t nCredit = 0;
@@ -5382,7 +5382,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits, const CAmount& nTotalFees, uin
         // Search backward in time from the given txNew timestamp
         // Search nSearchInterval seconds back up to nMaxStakeSearchInterval
         COutPoint prevoutStake = COutPoint(pcoin.first->GetHash(), pcoin.second);
-        if (locked_chain->checkKernel(nBits, nTimeBlock, prevoutStake, stakeCache))
+        if (locked_chain->checkKernel(block, prevoutStake))
         {
             // Found a kernel
             LogPrint(BCLog::COINSTAKE, "CreateCoinStake : kernel found\n");

@@ -112,8 +112,8 @@ public:
         
         virtual bool startStake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread) = 0;
         
-        virtual void cacheKernel(std::map<COutPoint, CStakeCache>& cache, const COutPoint& prevout) =0;
-        virtual	bool checkKernel(unsigned int nBits, uint32_t nTimeBlock, const COutPoint& prevout, const std::map<COutPoint, CStakeCache>& cache) =0;
+        //virtual void cacheKernel(std::map<COutPoint, CStakeCache>& cache, const COutPoint& prevout) =0;
+        virtual	bool checkKernel(const CBlock* block, const COutPoint& prevout) =0;
 
 #ifdef ENABLE_SECURE_MESSAGING
         virtual bool smsgStart()=0;

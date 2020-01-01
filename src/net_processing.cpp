@@ -1706,12 +1706,25 @@ bool static ProcessHeadersMessage(CNode *pfrom, CConnman *connman, const std::ve
 
     CValidationState state;
     CBlockHeader first_invalid_header;
-    if (!ProcessNewBlockHeaders(headers, state, chainparams, &pindexLast, &first_invalid_header)) {
+    int32_t& nPoSTemperature = mapPoSTemperature[pfrom->addr];
+
+    if (!ProcessNewBlockHeaders(nPoSTemperature, pfrom->lastAcceptedHeader, headers, pfrom->nVersion <= PROTOCOL_VERSION, state, chainparams, &pindexLast, &first_invalid_header)) {
+                if (nPoSTemperature >= 200) {
+                    // A lot of PoS headers followed by some failed header (most likely PoW).
+                    // This situation is very unusual, because normaly you don't get a failed PoW header with a ton of PoS headers.
+                    // Probably out of memory attack. Punish peer for a long time.
+                    nPoSTemperature = (MAX_CONSECUTIVE_POS_HEADERS*3)/4;
+                    Misbehaving(pfrom->GetId(), 100);
+                } else {
+                    nPoSTemperature *= 3;
+                    Misbehaving(pfrom->GetId(), 2);
+                }
         if (state.IsInvalid()) {
             MaybePunishNode(pfrom->GetId(), state, via_compact_block, "invalid header received");
             return false;
         }
     }
+    pfrom->lastAcceptedHeader = headers.back().GetHash();
 
     {
         LOCK(cs_main);
@@ -1942,6 +1955,9 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
     }
 
     if (strCommand == NetMsgType::VERSION) {
+        auto it = mapPoSTemperature.find(pfrom->addr);
+        if (it == mapPoSTemperature.end())
+            mapPoSTemperature[pfrom->addr] = MAX_CONSECUTIVE_POS_HEADERS/4;
         // Each connection can only send one version message
         if (pfrom->nVersion != 0)
         {
@@ -2688,12 +2704,22 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         }
         }
 
+        int32_t& nPoSTemperature = mapPoSTemperature[pfrom->addr];
         const CBlockIndex *pindex = nullptr;
         CValidationState state;
-        if (!ProcessNewBlockHeaders({cmpctblock.header}, state, chainparams, &pindex)) {
+        uint256 hhash = ::ChainActive().Tip()->GetBlockHash();
+        if (!ProcessNewBlockHeaders(nPoSTemperature, hhash, {cmpctblock.header}, false, state, chainparams, &pindex)) {
             if (state.IsInvalid()) {
                 MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ true, "invalid header via cmpctblock");
                 return true;
+            }
+        }
+
+        if (nPoSTemperature >= MAX_CONSECUTIVE_POS_HEADERS) {
+            nPoSTemperature = (MAX_CONSECUTIVE_POS_HEADERS*3)/4;
+            if (Params().NetworkIDString() != "test") {
+				MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ true, "too many consecutive pos headers");
+                return error("too many consecutive pos headers");
             }
         }
 
@@ -2867,7 +2893,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 				LOCK(cs_main);
 				result = MarkBlockAsReceived(pblock->GetHash());
 			}
-            ProcessNetBlock(chainparams, pblock, /*fForceProcessing=*/true, &fNewBlock, pfrom, *connman, !result.fPriorityRequest);
+            ProcessNewBlock(chainparams, pblock, /*fForceProcessing=*/true, &fNewBlock, *connman, pfrom, !result.fPriorityRequest);
             if (fNewBlock) {
                 pfrom->nLastBlockTime = GetTime();
             } else {
@@ -2961,7 +2987,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 				LOCK(cs_main);
 				result = MarkBlockAsReceived(pblock->GetHash());
 			}
-            ProcessNetBlock(chainparams, pblock, /*fForceProcessing=*/true, &fNewBlock, pfrom, *connman, !result.fPriorityRequest);
+            ProcessNewBlock(chainparams, pblock, /*fForceProcessing=*/true, &fNewBlock, *connman, pfrom, !result.fPriorityRequest);
             if (fNewBlock) {
                 pfrom->nLastBlockTime = GetTime();
             } else {
@@ -2990,9 +3016,27 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             return false;
         }
         headers.resize(nCount);
+        int32_t& nPoSTemperature = mapPoSTemperature[pfrom->addr];
+        int nTmpPoSTemperature = nPoSTemperature;
         for (unsigned int n = 0; n < nCount; n++) {
             vRecv >> headers[n];
             ReadCompactSize(vRecv); // ignore tx count; assume it is 0.
+            ReadCompactSize(vRecv); // ignore block signature.
+
+            bool fPoS = headers[n].nFlags & CBlockIndex::BLOCK_PROOF_OF_STAKE;
+                    CValidationState state;
+            nTmpPoSTemperature += fPoS ? 1 : -POW_HEADER_COOLING;
+            // peer cannot cool himself by PoW headers from other branches
+            if (n == 0 && !fPoS && headers[n].hashPrevBlock != pfrom->lastAcceptedHeader)
+                nTmpPoSTemperature += POW_HEADER_COOLING;
+            nTmpPoSTemperature = std::max(nTmpPoSTemperature, 0);
+            if (nTmpPoSTemperature >= MAX_CONSECUTIVE_POS_HEADERS) {
+                nPoSTemperature = (MAX_CONSECUTIVE_POS_HEADERS*3)/4;
+                if (Params().NetworkIDString() != "test") {
+					MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ true, "too many consecutive pos headers");
+					return error("too many consecutive pos headers");					
+                }
+            }
         }
 
         return ProcessHeadersMessage(pfrom, connman, headers, chainparams, /*via_compact_block=*/false);
@@ -3025,7 +3069,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             mapBlockSource.emplace(hash, std::make_pair(pfrom->GetId(), true));
         }
         bool fNewBlock = false;
-        ProcessNetBlock(chainparams, pblock, forceProcessing, &fNewBlock, pfrom, *connman, !result.fPriorityRequest);
+        ProcessNewBlock(chainparams, pblock, forceProcessing, &fNewBlock, *connman, pfrom, !result.fPriorityRequest);
         if (result.fPriorityRequest) {
             ProcessPriorityRequests(pblock);
         }
@@ -4238,140 +4282,6 @@ void static PruneOrphanBlocks() EXCLUSIVE_LOCKS_REQUIRED(cs_main)
         mapOrphanBlocksByPrev.erase(it);
         mapOrphanBlocks.erase(hash);
     }
-}
-
-bool ProcessNetBlock(const CChainParams& chainparams, const std::shared_ptr<const CBlock> pblock, bool fForceProcessing, bool* fNewBlock, CNode* pfrom, CConnman& connman, bool fPriorityRequest)
-{
-    {
-        // Check that the coinstake transaction exist in the received block
-        if(pblock->IsProofOfStake() && !(pblock->vtx.size() > 1 && pblock->vtx[1]->IsCoinStake()))
-        {
-			LOCK(cs_main);
-            if (pfrom)
-                Misbehaving(pfrom->GetId(), 100);
-            return error("ProcessNetBlock() : coinstake transaction does not exist");
-        }
-
-        // Process the header before processing the block
-        const CBlockIndex *pindex = nullptr;
-        CValidationState state;
-        if (!ProcessNewBlockHeaders({*pblock}, state, chainparams, &pindex)) {
-            if (state.IsInvalid()) {
-                MaybePunishNode(pfrom->GetId(), state, true, "invalid header received");
-            }
-        }
-
-        LOCK(cs_main);
-        // Check for duplicate orphan block
-        uint256 hash = pblock->GetHash();
-        if (mapOrphanBlocks.count(hash))
-            return error("ProcessNetBlock() : already have block (orphan) %s", hash.ToString());
-
-        // ppcoin: check proof-of-stake
-        // Limited duplicity on stake: prevents block flood attack
-        // Duplicate stake allowed only when there is orphan child block
-        if (!fReindex && !fImporting && pblock->IsProofOfStake() && (setStakeSeen.count(pblock->GetProofOfStake()) > 1) && !mapOrphanBlocksByPrev.count(hash))
-            return error("ProcessNetBlock() : duplicate proof-of-stake (%s, %d) for block %s", pblock->GetProofOfStake().first.ToString(), pblock->GetProofOfStake().second, hash.ToString());
-
-        // Check for the checkpoint
-        if (::ChainActive().Tip() && pblock->hashPrevBlock != ::ChainActive().Tip()->GetBlockHash())
-        {
-            // Extra checks to prevent "fill up memory by spamming with bogus blocks"
-            const CBlockIndex* pcheckpoint = Checkpoints::AutoSelectSyncCheckpoint();
-            int64_t deltaTime = pblock->GetBlockTime() - pcheckpoint->nTime;
-            if (deltaTime < 0)
-            {
-                if (pfrom)
-                    Misbehaving(pfrom->GetId(), 1);
-
-                return error("ProcessNetBlock() : block with timestamp before last checkpoint");
-            }
-        }
-/*
-        // Check for the signiture encoding
-        if (!CheckCanonicalBlockSignature(pblock.get()))
-        {
-            if (pfrom)
-                Misbehaving(pfrom->GetId(), 100);
-
-            return error("ProcessNetBlock(): bad block signature encoding");
-        }
-*/
-        // If we don't already have its previous block, shunt it off to holding area until we get it
-        if (!mapBlockIndex.count(pblock->hashPrevBlock))
-        {
-            LogPrintf("ProcessNetBlock: ORPHAN BLOCK %lu, prev=%s\n", (unsigned long)mapOrphanBlocks.size(), pblock->hashPrevBlock.ToString());
-
-            // Accept orphans as long as there is a node to request its parents from
-            if (pfrom) {
-                // ppcoin: check proof-of-stake
-                if (pblock->IsProofOfStake())
-                {
-                    // Limited duplicity on stake: prevents block flood attack
-                    // Duplicate stake allowed only when there is orphan child block
-                    if (setStakeSeenOrphan.count(pblock->GetProofOfStake()) && !mapOrphanBlocksByPrev.count(hash))
-                        return error("ProcessNetBlock() : duplicate proof-of-stake (%s, %d) for orphan block %s", pblock->GetProofOfStake().first.ToString(), pblock->GetProofOfStake().second, hash.ToString());
-                }
-                PruneOrphanBlocks();
-                COrphanBlock* pblock2 = new COrphanBlock();
-                {
-                    CDataStream ss(SER_DISK, CLIENT_VERSION);
-                    ss << *pblock;
-                    pblock2->vchBlock = std::vector<unsigned char>(ss.begin(), ss.end());
-                }
-                pblock2->hashBlock = hash;
-                pblock2->hashPrev = pblock->hashPrevBlock;
-                pblock2->stake = pblock->GetProofOfStake();
-                nOrphanBlocksSize += pblock2->vchBlock.size();
-                mapOrphanBlocks.insert(std::make_pair(hash, pblock2));
-                mapOrphanBlocksByPrev.insert(std::make_pair(pblock2->hashPrev, pblock2));
-                if (pblock->IsProofOfStake())
-                    setStakeSeenOrphan.insert(pblock->GetProofOfStake());
-
-                // Ask this guy to fill in what we're missing
-                PushGetBlocks(pfrom, pindexBestHeader, GetOrphanRoot(hash), connman);
-                // ppcoin: getblocks may not obtain the ancestor block rejected
-                // earlier by duplicate-stake check so we ask for it again directly
-                if (!::ChainstateActive().IsInitialBlockDownload())
-                    pfrom->AskFor(CInv(MSG_BLOCK, WantedByOrphan(pblock2)));
-            }
-            return true;
-        }
-    }
-
-    if(!ProcessNewBlock(chainparams, pblock, fForceProcessing, fNewBlock))
-        return error("%s: ProcessNewBlock FAILED", __func__);
-
-    std::vector<uint256> vWorkQueue;
-    vWorkQueue.push_back(pblock->GetHash());
-    for (unsigned int i = 0; i < vWorkQueue.size(); i++)
-    {
-        uint256 hashPrev = vWorkQueue[i];
-        LOCK(cs_main);
-        for (auto mi = mapOrphanBlocksByPrev.lower_bound(hashPrev); mi != mapOrphanBlocksByPrev.upper_bound(hashPrev); ++mi) {
-            CBlock block;
-            {
-                CDataStream ss(mi->second->vchBlock, SER_DISK, CLIENT_VERSION);
-                ss >> block;
-            }
-            block.hashMerkleRoot = BlockMerkleRoot(block);
-
-            bool fNewBlockOrphan = false;
-            std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(block);
-            if (ProcessNewBlock(chainparams, shared_pblock, fForceProcessing, &fNewBlockOrphan))
-                vWorkQueue.push_back(mi->second->hashBlock);
-
-            mapOrphanBlocks.erase(mi->second->hashBlock);
-            setStakeSeenOrphan.erase(block.GetProofOfStake());
-            nOrphanBlocksSize -= mi->second->vchBlock.size();
-            delete mi->second;
-        }
-        mapOrphanBlocksByPrev.erase(hashPrev);
-    }
-
-    LogPrintf("ProcessNetBlock: ACCEPTED\n");
-
-    return true;
 }
 
 void AddPriorityDownload(const std::vector<const CBlockIndex*>& blocksToDownload) {

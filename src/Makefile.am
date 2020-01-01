@@ -108,6 +108,7 @@ SUPERCOIN_CORE_H = \
   axiom.h \
   banman.h \
   base58.h \
+  bignum.h \
   bech32.h \
   bloom.h \
   blockencodings.h \

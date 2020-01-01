@@ -56,7 +56,7 @@ int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParam
 
     // Updating time can change work required on testnet:
     if (consensusParams.fPowAllowMinDifficultyBlocks)
-        pblock->nBits = GetNextWorkRequired(pindexPrev, pblock, consensusParams,false);
+        pblock->nBits = GetNextWorkRequired(pindexPrev, consensusParams,false);
 
     return nNewTime - nOldTime;
 }
@@ -217,7 +217,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     // Fill in header
     pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
-    pblock->nBits          = GetNextWorkRequired(pindexPrev, pblock, chainparams.GetConsensus());
+    pblock->nBits          = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus());
     pblock->nNonce         = 0;
     pblocktemplate->vTxSigOpsCost[0] = WITNESS_SCALE_FACTOR * GetLegacySigOpCount(*pblock->vtx[0]);
 
@@ -330,7 +330,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateEmptyBlock(const CScript& 
     pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
     if (!fProofOfStake)
         UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
-    pblock->nBits          = GetNextWorkRequired(pindexPrev, pblock, chainparams.GetConsensus(),fProofOfStake);
+    pblock->nBits          = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus(),fProofOfStake);
     pblock->nNonce         = 0;
     pblocktemplate->vTxSigOpsCost[0] = WITNESS_SCALE_FACTOR * GetLegacySigOpCount(*pblock->vtx[0]);
 
@@ -623,7 +623,7 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
 
 bool CheckStake(const std::shared_ptr<const CBlock> pblock, CWallet& wallet)
 {
-    uint256 proofHash, hashTarget;
+    uint256 proofHash;
     uint256 hashBlock = pblock->GetHash();
 
     if(!pblock->IsProofOfStake())
@@ -631,11 +631,11 @@ bool CheckStake(const std::shared_ptr<const CBlock> pblock, CWallet& wallet)
 
     // verify hash target and signature of coinstake tx
     CValidationState state;
-    if (!CheckProofOfStake(mapBlockIndex[pblock->hashPrevBlock], state, *pblock->vtx[1], pblock->nBits, pblock->nTime, proofHash, hashTarget, *pcoinsTip))
+    if (!CheckProofOfStake(mapBlockIndex[pblock->hashPrevBlock], state, *pblock->vtx[1], pblock->nBits, proofHash, *pcoinsTip))
         return error("CheckStake() : proof-of-stake checking failed");
 
     //// debug print
-    LogPrint(BCLog::COINSTAKE, "CheckStake() : new proof-of-stake block found  \n  hash: %s \nproofhash: %s  \ntarget: %s\n", hashBlock.GetHex(), proofHash.GetHex(), hashTarget.GetHex());
+    //LogPrint(BCLog::COINSTAKE, "CheckStake() : new proof-of-stake block found  \n  hash: %s \nproofhash: %s  \ntarget: %s\n", hashBlock.GetHex(), proofHash.GetHex(), hashTarget.GetHex());
     LogPrint(BCLog::COINSTAKE, "%s\n", pblock->ToString());
     LogPrint(BCLog::COINSTAKE, "out %s\n", FormatMoney(pblock->vtx[1]->GetValueOut()));
     auto locked_chain = wallet.chain().lock();
@@ -654,7 +654,7 @@ bool CheckStake(const std::shared_ptr<const CBlock> pblock, CWallet& wallet)
 
     // Process this block the same as if we had received it from another node
     bool fNewBlock = false;
-    if (!ProcessNewBlock(Params(), pblock, true, &fNewBlock))
+    if (!ProcessNewBlock(Params(), pblock, true, &fNewBlock, *g_connman))
         return error("CheckStake() : ProcessBlock, block not accepted");
 
     return true;
@@ -893,7 +893,7 @@ void static RainMiner(std::shared_ptr<CTxDestination> coinbase_script)
                         //SetThreadPriority(THREAD_PRIORITY_NORMAL);
 
                         std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(*pblock);
-                        if (!ProcessNewBlock(Params(), shared_pblock, true, nullptr))
+                        if (!ProcessNewBlock(Params(), shared_pblock, true, nullptr, *g_connman))
                             throw std::runtime_error(strprintf("%s: ProcessNewBlock, block not accepted:", __func__));
                         //SetThreadPriority(THREAD_PRIORITY_LOWEST);
                         break;

@@ -1143,7 +1143,7 @@ public:
     CAmount GetWatchOnlyStake() const;
 
     uint64_t GetStakeWeight() const;
-    bool CreateCoinStake(unsigned int nBits, const CAmount& nTotalFees, uint32_t nTimeBlock, CMutableTransaction& tx, CKey& key);
+    bool CreateCoinStake(CBlock *block, const CAmount& nTotalFees, CMutableTransaction& tx, CKey& key);
 
     bool DummySignTx(CMutableTransaction &txNew, const std::set<CTxOut> &txouts, bool use_max_sig = false) const
     {

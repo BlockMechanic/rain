@@ -17,57 +17,6 @@ constexpr char DB_TXINDEX_BLOCK = 'T';
 
 std::unique_ptr<TxIndex> g_txindex;
 
-struct CDiskTxPos : public FlatFilePos
-{
-    unsigned int nTxOffset; // after header
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITEAS(FlatFilePos, *this);
-        READWRITE(VARINT(nTxOffset));
-    }
-
-    CDiskTxPos(const FlatFilePos &blockIn, unsigned int nTxOffsetIn) : FlatFilePos(blockIn.nFile, blockIn.nPos), nTxOffset(nTxOffsetIn) {
-    }
-
-    CDiskTxPos() {
-        SetNull();
-    }
-
-    void SetNull() {
-        FlatFilePos::SetNull();
-        nTxOffset = 0;
-    }
-};
-
-/**
- * Access to the txindex database (indexes/txindex/)
- *
- * The database stores a block locator of the chain the database is synced to
- * so that the TxIndex can efficiently determine the point it last stopped at.
- * A locator is used instead of a simple hash of the chain tip because blocks
- * and block index entries may not be flushed to disk until after this database
- * is updated.
- */
-class TxIndex::DB : public BaseIndex::DB
-{
-public:
-    explicit DB(size_t n_cache_size, bool f_memory = false, bool f_wipe = false);
-
-    /// Read the disk location of the transaction data with the given hash. Returns false if the
-    /// transaction hash is not indexed.
-    bool ReadTxPos(const uint256& txid, CDiskTxPos& pos) const;
-
-    /// Write a batch of transaction positions to the DB.
-    bool WriteTxs(const std::vector<std::pair<uint256, CDiskTxPos>>& v_pos);
-
-    /// Migrate txindex data from the block tree DB, where it may be for older nodes that have not
-    /// been upgraded yet to the new database.
-    bool MigrateData(CBlockTreeDB& block_tree_db, const CBlockLocator& best_locator);
-};
-
 TxIndex::DB::DB(size_t n_cache_size, bool f_memory, bool f_wipe) :
     BaseIndex::DB(GetDataDir() / "indexes" / "txindex", n_cache_size, f_memory, f_wipe)
 {}
@@ -263,6 +212,14 @@ bool TxIndex::WriteBlock(const CBlock& block, const CBlockIndex* pindex)
 }
 
 BaseIndex::DB& TxIndex::GetDB() const { return *m_db; }
+
+bool TxIndex::GetTxPos(const uint256& tx_hash, CDiskTxPos& postx) const
+{
+    if (!m_db->ReadTxPos(tx_hash, postx)) {
+        return false;
+    }
+    return true;
+}
 
 bool TxIndex::FindTx(const uint256& tx_hash, uint256& block_hash, CTransactionRef& tx) const
 {

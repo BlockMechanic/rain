@@ -77,6 +77,7 @@ struct Params {
     uint256 defaultAssumeValid;
     uint256 posLimit;
     bool fPoSNoRetargeting;
+    unsigned int nModifierInterval;
     int nStakeTimestampMask;
     int nLastPOWBlock;
     

@@ -91,6 +91,9 @@ std::string strSubVersion;
 
 limitedmap<uint256, int64_t> mapAlreadyAskedFor(MAX_INV_SZ);
 
+// peercoin: temperature to measure how many PoS headers have been sent by this client
+std::map<CNetAddr, int32_t> mapPoSTemperature;
+
 void CConnman::AddOneShot(const std::string& strDest)
 {
     LOCK(cs_vOneShots);
@@ -1809,14 +1812,9 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
             }
 
             // do not allow non-default ports, unless after 50 invalid addresses selected already
-#ifdef ENABLE_IBTP
-            //if (addr.GetPort() != Params().GetDefaultPort() || !inour vector)
+            //if (addr.GetPort() != Params().GetDefaultPort() && nTries < 50)
             //    continue;
-#else
 
-            if (addr.GetPort() != Params().GetDefaultPort() && nTries < 50)
-                continue;
-#endif
             addrConnect = addr;
             break;
         }
@@ -2650,6 +2648,7 @@ CNode::CNode(NodeId idIn, ServiceFlags nLocalServicesIn, int nMyStartingHeightIn
     fForeignNode = false;
 #endif
     pfilter = MakeUnique<CBloomFilter>();
+    lastAcceptedHeader = uint256();
 
     for (const std::string &msg : getAllNetMessageTypes())
         mapRecvBytesPerMsgCmd[msg] = 0;

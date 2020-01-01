@@ -238,6 +238,7 @@ extern const char *GETBLOCKTXN;
  * @since protocol version 70014 as described by BIP 152
  */
 extern const char *BLOCKTXN;
+extern const char *CHECKPOINT;
 #ifdef ENABLE_SECURE_MESSAGING
 
 extern const char *SMSGIGNORE;
@@ -419,5 +420,8 @@ public:
     int type;
     uint256 hash;
 };
+
+/** peercoin: How much temperature a PoW header will remove */
+extern const unsigned int POW_HEADER_COOLING;
 
 #endif // SUPERCOIN_PROTOCOL_H

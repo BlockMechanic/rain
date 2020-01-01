@@ -92,6 +92,9 @@ static const bool DEFAULT_FORCEDNSSEED = false;
 static const size_t DEFAULT_MAXRECEIVEBUFFER = 5 * 1000;
 static const size_t DEFAULT_MAXSENDBUFFER    = 1 * 1000;
 
+/** peercoin: Number of consecutive PoS headers are allowed from a single peer. Used to prevent out of memory attack. */
+static const int32_t MAX_CONSECUTIVE_POS_HEADERS = 1000;
+
 typedef int64_t NodeId;
 
 struct AddedNodeInfo
@@ -543,7 +546,7 @@ struct LocalServiceInfo {
 
 extern CCriticalSection cs_mapLocalHost;
 extern std::map<CNetAddr, LocalServiceInfo> mapLocalHost GUARDED_BY(cs_mapLocalHost);
-
+extern std::map<CNetAddr, int32_t> mapPoSTemperature;
 extern const std::string NET_MESSAGE_COMMAND_OTHER;
 typedef std::map<std::string, uint64_t> mapMsgCmdSize; //command, total bytes
 
@@ -798,6 +801,8 @@ public:
     // whether this is a foreign ibtp node
     bool fForeignNode;
 #endif
+
+    uint256 lastAcceptedHeader;
 
     CNode(NodeId id, ServiceFlags nLocalServicesIn, int nMyStartingHeightIn, SOCKET hSocketIn, const CAddress &addrIn, uint64_t nKeyedNetGroupIn, uint64_t nLocalHostNonceIn, const CAddress &addrBindIn, const std::string &addrNameIn = "", bool fInboundIn = false);
     ~CNode();

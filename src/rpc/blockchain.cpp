@@ -105,7 +105,7 @@ double GetPoWMHashPS()
             pindexPrevWork = pindex;
         }
 
-        pindex = pindex->pnext;
+        pindex = ::ChainActive().Next(pindex);
     }
 
     return GetDifficulty(::ChainActive().Tip()) * 4294.967296 / nTargetSpacingWork;
@@ -185,7 +185,7 @@ UniValue blockheaderToJSON(const CBlockIndex* tip, const CBlockIndex* blockindex
 
     result.pushKV("flags", strprintf("%s", blockindex->IsProofOfStake()? "proof-of-stake" : "proof-of-work"));
     result.pushKV("proofhash", blockindex->hashProof.GetHex());
-    result.pushKV("modifier", blockindex->nStakeModifier.GetHex());
+    result.pushKV("modifier", blockindex->nStakeModifier);
 
     return result;
 }
@@ -235,7 +235,7 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* tip, const CBlockIn
 
     result.pushKV("flags", strprintf("%s", blockindex->IsProofOfStake()? "proof-of-stake" : "proof-of-work"));
     result.pushKV("proofhash", blockindex->hashProof.GetHex());
-    result.pushKV("modifier", blockindex->nStakeModifier.GetHex());
+    result.pushKV("modifier", blockindex->nStakeModifier);
 
     if (block.IsProofOfStake())
         result.pushKV("signature", HexStr(block.vchBlockSig.begin(), block.vchBlockSig.end()));	

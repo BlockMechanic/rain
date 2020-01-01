@@ -12,7 +12,7 @@
 #include <script/standard.h>
 #include <util/time.h>
 #include <validation.h>
-
+#include <net.h>
 #include <boost/test/unit_test.hpp>
 
 BOOST_AUTO_TEST_SUITE(blockfilter_index_tests)
@@ -103,9 +103,11 @@ static bool BuildChain(const CBlockIndex* pindex, const CScript& coinbase_script
         CBlockHeader header = block->GetBlockHeader();
 
         CValidationState state;
-        if (!ProcessNewBlockHeaders({header}, state, Params(), &pindex, nullptr)) {
-            return false;
-        }
+        //int32_t& nPoSTemperature = 20;
+
+        //if (!ProcessNewBlockHeaders(nPoSTemperature, uint256(),{header}, false, state, Params(), &pindex, nullptr)) {
+        //    return false;
+        //}
     }
 
     return true;
@@ -171,12 +173,13 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, TestChain100Setup)
     std::vector<std::shared_ptr<CBlock>> chainA, chainB;
     BOOST_REQUIRE(BuildChain(tip, coinbase_script_pub_key, 10, chainA));
     BOOST_REQUIRE(BuildChain(tip, coinbase_script_pub_key, 10, chainB));
+    std::unique_ptr<CConnman> g_connman = std::unique_ptr<CConnman>(new CConnman(GetRand(std::numeric_limits<uint64_t>::max()), GetRand(std::numeric_limits<uint64_t>::max())));
 
     // Check that new blocks on chain A get indexed.
     uint256 chainA_last_header = last_header;
     for (size_t i = 0; i < 2; i++) {
         const auto& block = chainA[i];
-        BOOST_REQUIRE(ProcessNewBlock(Params(), block, true, nullptr));
+        BOOST_REQUIRE(ProcessNewBlock(Params(), block, true, nullptr, *g_connman));
 
         const CBlockIndex* block_index;
         {
@@ -192,7 +195,7 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, TestChain100Setup)
     uint256 chainB_last_header = last_header;
     for (size_t i = 0; i < 3; i++) {
         const auto& block = chainB[i];
-        BOOST_REQUIRE(ProcessNewBlock(Params(), block, true, nullptr));
+        BOOST_REQUIRE(ProcessNewBlock(Params(), block, true, nullptr, *g_connman));
 
         const CBlockIndex* block_index;
         {
@@ -221,7 +224,7 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, TestChain100Setup)
     // Reorg back to chain A.
      for (size_t i = 2; i < 4; i++) {
          const auto& block = chainA[i];
-        BOOST_REQUIRE(ProcessNewBlock(Params(), block, true, nullptr));
+         BOOST_REQUIRE(ProcessNewBlock(Params(), block, true, nullptr, *g_connman));
      }
 
      // Check that chain A and B blocks can be retrieved.

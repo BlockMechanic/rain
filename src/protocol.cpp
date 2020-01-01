@@ -41,6 +41,7 @@ const char *SENDCMPCT="sendcmpct";
 const char *CMPCTBLOCK="cmpctblock";
 const char *GETBLOCKTXN="getblocktxn";
 const char *BLOCKTXN="blocktxn";
+const char *CHECKPOINT="checkpoint";
 #ifdef ENABLE_SECURE_MESSAGING
 
 const char *SMSGIGNORE = "smsgIgnore";
@@ -86,6 +87,7 @@ const static std::string allNetMessageTypes[] = {
     NetMsgType::CMPCTBLOCK,
     NetMsgType::GETBLOCKTXN,
     NetMsgType::BLOCKTXN,
+    NetMsgType::CHECKPOINT,
 #ifdef ENABLE_SECURE_MESSAGING
     NetMsgType::SMSGIGNORE,
     NetMsgType::SMSGPING,
@@ -226,3 +228,5 @@ const std::vector<std::string> &getAllNetMessageTypes()
 {
     return allNetMessageTypesVec;
 }
+
+const unsigned int POW_HEADER_COOLING = 70;

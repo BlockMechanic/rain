@@ -119,7 +119,7 @@ public:
         consensus.BIP65Height = 0; // 000000000000000004c2b624ed5d7756c508d90fd0da2c7c679febfa6c4735f0
         consensus.BIP66Height = 0; // 00000000000000000379eaa19dce8c9b722d46ae6a57c2f1a988119488b50931
         consensus.powLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.posLimit = uint256S("00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.posLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.fPoSNoRetargeting = false;
         consensus.nStakeTimestampMask = 0xf;
         consensus.nLastPOWBlock = 200000;
@@ -128,12 +128,13 @@ public:
         consensus.nStakeMaxAge = 10* 24 * 60 * 60;
         consensus.nCOIN_YEAR_REWARD = 200 * COIN/100;
         consensus.nCOIN_YEAR_REWARD_NEW  = 10 * COIN/100;
-        consensus.nPowTargetTimespan = 60; // two weeks
+        consensus.nPowTargetTimespan = 15 * 60;
         consensus.nPowTargetSpacing = 60;
+        consensus.nModifierInterval = 13 * 60; // Potcoin: nModifierInterval
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 1916; // 95% of 2016
-        consensus.nMinerConfirmationWindow = 100; // nPowTargetTimespan / nPowTargetSpacing
+        consensus.nMinerConfirmationWindow = 15; // nPowTargetTimespan / nPowTargetSpacing
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 1199145601; // January 1, 2008
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = 1230767999; // December 31, 2008
@@ -152,17 +153,18 @@ public:
         consensus.nMinimumChainWork = uint256S("0x00");
 
         // By default assume that the signatures in ancestors of this block are valid.
-        consensus.defaultAssumeValid = uint256S("0x006"); //563378
+        consensus.defaultAssumeValid = uint256S("0x6232aaf8e4c4a8ba2e44ad8cf2e7a9416721851a3eb68451125095fc0308e8fa"); //563378
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
          * The characters are rarely used upper ASCII, not valid as UTF-8, and produce
          * a large 32-bit integer with any alignment.
          */
-        pchMessageStart[0] = 0xdb;
-        pchMessageStart[1] = 0xfa;
-        pchMessageStart[2] = 0xfc;
-        pchMessageStart[3] = 0xfd;
+
+        pchMessageStart[0] = 0x47;
+        pchMessageStart[1] = 0x24;
+        pchMessageStart[2] = 0xa1;
+        pchMessageStart[3] = 0xb6;
         nDefaultPort = 23373;
         nPruneAfterHeight = 100000;
         m_assumed_blockchain_size = 0;
@@ -188,10 +190,10 @@ public:
         // This is fine at runtime as we'll fall back to using them as a oneshot if they don't support the
         // service bits we want, but we should get them updated to support all service bits wanted by any
         // release ASAP to avoid it where possible.
-        vSeeds.emplace_back("153.231.140.35"); 
-        vSeeds.emplace_back("113.158.55.169"); 
-        vSeeds.emplace_back("81.197.120.173"); 
-        vSeeds.emplace_back("37.97.136.239"); 
+        vSeeds.emplace_back("192.3.83.8");
+        vSeeds.emplace_back("69.131.110.46"); 
+        vSeeds.emplace_back("72.203.101.202"); 
+        vSeeds.emplace_back("98.184.203.7"); 
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,65);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,5);
@@ -217,13 +219,14 @@ public:
 				{13450, uint256S("0xd72d0eddc03aaa744c5b13f4b851fe3ad4e5df480ff99be7158d2d6dfece715a")},
 				{20000, uint256S("0x6f856872bfcbbfd851208ce803afbc9740352a7115578c9455ef97a0aab58772")},
 				{23450, uint256S("0x0000000000c43d8588b566325e216f4967ebc1a7f0a475ad83eb621192f6f5a8")},
+			  {1494133, uint256S("0x6232aaf8e4c4a8ba2e44ad8cf2e7a9416721851a3eb68451125095fc0308e8fa")},
             }
         };
 
         chainTxData = ChainTxData{
             // Data from rpc: getchaintxstats 4096 23599282d5f953a73fac7d1710b055078f8397f2da3dbf767195a0db74160728
-            /* nTime    */ 1570807632,
-            /* nTxCount */ 228704,
+            /* nTime    */ 1576783969,
+            /* nTxCount */ 2228704,
             /* dTxRate  */ 0.03119858631405764
         };
 

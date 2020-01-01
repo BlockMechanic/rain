@@ -117,11 +117,11 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
 		return true;
 		
 	}    
-    void cacheKernel(std::map<COutPoint, CStakeCache>& cache, const COutPoint& prevout) override {
+   /* void cacheKernel(std::map<COutPoint, CStakeCache>& cache, const COutPoint& prevout) override {
 		CacheKernel(cache, prevout, *pcoinsTip);
-	}
-	bool checkKernel(unsigned int nBits, uint32_t nTimeBlock, const COutPoint& prevout, const std::map<COutPoint, CStakeCache>& cache) override {
-		return CheckKernel(nBits,nTimeBlock,prevout, *pcoinsTip,cache);		
+	}*/
+	bool checkKernel(const CBlock* block, const COutPoint& prevout) override {
+		return CheckKernel(::ChainActive().Tip(), block, prevout, *pcoinsTip);		
 	}
 
 #ifdef ENABLE_SECURE_MESSAGING

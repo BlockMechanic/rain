@@ -13,6 +13,8 @@
 #include <script/standard.h>
 #include <validation.h>
 #include <validationinterface.h>
+#include <net.h>
+
 #ifdef ENABLE_WALLET
 #include <wallet/wallet.h>
 #endif
@@ -60,8 +62,10 @@ CTxIn MineBlock(const CScript& coinbase_scriptPubKey)
         ++block->nNonce;
         assert(block->nNonce);
     }
+    std::unique_ptr<CConnman> g_connman = std::unique_ptr<CConnman>(new CConnman(GetRand(std::numeric_limits<uint64_t>::max()), GetRand(std::numeric_limits<uint64_t>::max())));
 
-    bool processed{ProcessNewBlock(Params(), block, true, nullptr)};
+
+    bool processed{ProcessNewBlock(Params(), block, true, nullptr, *g_connman)};
     assert(processed);
 
     return CTxIn{block->vtx[0]->GetHash(), 0};
