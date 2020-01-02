@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_UTIL_VALIDATION_H
-#define SUPERCOIN_UTIL_VALIDATION_H
+#ifndef RAIN_UTIL_VALIDATION_H
+#define RAIN_UTIL_VALIDATION_H
 
 #include <string>
 
@@ -15,4 +15,4 @@ std::string FormatStateMessage(const CValidationState &state);
 
 extern const std::string strMessageMagic;
 
-#endif // SUPERCOIN_UTIL_VALIDATION_H
+#endif // RAIN_UTIL_VALIDATION_H

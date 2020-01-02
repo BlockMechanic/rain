@@ -417,7 +417,7 @@ void openDebugLogfile()
 
 bool openRainConf()
 {
-    fs::path pathConfig = GetConfigFile(gArgs.GetArg("-conf", SUPERCOIN_CONF_FILENAME));
+    fs::path pathConfig = GetConfigFile(gArgs.GetArg("-conf", RAIN_CONF_FILENAME));
 
     /* Create the file */
     fsbridge::ofstream configFile(pathConfig, std::ios_base::app);

@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_ATTRIBUTES_H
-#define SUPERCOIN_ATTRIBUTES_H
+#ifndef RAIN_ATTRIBUTES_H
+#define RAIN_ATTRIBUTES_H
 
 #if defined(__has_cpp_attribute)
 #  if __has_cpp_attribute(nodiscard)
@@ -19,4 +19,4 @@
 #  endif
 #endif
 
-#endif // SUPERCOIN_ATTRIBUTES_H
+#endif // RAIN_ATTRIBUTES_H

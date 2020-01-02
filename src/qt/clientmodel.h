@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_CLIENTMODEL_H
-#define SUPERCOIN_QT_CLIENTMODEL_H
+#ifndef RAIN_QT_CLIENTMODEL_H
+#define RAIN_QT_CLIENTMODEL_H
 
 #include <QObject>
 #include <QDateTime>
@@ -122,4 +122,4 @@ public Q_SLOTS:
     void updateBanlist();
 };
 
-#endif // SUPERCOIN_QT_CLIENTMODEL_H
+#endif // RAIN_QT_CLIENTMODEL_H

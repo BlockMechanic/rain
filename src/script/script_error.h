@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SCRIPT_SCRIPT_ERROR_H
-#define SUPERCOIN_SCRIPT_SCRIPT_ERROR_H
+#ifndef RAIN_SCRIPT_SCRIPT_ERROR_H
+#define RAIN_SCRIPT_SCRIPT_ERROR_H
 
 typedef enum ScriptError_t
 {
@@ -75,4 +75,4 @@ typedef enum ScriptError_t
 
 const char* ScriptErrorString(const ScriptError error);
 
-#endif // SUPERCOIN_SCRIPT_SCRIPT_ERROR_H
+#endif // RAIN_SCRIPT_SCRIPT_ERROR_H

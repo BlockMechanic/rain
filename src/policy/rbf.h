@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_POLICY_RBF_H
-#define SUPERCOIN_POLICY_RBF_H
+#ifndef RAIN_POLICY_RBF_H
+#define RAIN_POLICY_RBF_H
 
 #include <txmempool.h>
 
@@ -19,4 +19,4 @@ enum class RBFTransactionState {
 // as the sequence numbers of all in-mempool ancestors.
 RBFTransactionState IsRBFOptIn(const CTransaction& tx, const CTxMemPool& pool) EXCLUSIVE_LOCKS_REQUIRED(pool.cs);
 
-#endif // SUPERCOIN_POLICY_RBF_H
+#endif // RAIN_POLICY_RBF_H

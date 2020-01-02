@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_HTTPSERVER_H
-#define SUPERCOIN_HTTPSERVER_H
+#ifndef RAIN_HTTPSERVER_H
+#define RAIN_HTTPSERVER_H
 
 #include <string>
 #include <stdint.h>
@@ -157,4 +157,4 @@ private:
     struct event* ev;
 };
 
-#endif // SUPERCOIN_HTTPSERVER_H
+#endif // RAIN_HTTPSERVER_H

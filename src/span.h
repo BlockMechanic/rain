@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SPAN_H
-#define SUPERCOIN_SPAN_H
+#ifndef RAIN_SPAN_H
+#define RAIN_SPAN_H
 
 #include <type_traits>
 #include <cstddef>

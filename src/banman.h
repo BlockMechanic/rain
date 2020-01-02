@@ -2,8 +2,8 @@
 // Copyright (c) 2009-2017 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
-#ifndef SUPERCOIN_BANMAN_H
-#define SUPERCOIN_BANMAN_H
+#ifndef RAIN_BANMAN_H
+#define RAIN_BANMAN_H
 
 #include <cstdint>
 #include <memory>

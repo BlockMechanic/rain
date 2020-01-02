@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CONSENSUS_TX_CHECK_H
-#define SUPERCOIN_CONSENSUS_TX_CHECK_H
+#ifndef RAIN_CONSENSUS_TX_CHECK_H
+#define RAIN_CONSENSUS_TX_CHECK_H
 
 /**
  * Context-independent transaction checking code that can be called outside the
@@ -17,4 +17,4 @@ class CValidationState;
 
 bool CheckTransaction(const CTransaction& tx, CValidationState& state, bool fCheckDuplicateInputs=true);
 
-#endif // SUPERCOIN_CONSENSUS_TX_CHECK_H
+#endif // RAIN_CONSENSUS_TX_CHECK_H

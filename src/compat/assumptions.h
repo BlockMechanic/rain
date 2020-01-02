@@ -5,8 +5,8 @@
 
 // Compile-time verification of assumptions we make.
 
-#ifndef SUPERCOIN_COMPAT_ASSUMPTIONS_H
-#define SUPERCOIN_COMPAT_ASSUMPTIONS_H
+#ifndef RAIN_COMPAT_ASSUMPTIONS_H
+#define RAIN_COMPAT_ASSUMPTIONS_H
 
 #include <limits>
 
@@ -62,4 +62,4 @@ static_assert(sizeof(size_t) == sizeof(void*), "Sizes of size_t and void* assume
 // * We are NOT assuming a specific value for std::locale("").name().
 // * We are NOT assuming a specific value for std::numeric_limits<char>::is_signed.
 
-#endif // SUPERCOIN_COMPAT_ASSUMPTIONS_H
+#endif // RAIN_COMPAT_ASSUMPTIONS_H

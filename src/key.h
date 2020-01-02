@@ -4,8 +4,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_KEY_H
-#define SUPERCOIN_KEY_H
+#ifndef RAIN_KEY_H
+#define RAIN_KEY_H
 
 #include <pubkey.h>
 #include <serialize.h>
@@ -195,4 +195,4 @@ bool ECC_InitSanityCheck();
 /** Ensure that the signature is LowS */
 bool EnsureLowS(std::vector<unsigned char>& vchSig);
 
-#endif // SUPERCOIN_KEY_H
+#endif // RAIN_KEY_H

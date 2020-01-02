@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_MACNOTIFICATIONHANDLER_H
-#define SUPERCOIN_QT_MACNOTIFICATIONHANDLER_H
+#ifndef RAIN_QT_MACNOTIFICATIONHANDLER_H
+#define RAIN_QT_MACNOTIFICATIONHANDLER_H
 
 #include <QObject>
 
@@ -24,4 +24,4 @@ public:
 };
 
 
-#endif // SUPERCOIN_QT_MACNOTIFICATIONHANDLER_H
+#endif // RAIN_QT_MACNOTIFICATIONHANDLER_H

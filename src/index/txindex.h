@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_INDEX_TXINDEX_H
-#define SUPERCOIN_INDEX_TXINDEX_H
+#ifndef RAIN_INDEX_TXINDEX_H
+#define RAIN_INDEX_TXINDEX_H
 
 #include <chain.h>
 #include <index/base.h>
@@ -105,4 +105,4 @@ public:
 /// The global transaction index, used in GetTransaction. May be null.
 extern std::unique_ptr<TxIndex> g_txindex;
 
-#endif // SUPERCOIN_INDEX_TXINDEX_H
+#endif // RAIN_INDEX_TXINDEX_H

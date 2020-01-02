@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_RPC_CLIENT_H
-#define SUPERCOIN_RPC_CLIENT_H
+#ifndef RAIN_RPC_CLIENT_H
+#define RAIN_RPC_CLIENT_H
 
 #include <univalue.h>
 
@@ -19,4 +19,4 @@ UniValue RPCConvertNamedValues(const std::string& strMethod, const std::vector<s
  */
 UniValue ParseNonRFCJSONValue(const std::string& strVal);
 
-#endif // SUPERCOIN_RPC_CLIENT_H
+#endif // RAIN_RPC_CLIENT_H

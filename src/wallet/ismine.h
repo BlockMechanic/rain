@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_WALLET_ISMINE_H
-#define SUPERCOIN_WALLET_ISMINE_H
+#ifndef RAIN_WALLET_ISMINE_H
+#define RAIN_WALLET_ISMINE_H
 
 #include <script/standard.h>
 
@@ -50,4 +50,4 @@ struct CachableAmount
     }
 };
 
-#endif // SUPERCOIN_WALLET_ISMINE_H
+#endif // RAIN_WALLET_ISMINE_H

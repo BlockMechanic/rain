@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_WALLET_PSBTWALLET_H
-#define SUPERCOIN_WALLET_PSBTWALLET_H
+#ifndef RAIN_WALLET_PSBTWALLET_H
+#define RAIN_WALLET_PSBTWALLET_H
 
 #include <node/transaction.h>
 #include <psbt.h>
@@ -31,4 +31,4 @@ NODISCARD TransactionError FillPSBT(const CWallet* pwallet,
               bool sign = true,
               bool bip32derivs = false);
 
-#endif // SUPERCOIN_WALLET_PSBTWALLET_H
+#endif // RAIN_WALLET_PSBTWALLET_H

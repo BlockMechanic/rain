@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_WALLET_FEEBUMPER_H
-#define SUPERCOIN_WALLET_FEEBUMPER_H
+#ifndef RAIN_WALLET_FEEBUMPER_H
+#define RAIN_WALLET_FEEBUMPER_H
 
 #include <primitives/transaction.h>
 
@@ -64,4 +64,4 @@ Result CommitTransaction(CWallet* wallet,
 
 } // namespace feebumper
 
-#endif // SUPERCOIN_WALLET_FEEBUMPER_H
+#endif // RAIN_WALLET_FEEBUMPER_H

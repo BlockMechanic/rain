@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_RPC_UTIL_H
-#define SUPERCOIN_RPC_UTIL_H
+#ifndef RAIN_RPC_UTIL_H
+#define RAIN_RPC_UTIL_H
 
 #include <node/transaction.h>
 #include <outputtype.h>
@@ -261,4 +261,4 @@ private:
     const RPCExamples m_examples;
 };
 
-#endif // SUPERCOIN_RPC_UTIL_H
+#endif // RAIN_RPC_UTIL_H

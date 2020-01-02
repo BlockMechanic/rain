@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_COMPAT_H
-#define SUPERCOIN_COMPAT_H
+#ifndef RAIN_COMPAT_H
+#define RAIN_COMPAT_H
 
 #if defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
@@ -116,4 +116,4 @@ bool static inline IsSelectableSocket(const SOCKET& s) {
 #endif
 }
 
-#endif // SUPERCOIN_COMPAT_H
+#endif // RAIN_COMPAT_H

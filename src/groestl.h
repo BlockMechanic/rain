@@ -4,8 +4,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_GROESTLHASH_H
-#define SUPERCOIN_GROESTLHASH_H
+#ifndef RAIN_GROESTLHASH_H
+#define RAIN_GROESTLHASH_H
 
 #include <amount.h>
 #include <uint256.h>

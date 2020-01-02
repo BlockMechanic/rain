@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_NET_PROCESSING_H
-#define SUPERCOIN_NET_PROCESSING_H
+#ifndef RAIN_NET_PROCESSING_H
+#define RAIN_NET_PROCESSING_H
 
 #include <net.h>
 #include <validationinterface.h>
@@ -130,4 +130,4 @@ bool ProcessNetBlock(const CChainParams& chainparams, const std::shared_ptr<cons
 void RelayTransaction(const uint256&, const CConnman& connman);
 /** Increase a node's misbehavior score. */
 void Misbehaving(NodeId nodeid, int howmuch, const std::string& message="") EXCLUSIVE_LOCKS_REQUIRED(cs_main);
-#endif // SUPERCOIN_NET_PROCESSING_H
+#endif // RAIN_NET_PROCESSING_H

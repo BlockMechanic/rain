@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_UNDO_H
-#define SUPERCOIN_UNDO_H
+#ifndef RAIN_UNDO_H
+#define RAIN_UNDO_H
 
 #include <coins.h>
 #include <compressor.h>
@@ -112,4 +112,4 @@ public:
     }
 };
 
-#endif // SUPERCOIN_UNDO_H
+#endif // RAIN_UNDO_H

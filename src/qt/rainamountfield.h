@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_SUPERCOINAMOUNTFIELD_H
-#define SUPERCOIN_QT_SUPERCOINAMOUNTFIELD_H
+#ifndef RAIN_QT_RAINAMOUNTFIELD_H
+#define RAIN_QT_RAINAMOUNTFIELD_H
 
 #include <amount.h>
 
@@ -81,4 +81,4 @@ private Q_SLOTS:
 
 };
 
-#endif // SUPERCOIN_QT_SUPERCOINAMOUNTFIELD_H
+#endif // RAIN_QT_RAINAMOUNTFIELD_H

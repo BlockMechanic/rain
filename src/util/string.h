@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_UTIL_STRING_H
-#define SUPERCOIN_UTIL_STRING_H
+#ifndef RAIN_UTIL_STRING_H
+#define RAIN_UTIL_STRING_H
 
 #include <functional>
 #include <string>
@@ -32,4 +32,4 @@ inline std::string Join(const std::vector<std::string>& list, const std::string&
     return Join(list, separator, [](const std::string& i) { return i; });
 }
 
-#endif // SUPERCOIN_UTIL_STRENCODINGS_H
+#endif // RAIN_UTIL_STRENCODINGS_H

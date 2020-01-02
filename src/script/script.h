@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SCRIPT_SCRIPT_H
-#define SUPERCOIN_SCRIPT_SCRIPT_H
+#ifndef RAIN_SCRIPT_SCRIPT_H
+#define RAIN_SCRIPT_SCRIPT_H
 
 #include <crypto/common.h>
 #include <prevector.h>
@@ -597,4 +597,4 @@ public:
     virtual ~CReserveScript() {}
 };
 
-#endif // SUPERCOIN_SCRIPT_SCRIPT_H
+#endif // RAIN_SCRIPT_SCRIPT_H

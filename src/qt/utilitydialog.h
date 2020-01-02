@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_UTILITYDIALOG_H
-#define SUPERCOIN_QT_UTILITYDIALOG_H
+#ifndef RAIN_QT_UTILITYDIALOG_H
+#define RAIN_QT_UTILITYDIALOG_H
 
 #include <QDialog>
 #include <QObject>
@@ -52,4 +52,4 @@ protected:
     void closeEvent(QCloseEvent *event);
 };
 
-#endif // SUPERCOIN_QT_UTILITYDIALOG_H
+#endif // RAIN_QT_UTILITYDIALOG_H

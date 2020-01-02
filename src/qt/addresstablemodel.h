@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_ADDRESSTABLEMODEL_H
-#define SUPERCOIN_QT_ADDRESSTABLEMODEL_H
+#ifndef RAIN_QT_ADDRESSTABLEMODEL_H
+#define RAIN_QT_ADDRESSTABLEMODEL_H
 
 #include <QAbstractTableModel>
 #include <QStringList>
@@ -102,4 +102,4 @@ public Q_SLOTS:
     friend class AddressTablePriv;
 };
 
-#endif // SUPERCOIN_QT_ADDRESSTABLEMODEL_H
+#endif // RAIN_QT_ADDRESSTABLEMODEL_H

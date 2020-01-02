@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_SENDCOINSENTRY_H
-#define SUPERCOIN_QT_SENDCOINSENTRY_H
+#ifndef RAIN_QT_SENDCOINSENTRY_H
+#define RAIN_QT_SENDCOINSENTRY_H
 
 #include <qt/walletmodel.h>
 
@@ -74,4 +74,4 @@ private:
     bool updateLabel(const QString &address);
 };
 
-#endif // SUPERCOIN_QT_SENDCOINSENTRY_H
+#endif // RAIN_QT_SENDCOINSENTRY_H

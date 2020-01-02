@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_KEY_IO_H
-#define SUPERCOIN_KEY_IO_H
+#ifndef RAIN_KEY_IO_H
+#define RAIN_KEY_IO_H
 
 #include <chainparams.h>
 #include <key.h>
@@ -26,4 +26,4 @@ CTxDestination DecodeDestination(const std::string& str);
 bool IsValidDestinationString(const std::string& str);
 bool IsValidDestinationString(const std::string& str, const CChainParams& params);
 
-#endif // SUPERCOIN_KEY_IO_H
+#endif // RAIN_KEY_IO_H

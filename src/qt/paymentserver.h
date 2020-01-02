@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_PAYMENTSERVER_H
-#define SUPERCOIN_QT_PAYMENTSERVER_H
+#ifndef RAIN_QT_PAYMENTSERVER_H
+#define RAIN_QT_PAYMENTSERVER_H
 
 // This class handles payment requests from clicking on
 // rain: URIs
@@ -102,4 +102,4 @@ private:
     OptionsModel *optionsModel;
 };
 
-#endif // SUPERCOIN_QT_PAYMENTSERVER_H
+#endif // RAIN_QT_PAYMENTSERVER_H

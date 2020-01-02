@@ -125,5 +125,5 @@ int rainconsensus_verify_script(const unsigned char *scriptPubKey, unsigned int 
 unsigned int rainconsensus_version()
 {
     // Just use the API version for now
-    return SUPERCOINCONSENSUS_API_VER;
+    return RAINCONSENSUS_API_VER;
 }

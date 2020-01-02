@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_RECENTREQUESTSTABLEMODEL_H
-#define SUPERCOIN_QT_RECENTREQUESTSTABLEMODEL_H
+#ifndef RAIN_QT_RECENTREQUESTSTABLEMODEL_H
+#define RAIN_QT_RECENTREQUESTSTABLEMODEL_H
 
 #include <qt/walletmodel.h>
 
@@ -102,4 +102,4 @@ private:
     QString getAmountTitle();
 };
 
-#endif // SUPERCOIN_QT_RECENTREQUESTSTABLEMODEL_H
+#endif // RAIN_QT_RECENTREQUESTSTABLEMODEL_H

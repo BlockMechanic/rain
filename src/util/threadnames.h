@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_UTIL_THREADNAMES_H
-#define SUPERCOIN_UTIL_THREADNAMES_H
+#ifndef RAIN_UTIL_THREADNAMES_H
+#define RAIN_UTIL_THREADNAMES_H
 
 #include <string>
 
@@ -18,4 +18,4 @@ const std::string& ThreadGetInternalName();
 
 } // namespace util
 
-#endif // SUPERCOIN_UTIL_THREADNAMES_H
+#endif // RAIN_UTIL_THREADNAMES_H

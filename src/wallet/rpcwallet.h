@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_WALLET_RPCWALLET_H
-#define SUPERCOIN_WALLET_RPCWALLET_H
+#ifndef RAIN_WALLET_RPCWALLET_H
+#define RAIN_WALLET_RPCWALLET_H
 
 #include <memory>
 #include <string>
@@ -37,4 +37,4 @@ bool EnsureWalletIsAvailable(const CWallet*, bool avoidException);
 
 UniValue getaddressinfo(const JSONRPCRequest& request);
 UniValue signrawtransactionwithwallet(const JSONRPCRequest& request);
-#endif //SUPERCOIN_WALLET_RPCWALLET_H
+#endif //RAIN_WALLET_RPCWALLET_H

@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_TEST_URITESTS_H
-#define SUPERCOIN_QT_TEST_URITESTS_H
+#ifndef RAIN_QT_TEST_URITESTS_H
+#define RAIN_QT_TEST_URITESTS_H
 
 #include <QObject>
 #include <QTest>
@@ -16,4 +16,4 @@ private Q_SLOTS:
     void uriTests();
 };
 
-#endif // SUPERCOIN_QT_TEST_URITESTS_H
+#endif // RAIN_QT_TEST_URITESTS_H

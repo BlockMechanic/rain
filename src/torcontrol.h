@@ -5,8 +5,8 @@
 /**
  * Functionality for communicating with Tor.
  */
-#ifndef SUPERCOIN_TORCONTROL_H
-#define SUPERCOIN_TORCONTROL_H
+#ifndef RAIN_TORCONTROL_H
+#define RAIN_TORCONTROL_H
 
 #include <scheduler.h>
 
@@ -17,4 +17,4 @@ void StartTorControl();
 void InterruptTorControl();
 void StopTorControl();
 
-#endif /* SUPERCOIN_TORCONTROL_H */
+#endif /* RAIN_TORCONTROL_H */

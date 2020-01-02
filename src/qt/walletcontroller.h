@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_WALLETCONTROLLER_H
-#define SUPERCOIN_QT_WALLETCONTROLLER_H
+#ifndef RAIN_QT_WALLETCONTROLLER_H
+#define RAIN_QT_WALLETCONTROLLER_H
 
 #include <qt/walletmodel.h>
 #include <sync.h>
@@ -88,4 +88,4 @@ private:
     std::string const m_name;
 };
 
-#endif // SUPERCOIN_QT_WALLETCONTROLLER_H
+#endif // RAIN_QT_WALLETCONTROLLER_H

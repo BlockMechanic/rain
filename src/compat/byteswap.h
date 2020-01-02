@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_COMPAT_BYTESWAP_H
-#define SUPERCOIN_COMPAT_BYTESWAP_H
+#ifndef RAIN_COMPAT_BYTESWAP_H
+#define RAIN_COMPAT_BYTESWAP_H
 
 #if defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
@@ -63,4 +63,4 @@ inline uint64_t bswap_64(uint64_t x)
 
 #endif // defined(MAC_OSX)
 
-#endif // SUPERCOIN_COMPAT_BYTESWAP_H
+#endif // RAIN_COMPAT_BYTESWAP_H

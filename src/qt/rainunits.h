@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_SUPERCOINUNITS_H
-#define SUPERCOIN_QT_SUPERCOINUNITS_H
+#ifndef RAIN_QT_RAINUNITS_H
+#define RAIN_QT_RAINUNITS_H
 
 #include <amount.h>
 
@@ -128,4 +128,4 @@ private:
 };
 typedef RainUnits::Unit RainUnit;
 
-#endif // SUPERCOIN_QT_SUPERCOINUNITS_H
+#endif // RAIN_QT_RAINUNITS_H

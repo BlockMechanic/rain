@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SUPPORT_CLEANSE_H
-#define SUPERCOIN_SUPPORT_CLEANSE_H
+#ifndef RAIN_SUPPORT_CLEANSE_H
+#define RAIN_SUPPORT_CLEANSE_H
 
 #include <stdlib.h>
 
@@ -12,4 +12,4 @@
  * operation will not be optimized out by the compiler. */
 void memory_cleanse(void *ptr, size_t len);
 
-#endif // SUPERCOIN_SUPPORT_CLEANSE_H
+#endif // RAIN_SUPPORT_CLEANSE_H

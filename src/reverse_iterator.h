@@ -1,7 +1,7 @@
 // Taken from https://gist.github.com/arvidsson/7231973
 
-#ifndef SUPERCOIN_REVERSE_ITERATOR_H
-#define SUPERCOIN_REVERSE_ITERATOR_H
+#ifndef RAIN_REVERSE_ITERATOR_H
+#define RAIN_REVERSE_ITERATOR_H
 
 /**
  * Template used for reverse iteration in C++11 range-based for loops.
@@ -36,4 +36,4 @@ reverse_range<T> reverse_iterate(T &x)
     return reverse_range<T>(x);
 }
 
-#endif // SUPERCOIN_REVERSE_ITERATOR_H
+#endif // RAIN_REVERSE_ITERATOR_H

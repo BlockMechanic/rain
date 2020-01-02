@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_WALLET_LOAD_H
-#define SUPERCOIN_WALLET_LOAD_H
+#ifndef RAIN_WALLET_LOAD_H
+#define RAIN_WALLET_LOAD_H
 
 #include <string>
 #include <vector>
@@ -35,4 +35,4 @@ void StopWallets();
 //! Close all wallets.
 void UnloadWallets();
 
-#endif // SUPERCOIN_WALLET_LOAD_H
+#endif // RAIN_WALLET_LOAD_H

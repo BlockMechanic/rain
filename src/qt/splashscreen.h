@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_SPLASHSCREEN_H
-#define SUPERCOIN_QT_SPLASHSCREEN_H
+#ifndef RAIN_QT_SPLASHSCREEN_H
+#define RAIN_QT_SPLASHSCREEN_H
 
 #include <QWidget>
 
@@ -66,4 +66,4 @@ private:
     std::list<std::unique_ptr<interfaces::Handler>> m_connected_wallet_handlers;
 };
 
-#endif // SUPERCOIN_QT_SPLASHSCREEN_H
+#endif // RAIN_QT_SPLASHSCREEN_H

@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_TRANSACTIONDESCDIALOG_H
-#define SUPERCOIN_QT_TRANSACTIONDESCDIALOG_H
+#ifndef RAIN_QT_TRANSACTIONDESCDIALOG_H
+#define RAIN_QT_TRANSACTIONDESCDIALOG_H
 
 #include <QDialog>
 
@@ -28,4 +28,4 @@ private:
     Ui::TransactionDescDialog *ui;
 };
 
-#endif // SUPERCOIN_QT_TRANSACTIONDESCDIALOG_H
+#endif // RAIN_QT_TRANSACTIONDESCDIALOG_H

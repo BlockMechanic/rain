@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_INTRO_H
-#define SUPERCOIN_QT_INTRO_H
+#ifndef RAIN_QT_INTRO_H
+#define RAIN_QT_INTRO_H
 
 #include <QDialog>
 #include <QMutex>
@@ -77,4 +77,4 @@ private:
     friend class FreespaceChecker;
 };
 
-#endif // BITCOINSUPERCOIN_QT_INTRO_H
+#endif // BITCOINRAIN_QT_INTRO_H

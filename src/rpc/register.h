@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_RPC_REGISTER_H
-#define SUPERCOIN_RPC_REGISTER_H
+#ifndef RAIN_RPC_REGISTER_H
+#define RAIN_RPC_REGISTER_H
 
 /** These are in one header file to avoid creating tons of single-function
  * headers for everything under src/rpc/ */
@@ -33,4 +33,4 @@ static inline void RegisterAllCoreRPCCommands(CRPCTable &t)
     RegisterRawTransactionRPCCommands(t);
 }
 
-#endif // SUPERCOIN_RPC_REGISTER_H
+#endif // RAIN_RPC_REGISTER_H

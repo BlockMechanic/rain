@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CONSENSUS_PARAMS_H
-#define SUPERCOIN_CONSENSUS_PARAMS_H
+#ifndef RAIN_CONSENSUS_PARAMS_H
+#define RAIN_CONSENSUS_PARAMS_H
 
 #include <uint256.h>
 #include <limits>
@@ -77,17 +77,17 @@ struct Params {
     uint256 defaultAssumeValid;
     uint256 posLimit;
     bool fPoSNoRetargeting;
-    unsigned int nModifierInterval;
     int nStakeTimestampMask;
     int nLastPOWBlock;
     
-    unsigned int nStakeMinAge;
-    unsigned int nStakeMaxAge;
+
     unsigned int nCONSENSUS_CHANGE_BLOCK;
     int64_t nCOIN_YEAR_REWARD;
     int64_t nCOIN_YEAR_REWARD_NEW;
-    
+    int64_t nStakeMinAge;
+    int64_t nStakeMaxAge;
+    int64_t nModifierInterval;    
 };
 } // namespace Consensus
 
-#endif // SUPERCOIN_CONSENSUS_PARAMS_H
+#endif // RAIN_CONSENSUS_PARAMS_H

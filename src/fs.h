@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_FS_H
-#define SUPERCOIN_FS_H
+#ifndef RAIN_FS_H
+#define RAIN_FS_H
 
 #include <stdio.h>
 #include <string>
@@ -93,4 +93,4 @@ namespace fsbridge {
 #endif // WIN32 && __GLIBCXX__
 };
 
-#endif // SUPERCOIN_FS_H
+#endif // RAIN_FS_H

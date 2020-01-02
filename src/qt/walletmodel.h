@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_WALLETMODEL_H
-#define SUPERCOIN_QT_WALLETMODEL_H
+#ifndef RAIN_QT_WALLETMODEL_H
+#define RAIN_QT_WALLETMODEL_H
 
 #include <amount.h>
 #include <key.h>
@@ -318,4 +318,4 @@ public Q_SLOTS:
 
 };
 
-#endif // SUPERCOIN_QT_WALLETMODEL_H
+#endif // RAIN_QT_WALLETMODEL_H

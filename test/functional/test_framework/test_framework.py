@@ -143,8 +143,8 @@ class RainTestFramework(metaclass=RainTestMetaClass):
         config = configparser.ConfigParser()
         config.read_file(open(self.options.configfile))
         self.config = config
-        self.options.raind = os.getenv("SUPERCOIND", default=config["environment"]["BUILDDIR"] + '/src/raind' + config["environment"]["EXEEXT"])
-        self.options.raincli = os.getenv("SUPERCOINCLI", default=config["environment"]["BUILDDIR"] + '/src/rain-cli' + config["environment"]["EXEEXT"])
+        self.options.raind = os.getenv("RAIND", default=config["environment"]["BUILDDIR"] + '/src/raind' + config["environment"]["EXEEXT"])
+        self.options.raincli = os.getenv("RAINCLI", default=config["environment"]["BUILDDIR"] + '/src/rain-cli' + config["environment"]["EXEEXT"])
 
         os.environ['PATH'] = os.pathsep.join([
             os.path.join(config['environment']['BUILDDIR'], 'src'),

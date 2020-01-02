@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_UTIL_ERROR_H
-#define SUPERCOIN_UTIL_ERROR_H
+#ifndef RAIN_UTIL_ERROR_H
+#define RAIN_UTIL_ERROR_H
 
 /**
  * util/error.h is a common place for definitions of simple error types and
@@ -38,4 +38,4 @@ std::string AmountHighWarn(const std::string& optname);
 
 std::string AmountErrMsg(const std::string& optname, const std::string& strValue);
 
-#endif // SUPERCOIN_UTIL_ERROR_H
+#endif // RAIN_UTIL_ERROR_H

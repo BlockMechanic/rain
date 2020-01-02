@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_COINCONTROLDIALOG_H
-#define SUPERCOIN_QT_COINCONTROLDIALOG_H
+#ifndef RAIN_QT_COINCONTROLDIALOG_H
+#define RAIN_QT_COINCONTROLDIALOG_H
 
 #include <amount.h>
 
@@ -114,4 +114,4 @@ private Q_SLOTS:
     void updateLabelLocked();
 };
 
-#endif // SUPERCOIN_QT_COINCONTROLDIALOG_H
+#endif // RAIN_QT_COINCONTROLDIALOG_H

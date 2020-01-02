@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_INDEX_BLOCKFILTERINDEX_H
-#define SUPERCOIN_INDEX_BLOCKFILTERINDEX_H
+#ifndef RAIN_INDEX_BLOCKFILTERINDEX_H
+#define RAIN_INDEX_BLOCKFILTERINDEX_H
 
 #include <blockfilter.h>
 #include <chain.h>
@@ -91,4 +91,4 @@ bool DestroyBlockFilterIndex(BlockFilterType filter_type);
 /** Destroy all open block filter indexes. */
 void DestroyAllBlockFilterIndexes();
 
-#endif // SUPERCOIN_INDEX_BLOCKFILTERINDEX_H
+#endif // RAIN_INDEX_BLOCKFILTERINDEX_H

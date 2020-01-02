@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_TEST_FUZZ_FUZZ_H
-#define SUPERCOIN_TEST_FUZZ_FUZZ_H
+#ifndef RAIN_TEST_FUZZ_FUZZ_H
+#define RAIN_TEST_FUZZ_FUZZ_H
 
 #include <functional>
 #include <stdint.h>
@@ -12,4 +12,4 @@
 
 void test_one_input(std::vector<uint8_t> buffer);
 
-#endif // SUPERCOIN_TEST_FUZZ_FUZZ_H
+#endif // RAIN_TEST_FUZZ_FUZZ_H

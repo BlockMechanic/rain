@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SCRIPT_SIGCACHE_H
-#define SUPERCOIN_SCRIPT_SIGCACHE_H
+#ifndef RAIN_SCRIPT_SIGCACHE_H
+#define RAIN_SCRIPT_SIGCACHE_H
 
 #include <script/interpreter.h>
 
@@ -53,4 +53,4 @@ public:
 
 void InitSignatureCache();
 
-#endif // SUPERCOIN_SCRIPT_SIGCACHE_H
+#endif // RAIN_SCRIPT_SIGCACHE_H

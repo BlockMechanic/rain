@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_ADDRESSBOOKPAGE_H
-#define SUPERCOIN_QT_ADDRESSBOOKPAGE_H
+#ifndef RAIN_QT_ADDRESSBOOKPAGE_H
+#define RAIN_QT_ADDRESSBOOKPAGE_H
 
 #include <QDialog>
 
@@ -83,4 +83,4 @@ Q_SIGNALS:
     void sendCoins(QString addr);
 };
 
-#endif // SUPERCOIN_QT_ADDRESSBOOKPAGE_H
+#endif // RAIN_QT_ADDRESSBOOKPAGE_H

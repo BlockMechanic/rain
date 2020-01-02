@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CONSENSUS_MERKLE_H
-#define SUPERCOIN_CONSENSUS_MERKLE_H
+#ifndef RAIN_CONSENSUS_MERKLE_H
+#define RAIN_CONSENSUS_MERKLE_H
 
 #include <stdint.h>
 #include <vector>
@@ -26,4 +26,4 @@ uint256 BlockMerkleRoot(const CBlock& block, bool* mutated = nullptr);
  */
 uint256 BlockWitnessMerkleRoot(const CBlock& block, bool* mutated = nullptr, bool* pfProofOfStake = nullptr);
 
-#endif // BITCOINSUPERCOIN_CONSENSUS_MERKLE_H
+#endif // BITCOINRAIN_CONSENSUS_MERKLE_H

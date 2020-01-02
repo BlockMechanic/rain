@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_VALIDATIONINTERFACE_H
-#define SUPERCOIN_VALIDATIONINTERFACE_H
+#ifndef RAIN_VALIDATIONINTERFACE_H
+#define RAIN_VALIDATIONINTERFACE_H
 
 #include <primitives/transaction.h> // CTransaction(Ref)
 #include <sync.h>
@@ -191,4 +191,4 @@ public:
 
 CMainSignals& GetMainSignals();
 
-#endif // SUPERCOIN_VALIDATIONINTERFACE_H
+#endif // RAIN_VALIDATIONINTERFACE_H

@@ -1,5 +1,5 @@
-#ifndef SUPERCOIN_QT_TEST_UTIL_H
-#define SUPERCOIN_QT_TEST_UTIL_H
+#ifndef RAIN_QT_TEST_UTIL_H
+#define RAIN_QT_TEST_UTIL_H
 
 #include <QString>
 
@@ -11,4 +11,4 @@
  */
 void ConfirmMessage(QString* text = nullptr, int msec = 0);
 
-#endif // SUPERCOIN_QT_TEST_UTIL_H
+#endif // RAIN_QT_TEST_UTIL_H

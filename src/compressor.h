@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_COMPRESSOR_H
-#define SUPERCOIN_COMPRESSOR_H
+#ifndef RAIN_COMPRESSOR_H
+#define RAIN_COMPRESSOR_H
 
 #include <primitives/transaction.h>
 #include <script/script.h>
@@ -108,4 +108,4 @@ public:
     }
 };
 
-#endif // SUPERCOIN_COMPRESSOR_H
+#endif // RAIN_COMPRESSOR_H

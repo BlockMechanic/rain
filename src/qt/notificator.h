@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_NOTIFICATOR_H
-#define SUPERCOIN_QT_NOTIFICATOR_H
+#ifndef RAIN_QT_NOTIFICATOR_H
+#define RAIN_QT_NOTIFICATOR_H
 
 #if defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
@@ -74,4 +74,4 @@ private:
 #endif
 };
 
-#endif // SUPERCOIN_QT_NOTIFICATOR_H
+#endif // RAIN_QT_NOTIFICATOR_H

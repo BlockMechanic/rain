@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_RANDOM_H
-#define SUPERCOIN_RANDOM_H
+#ifndef RAIN_RANDOM_H
+#define RAIN_RANDOM_H
 
 #include <crypto/chacha20.h>
 #include <crypto/common.h>
@@ -241,4 +241,4 @@ bool Random_SanityCheck();
  */
 void RandomInit();
 
-#endif // SUPERCOIN_RANDOM_H
+#endif // RAIN_RANDOM_H

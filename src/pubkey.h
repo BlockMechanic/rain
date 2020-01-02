@@ -4,8 +4,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_PUBKEY_H
-#define SUPERCOIN_PUBKEY_H
+#ifndef RAIN_PUBKEY_H
+#define RAIN_PUBKEY_H
 
 #include <hash.h>
 #include <serialize.h>
@@ -267,4 +267,4 @@ public:
     ~ECCVerifyHandle();
 };
 
-#endif // SUPERCOIN_PUBKEY_H
+#endif // RAIN_PUBKEY_H

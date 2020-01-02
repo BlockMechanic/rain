@@ -6,8 +6,8 @@
 /**
  * Utilities for converting data from/to strings.
  */
-#ifndef SUPERCOIN_UTIL_STRENCODINGS_H
-#define SUPERCOIN_UTIL_STRENCODINGS_H
+#ifndef RAIN_UTIL_STRENCODINGS_H
+#define RAIN_UTIL_STRENCODINGS_H
 
 #include <attributes.h>
 
@@ -260,4 +260,4 @@ std::string ToUpper(const std::string& str);
  */
 std::string Capitalize(std::string str);
 
-#endif // SUPERCOIN_UTIL_STRENCODINGS_H
+#endif // RAIN_UTIL_STRENCODINGS_H

@@ -46,16 +46,16 @@ bench_bench_rain_SOURCES = \
 
 nodist_bench_bench_rain_SOURCES = $(GENERATED_BENCH_FILES)
 
-bench_bench_rain_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES) $(EVENT_CLFAGS) $(EVENT_PTHREADS_CFLAGS) -I$(builddir)/bench/
+bench_bench_rain_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES) $(EVENT_CLFAGS) $(EVENT_PTHREADS_CFLAGS) -I$(builddir)/bench/
 bench_bench_rain_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 bench_bench_rain_LDADD = \
-  $(LIBSUPERCOIN_SERVER) \
-  $(LIBSUPERCOIN_WALLET) \
-  $(LIBSUPERCOIN_SERVER) \
-  $(LIBSUPERCOIN_COMMON) \
-  $(LIBSUPERCOIN_UTIL) \
-  $(LIBSUPERCOIN_CONSENSUS) \
-  $(LIBSUPERCOIN_CRYPTO) \
+  $(LIBRAIN_SERVER) \
+  $(LIBRAIN_WALLET) \
+  $(LIBRAIN_SERVER) \
+  $(LIBRAIN_COMMON) \
+  $(LIBRAIN_UTIL) \
+  $(LIBRAIN_CONSENSUS) \
+  $(LIBRAIN_CRYPTO) \
   $(LIBLEVELDB) \
   $(LIBLEVELDB_SSE42) \
   $(LIBMEMENV) \
@@ -65,7 +65,7 @@ bench_bench_rain_LDADD = \
   $(EVENT_LIBS)
 
 if ENABLE_ZMQ
-bench_bench_rain_LDADD += $(LIBSUPERCOIN_ZMQ) $(ZMQ_LIBS)
+bench_bench_rain_LDADD += $(LIBRAIN_ZMQ) $(ZMQ_LIBS)
 endif
 
 if ENABLE_WALLET
@@ -76,9 +76,9 @@ endif
 bench_bench_rain_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(CRYPTO_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(MINIUPNPC_LIBS)
 bench_bench_rain_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
 
-CLEAN_SUPERCOIN_BENCH = bench/*.gcda bench/*.gcno $(GENERATED_BENCH_FILES)
+CLEAN_RAIN_BENCH = bench/*.gcda bench/*.gcno $(GENERATED_BENCH_FILES)
 
-CLEANFILES += $(CLEAN_SUPERCOIN_BENCH)
+CLEANFILES += $(CLEAN_RAIN_BENCH)
 
 bench/data.cpp: bench/data/block413567.raw.h
 
@@ -88,7 +88,7 @@ bench: $(BENCH_BINARY) FORCE
 	$(BENCH_BINARY)
 
 rain_bench_clean : FORCE
-	rm -f $(CLEAN_SUPERCOIN_BENCH) $(bench_bench_rain_OBJECTS) $(BENCH_BINARY)
+	rm -f $(CLEAN_RAIN_BENCH) $(bench_bench_rain_OBJECTS) $(BENCH_BINARY)
 
 %.raw.h: %.raw
 	@$(MKDIR_P) $(@D)

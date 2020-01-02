@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_SUPERCOINADDRESSVALIDATOR_H
-#define SUPERCOIN_QT_SUPERCOINADDRESSVALIDATOR_H
+#ifndef RAIN_QT_RAINADDRESSVALIDATOR_H
+#define RAIN_QT_RAINADDRESSVALIDATOR_H
 
 #include <QValidator>
 
@@ -32,4 +32,4 @@ public:
     State validate(QString &input, int &pos) const;
 };
 
-#endif // SUPERCOIN_QT_SUPERCOINADDRESSVALIDATOR_H
+#endif // RAIN_QT_RAINADDRESSVALIDATOR_H

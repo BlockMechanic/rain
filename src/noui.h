@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_NOUI_H
-#define SUPERCOIN_NOUI_H
+#ifndef RAIN_NOUI_H
+#define RAIN_NOUI_H
 
 #include <string>
 
@@ -23,4 +23,4 @@ void noui_suppress();
 /** Reconnects the regular Non-GUI handlers after having used noui_suppress */
 void noui_reconnect();
 
-#endif // SUPERCOIN_NOUI_H
+#endif // RAIN_NOUI_H

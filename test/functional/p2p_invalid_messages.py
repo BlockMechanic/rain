@@ -66,7 +66,7 @@ class InvalidMessagesTest(RainTestFramework):
         assert len(msg_at_size.serialize()) == msg_limit
 
         increase_allowed = 0.5
-        if [s for s in os.environ.get("SUPERCOIN_CONFIG", "").split(" ") if "--with-sanitizers" in s and "address" in s]:
+        if [s for s in os.environ.get("RAIN_CONFIG", "").split(" ") if "--with-sanitizers" in s and "address" in s]:
             increase_allowed = 3.5
         with node.assert_memory_usage_stable(increase_allowed=increase_allowed):
             self.log.info(

@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_LOGGING_H
-#define SUPERCOIN_LOGGING_H
+#ifndef RAIN_LOGGING_H
+#define RAIN_LOGGING_H
 
 #include <fs.h>
 #include <tinyformat.h>
@@ -169,4 +169,4 @@ static inline void LogPrint(const BCLog::LogFlags& category, const Args&... args
     }
 }
 
-#endif // SUPERCOIN_LOGGING_H
+#endif // RAIN_LOGGING_H

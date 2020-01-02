@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_HTTPRPC_H
-#define SUPERCOIN_HTTPRPC_H
+#ifndef RAIN_HTTPRPC_H
+#define RAIN_HTTPRPC_H
 
 #include <string>
 #include <map>

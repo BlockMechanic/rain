@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_NETADDRESS_H
-#define SUPERCOIN_NETADDRESS_H
+#ifndef RAIN_NETADDRESS_H
+#define RAIN_NETADDRESS_H
 
 #if defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
@@ -170,4 +170,4 @@ class CService : public CNetAddr
         }
 };
 
-#endif // SUPERCOIN_NETADDRESS_H
+#endif // RAIN_NETADDRESS_H

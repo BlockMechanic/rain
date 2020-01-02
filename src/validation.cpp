@@ -1627,6 +1627,26 @@ static bool WriteUndoDataForBlock(const CBlockUndo& blockundo, CValidationState&
     return true;
 }
 
+static bool WriteTxIndexDataForBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex)
+{
+    if (!g_txindex) return true;
+
+    CDiskTxPos pos(pindex->GetBlockPos(), GetSizeOfCompactSize(block.vtx.size()));
+    std::vector<std::pair<uint256, CDiskTxPos> > vPos;
+    vPos.reserve(block.vtx.size());
+    for (const CTransactionRef& tx : block.vtx)
+    {
+        vPos.push_back(std::make_pair(tx->GetHash(), pos));
+        pos.nTxOffset += ::GetSerializeSize(*tx, SER_DISK, CLIENT_VERSION);
+    }
+
+    if (!pblocktree->WriteTxIndex(vPos)) {
+        return AbortNode(state, "Failed to write transaction index");
+    }
+
+    return true;
+}
+
 static CCheckQueue<CScriptCheck> scriptcheckqueue(128);
 
 void ThreadScriptCheck(int worker_num) {
@@ -1780,66 +1800,6 @@ bool CheckCanonicalBlockSignature(const CBlock* pblock)
     return ret;
 }
 
-bool GetBlockPublicKey(const CBlock& block, std::vector<unsigned char>& vchPubKey)
-{
-    if (block.IsProofOfWork())
-        return false;
-
-    if (block.vchBlockSig.empty())
-        return false;
-
-    std::vector<valtype> vSolutions;
-    txnouttype whichType;
-
-    const CTxOut& txout = block.vtx[1]->vout[1];
-
-    if (!Solver(txout.scriptPubKey, whichType, vSolutions))
-        return false;
-
-    if (whichType == TX_PUBKEY)
-    {
-        vchPubKey = vSolutions[0];
-        return true;
-    }
-    else
-    {
-        // Block signing key also can be encoded in the nonspendable output
-        // This allows to not pollute UTXO set with useless outputs e.g. in case of multisig staking
-
-        const CScript& script = txout.scriptPubKey;
-        CScript::const_iterator pc = script.begin();
-        opcodetype opcode;
-        valtype vchPushValue;
-
-        if (!script.GetOp(pc, opcode, vchPubKey))
-            return false;
-        if (opcode != OP_RETURN)
-            return false;
-        if (!script.GetOp(pc, opcode, vchPubKey))
-            return false;
-        if (!IsCompressedOrUncompressedPubKey(vchPubKey))
-            return false;
-        return true;
-    }
-
-    return false;
-}
-
-
-bool CheckBlockSignature(const CBlock& block)
-{
-    if (block.IsProofOfWork())
-        return block.vchBlockSig.empty();
-
-    std::vector<unsigned char> vchPubKey;
-    if(!GetBlockPublicKey(block, vchPubKey))
-    {
-        return false;
-    }
-
-    return CPubKey(vchPubKey).Verify(block.GetHash(), block.vchBlockSig);
-}
-
 bool CChainState::UpdateHashProof(const CBlock& block, CValidationState& state, const Consensus::Params& consensusParams, CBlockIndex* pindex, CCoinsViewCache& view)
 {
 	// Check for the signiture encoding
@@ -1859,14 +1819,14 @@ bool StakeContextualBlockChecks(const CBlock& block, CValidationState& state, CB
 	
 	uint256 hashProof;
 	CCoinsViewCache view(pcoinsTip.get());
-	if (block.IsProofOfStake() && !CheckProofOfStake(mapBlockIndex[block.hashPrevBlock], state, *block.vtx[1], block.nBits, hashProof, view)){
+	if (block.IsProofOfStake() && !CheckProofOfStake(pindex->pprev, state, *block.vtx[1], block.nBits, hashProof, view)){
             //return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-proof-of-stake", strprintf("%s: check proof-of-stake failed for block %s", __func__, block.GetHash().GetHex()));
         LogPrintf("WARNING: %s: check proof-of-stake failed for block %s\n", __func__, block.GetHash().ToString());
         return false; // do not error here as we expect this during initial block download
     }
 
     // peercoin: compute stake entropy bit for stake modifier
-    unsigned int nEntropyBit = pindex->GetStakeEntropyBit();
+    unsigned int nEntropyBit = GetStakeEntropyBit(block);
 
     // peercoin: compute stake modifier
     uint64_t nStakeModifier = 0;
@@ -1876,6 +1836,7 @@ bool StakeContextualBlockChecks(const CBlock& block, CValidationState& state, CB
 
     if (fJustCheck)
         return true;
+
 
     // write everything to index
     if (block.IsProofOfStake())
@@ -1971,66 +1932,6 @@ bool CheckSenderScript(const CCoinsViewCache& view, const CTransaction& tx){
     return true;
 }
 
-bool GetCoinAge(const CBlock& block, uint64_t& nCoinAge)
-{
-    const Consensus::Params& params = Params().GetConsensus();
-    CBlockIndex* pindexPrev = ::ChainActive().Tip();
-    CCoinsViewCache &view = *pcoinsTip;
-
-    arith_uint256 bnCentSecond = 0; // coin age in the unit of cent-seconds
-    nCoinAge = 0;
-
-    if (block.vtx[1]->IsCoinBase())
-        return true;
-
-    for (const auto& txin : block.vtx[1]->vin)
-    {
-		Coin coinPrev;
-
-		if(!view.GetCoin(txin.prevout, coinPrev)){
-			LogPrintf("GetCoinAge() : Stake prevout does not exist %s\n", txin.prevout.hash.ToString());
-		}
-
-        CBlockIndex* blockFrom = pindexPrev->GetAncestor(coinPrev.nHeight);
-
-        // First try finding the previous transaction in database
-        CTransactionRef txPrev;
-        uint256 hashBlock = uint256();
-
-        if (!GetTransaction(txin.prevout.hash, txPrev, params, hashBlock, blockFrom)){
-            LogPrintf("GetCoinAge() : could not find previous transaction %s\n", txin.prevout.hash.ToString());
-            continue; // previous transaction not in main chain
-		}
-
-        if (mapBlockIndex.count(hashBlock) == 0)
-            return false; //Block not found
-
-        if (blockFrom->nTime + params.nStakeMinAge > block.vtx[1]->nTime)
-            continue; // only count coins meeting min age requirement
-
-        uint32_t rtime = txPrev->nTime;
-
-        // deal with missing timestamps in PoW blocks
-        if (rtime == 0)
-            rtime = blockFrom->nTime;
-
-        if (block.vtx[1]->nTime < rtime)
-            return false;  // Transaction timestamp violation
-
-        int64_t nValueIn = txPrev->vout[txin.prevout.n].nValue;
-        bnCentSecond += (arith_uint256(nValueIn) * (block.vtx[1]->nTime-rtime) )/ (COIN/100);
-
-//        LogPrintf("coinage: coin age nValueIn=%d nTimeDiff=%d bnCentSecond=%s \n", nValueIn, block.vtx[1]->nTime - txPrev->nTime, bnCentSecond.ToString());
-    }
-
-    arith_uint256 bnCoinDay = bnCentSecond * (COIN/100) / COIN / (24 * 60 * 60);
-//    LogPrintf("coinage : coin age bnCoinDay=%s\n", bnCoinDay.ToString());
-    nCoinAge = bnCoinDay.GetLow64();
-
-    return true;
-}
-
-
 /** Apply the effects of this block (with given index) on the UTXO set represented by coins.
  *  Validity checks that depend on the UTXO set are also done; ConnectBlock()
  *  can fail if those validity checks fail (among other reasons). */
@@ -2083,7 +1984,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
 
     nBlocksTotal++;
 
-    bool fScriptChecks = false;
+    bool fScriptChecks = true;
     if (!hashAssumeValid.IsNull()) {
         // We've been configured with the hash of a block which has been externally verified to have a valid history.
         // A suitable default value is included with the software and updated from time to time.  Because validity
@@ -2341,7 +2242,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         // ppcoin: coin stake tx earns reward instead of paying fee
         uint64_t nCoinAge;
 
-        if (!GetCoinAge(block, nCoinAge))
+        if (!GetCoinAge(*block.vtx[1], view, nCoinAge))
             return error("ConnectBlock() : %s unable to get coin age for coinstake", block.vtx[1]->GetHash().ToString());
 
         CAmount blockReward = nFees + GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus(), pindex->pprev->GetBlockHash(), true, nCoinAge, nFees, pindex->pprev->nMoneySupply);
@@ -2367,19 +2268,9 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         pindex->RaiseValidity(BLOCK_VALID_SCRIPTS);
         setDirtyBlockIndex.insert(pindex);
     }
-    if(block.IsProofOfStake()){
-        // Read the public key from the second output
-        std::vector<unsigned char> vchPubKey;
-        if(GetBlockPublicKey(block, vchPubKey))
-        {
-            uint160 pkh = uint160(ToByteVector(CPubKey(vchPubKey).GetID()));
-            pblocktree->WriteStakeIndex(pindex->nHeight, pkh);
-        }else{
-            pblocktree->WriteStakeIndex(pindex->nHeight, uint160());
-        }
-    }else{
-        pblocktree->WriteStakeIndex(pindex->nHeight, uint160());
-    }
+
+    if (!WriteTxIndexDataForBlock(block, state, pindex))
+        return false;
 
     assert(pindex->phashBlock);
     // add this block to the view's block chain
@@ -5300,50 +5191,141 @@ double GuessVerificationProgress(const ChainTxData& data, const CBlockIndex *pin
 }
 
 #ifdef ENABLE_WALLET
-// novacoin: attempt to generate suitable proof-of-stake
-bool SignBlock(std::shared_ptr<CBlock> pblock, CWallet& wallet, const CAmount& nTotalFees, uint32_t nTime) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
-{
-    // if we are trying to sign
-    //    something except proof-of-stake block template
-    if (!CheckFirstCoinstakeOutput(*pblock))
-        return false;
 
-    // if we are trying to sign
-    //    a complete proof-of-stake block
-    if (pblock->IsProofOfStake() && !pblock->vchBlockSig.empty())
+bool GetCoinAge(const CTransaction& tx, const CCoinsViewCache &view, uint64_t& nCoinAge)
+{
+    arith_uint256 bnCentSecond = 0;  // coin age in the unit of cent-seconds
+    nCoinAge = 0;
+
+    if (tx.IsCoinBase())
         return true;
 
-    CKey key;
-    CMutableTransaction txCoinStake(*pblock->vtx[1]);
-    uint32_t nTimeBlock = nTime;
-    nTimeBlock &= ~STAKE_TIMESTAMP_MASK;
-    //original line:
-    //int64_t nSearchInterval = IsProtocolV2(nBestHeight+1) ? 1 : nSearchTime - nLastCoinStakeSearchTime;
-    //IsProtocolV2 mean POS 2 or higher, so the modified line is:
-    if (wallet.CreateCoinStake(pblock.get(), nTotalFees, txCoinStake, key))
+    for (const auto& txin : tx.vin)
     {
-        if (nTimeBlock >= ::ChainActive().Tip()->GetMedianTimePast()+1)
+        // First try finding the previous transaction in database
+        const COutPoint &prevout = txin.prevout;
+        Coin coin;
+
+        if (!view.GetCoin(prevout, coin))
+            continue;  // previous transaction not in main chain
+        if (tx.nTime < coin.nTime)
+            return false;  // Transaction timestamp violation
+
+        // Transaction index is required to get to block header
+        if (!g_txindex)
+            return false;  // Transaction index not available
+
+        CDiskTxPos postx;
+        CTransactionRef txPrev;
+        if (pblocktree->ReadTxIndex(prevout.hash, postx))
         {
-            // make sure coinstake would meet timestamp protocol
-            //    as it would be the same as the block timestamp
-            pblock->nTime = nTimeBlock;
-            pblock->vtx[1] = MakeTransactionRef(std::move(txCoinStake));
-            pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
-//            pblock->prevoutStake = pblock->vtx[1]->vin[0].prevout;
-
-            // Check timestamp against prev
-            if(pblock->GetBlockTime() <= ::ChainActive().Tip()->GetBlockTime() || FutureDrift(pblock->GetBlockTime()) < ::ChainActive().Tip()->GetBlockTime())
-            {
-                return false;
+            CAutoFile file(OpenBlockFile(postx, true), SER_DISK, CLIENT_VERSION);
+            CBlockHeader header;
+            try {
+                file >> header;
+                fseek(file.Get(), postx.nTxOffset, SEEK_CUR);
+                file >> txPrev;
+            } catch (std::exception &e) {
+                return error("%s() : deserialize or I/O error in GetCoinAge()", __PRETTY_FUNCTION__);
             }
+            if (txPrev->GetHash() != prevout.hash)
+                return error("%s() : txid mismatch in GetCoinAge()", __PRETTY_FUNCTION__);
 
-            // append a signature to our block and ensure that is LowS
-            return key.Sign(pblock->GetHashWithoutSign(), pblock->vchBlockSig) && EnsureLowS(pblock->vchBlockSig);
+            if (header.GetBlockTime() + Params().GetConsensus().nStakeMinAge > tx.nTime)
+                continue; // only count coins meeting min age requirement
+
+            int64_t nValueIn = txPrev->vout[txin.prevout.n].nValue;
+            bnCentSecond += arith_uint256(nValueIn) * (tx.nTime-txPrev->nTime) / (COIN/100);
+
+            if (gArgs.GetBoolArg("-printcoinage", false))
+                LogPrintf("coin age nValueIn=%-12lld nTimeDiff=%d bnCentSecond=%s\n", nValueIn, tx.nTime - txPrev->nTime, bnCentSecond.ToString());
         }
+        else
+            return error("%s() : tx missing in tx index in GetCoinAge()", __PRETTY_FUNCTION__);
     }
 
+    arith_uint256 bnCoinDay = bnCentSecond * (COIN/100) / COIN / (24 * 60 * 60);
+    if (gArgs.GetBoolArg("-printcoinage", false))
+        LogPrintf("coin age bnCoinDay=%s\n", bnCoinDay.ToString());
+    nCoinAge = bnCoinDay.GetLow64();
+    return true;
+}
+
+
+// novacoin: attempt to generate suitable proof-of-stake
+bool SignBlock(std::shared_ptr<CBlock> pblock, const CWallet* wallet) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+{
+    std::vector<valtype> vSolutions;
+    txnouttype whichType;
+    const CTxOut& txout = pblock->IsProofOfStake()? pblock->vtx[1]->vout[1] : pblock->vtx[0]->vout[0];
+
+    if (!Solver(txout.scriptPubKey, whichType, vSolutions))
+        return false;
+    if (whichType == TX_PUBKEY)
+    {
+        // Sign
+        //const valtype& vchPubKey = vSolutions[0];
+        CKey key;
+		// convert to pay to public key type
+		uint160 hash160(vSolutions[0]);
+		CKeyID pubKeyHash(hash160);
+		if (!wallet->GetKey(pubKeyHash, key))
+		{
+			LogPrint(BCLog::COINSTAKE, "SignBlock : failed to get key for kernel type=%d\n", whichType);
+			return false;  // unable to find corresponding public key
+		}
+
+//        return key.Sign(pblock.GetHash(), block.vchBlockSig);
+        return key.Sign(pblock->GetHashWithoutSign(), pblock->vchBlockSig) && EnsureLowS(pblock->vchBlockSig);
+
+    }
     return false;
 }
+
+
+bool CheckBlockSignature(const CBlock& block)
+{
+    if (block.IsProofOfWork())
+        return block.vchBlockSig.empty();
+
+    std::vector<unsigned char> vchPubKey;
+    if (block.GetHash() == Params().GetConsensus().hashGenesisBlock)
+        return block.vchBlockSig.empty();
+
+    std::vector<valtype> vSolutions;
+    txnouttype whichType;
+    const CTxOut& txout = block.IsProofOfStake()? block.vtx[1]->vout[1] : block.vtx[0]->vout[0];
+
+    if (!Solver(txout.scriptPubKey, whichType, vSolutions))
+        return false;
+    if (whichType == TX_PUBKEY)
+    {
+        vchPubKey = vSolutions[0];
+        if (block.vchBlockSig.empty())
+            return false;
+    }
+    else
+    {
+        // Block signing key also can be encoded in the nonspendable output
+        // This allows to not pollute UTXO set with useless outputs e.g. in case of multisig staking
+        const CScript& script = txout.scriptPubKey;
+        CScript::const_iterator pc = script.begin();
+        opcodetype opcode;
+        valtype vchPushValue;
+
+        if (!script.GetOp(pc, opcode, vchPubKey))
+            return false;
+        if (opcode != OP_RETURN)
+            return false;
+        if (!script.GetOp(pc, opcode, vchPubKey))
+            return false;
+        if (!IsCompressedOrUncompressedPubKey(vchPubKey))
+            return false;
+    }
+
+    return CPubKey(vchPubKey).Verify(block.GetHash(), block.vchBlockSig);
+}
+
 #endif
 
 class CMainCleanup

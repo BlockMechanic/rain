@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_TEST_UTIL_H
-#define SUPERCOIN_TEST_UTIL_H
+#ifndef RAIN_TEST_UTIL_H
+#define RAIN_TEST_UTIL_H
 
 #include <memory>
 #include <string>
@@ -67,4 +67,4 @@ void ForEachNoDup(CharType (&string)[StringLength], CharType min_char, CharType 
     }
 }
 
-#endif // SUPERCOIN_TEST_UTIL_H
+#endif // RAIN_TEST_UTIL_H

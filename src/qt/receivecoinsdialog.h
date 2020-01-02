@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_RECEIVECOINSDIALOG_H
-#define SUPERCOIN_QT_RECEIVECOINSDIALOG_H
+#ifndef RAIN_QT_RECEIVECOINSDIALOG_H
+#define RAIN_QT_RECEIVECOINSDIALOG_H
 
 #include <qt/guiutil.h>
 
@@ -77,4 +77,4 @@ private Q_SLOTS:
     void copyAmount();
 };
 
-#endif // SUPERCOIN_QT_RECEIVECOINSDIALOG_H
+#endif // RAIN_QT_RECEIVECOINSDIALOG_H

@@ -7,8 +7,8 @@
 #error This header can only be compiled as C++.
 #endif
 
-#ifndef SUPERCOIN_PROTOCOL_H
-#define SUPERCOIN_PROTOCOL_H
+#ifndef RAIN_PROTOCOL_H
+#define RAIN_PROTOCOL_H
 
 #include <netaddress.h>
 #include <serialize.h>
@@ -424,4 +424,4 @@ public:
 /** peercoin: How much temperature a PoW header will remove */
 extern const unsigned int POW_HEADER_COOLING;
 
-#endif // SUPERCOIN_PROTOCOL_H
+#endif // RAIN_PROTOCOL_H

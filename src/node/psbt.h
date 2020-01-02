@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_NODE_PSBT_H
-#define SUPERCOIN_NODE_PSBT_H
+#ifndef RAIN_NODE_PSBT_H
+#define RAIN_NODE_PSBT_H
 
 #include <psbt.h>
 
@@ -40,4 +40,4 @@ struct PSBTAnalysis {
  */
 PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx);
 
-#endif // SUPERCOIN_NODE_PSBT_H
+#endif // RAIN_NODE_PSBT_H

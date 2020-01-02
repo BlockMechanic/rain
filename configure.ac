@@ -15,11 +15,11 @@ AC_CONFIG_HEADERS([src/config/rain-config.h])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([build-aux/m4])
 
-SUPERCOIN_DAEMON_NAME=raind
-SUPERCOIN_GUI_NAME=rain-qt
-SUPERCOIN_CLI_NAME=rain-cli
-SUPERCOIN_TX_NAME=rain-tx
-SUPERCOIN_WALLET_TOOL_NAME=rain-wallet
+RAIN_DAEMON_NAME=raind
+RAIN_GUI_NAME=rain-qt
+RAIN_CLI_NAME=rain-cli
+RAIN_TX_NAME=rain-tx
+RAIN_WALLET_TOOL_NAME=rain-wallet
 
 dnl Unless the user specified ARFLAGS, force it to be cr
 AC_ARG_VAR(ARFLAGS, [Flags for the archiver, defaults to <cr> if not set])
@@ -29,9 +29,9 @@ fi
 
 AC_CANONICAL_HOST
 
-AH_TOP([#ifndef SUPERCOIN_CONFIG_H])
-AH_TOP([#define SUPERCOIN_CONFIG_H])
-AH_BOTTOM([#endif //SUPERCOIN_CONFIG_H])
+AH_TOP([#ifndef RAIN_CONFIG_H])
+AH_TOP([#define RAIN_CONFIG_H])
+AH_BOTTOM([#endif //RAIN_CONFIG_H])
 
 dnl faketime breaks configure and is only needed for make. Disable it here.
 unset FAKETIME
@@ -1004,7 +1004,7 @@ AC_SUBST(LIBMEMENV)
 
 if test x$enable_wallet != xno; then
     dnl Check for libdb_cxx only if wallet enabled
-    SUPERCOIN_FIND_BDB48
+    RAIN_FIND_BDB48
 fi
 
 dnl Check for libminiupnpc (optional)
@@ -1016,10 +1016,10 @@ if test x$use_upnp != xno; then
   )
 fi
 
-SUPERCOIN_QT_INIT
+RAIN_QT_INIT
 
 dnl sets $rain_enable_qt, $rain_enable_qt_test, $rain_enable_qt_dbus
-SUPERCOIN_QT_CONFIGURE([$use_pkgconfig])
+RAIN_QT_CONFIGURE([$use_pkgconfig])
 
 if test x$build_rain_wallet$build_rain_cli$build_rain_tx$build_raind$rain_enable_qt$use_tests$use_bench = xnonononononono; then
     use_boost=no
@@ -1206,7 +1206,7 @@ if test x$use_pkgconfig = xyes; then
       PKG_CHECK_MODULES([SSL], [libssl],, [AC_MSG_ERROR(openssl not found.)])
       PKG_CHECK_MODULES([CRYPTO], [libcrypto],,[AC_MSG_ERROR(libcrypto not found.)])
       if test x$use_qr != xno; then
-        SUPERCOIN_QT_CHECK([PKG_CHECK_MODULES([QR], [libqrencode], [have_qrencode=yes], [have_qrencode=no])])
+        RAIN_QT_CHECK([PKG_CHECK_MODULES([QR], [libqrencode], [have_qrencode=yes], [have_qrencode=no])])
       fi
       if test x$build_rain_cli$build_raind$rain_enable_qt$use_tests != xnononono; then
         PKG_CHECK_MODULES([EVENT], [libevent],, [AC_MSG_ERROR(libevent not found.)])
@@ -1265,8 +1265,8 @@ else
   fi
 
   if test x$use_qr != xno; then
-    SUPERCOIN_QT_CHECK([AC_CHECK_LIB([qrencode], [main],[QR_LIBS=-lqrencode], [have_qrencode=no])])
-    SUPERCOIN_QT_CHECK([AC_CHECK_HEADER([qrencode.h],, have_qrencode=no)])
+    RAIN_QT_CHECK([AC_CHECK_LIB([qrencode], [main],[QR_LIBS=-lqrencode], [have_qrencode=no])])
+    RAIN_QT_CHECK([AC_CHECK_HEADER([qrencode.h],, have_qrencode=no)])
   fi
 fi
 
@@ -1343,23 +1343,23 @@ AC_SUBST(UNIVALUE_LIBS)
 
 
 AC_MSG_CHECKING([whether to build raind])
-AM_CONDITIONAL([BUILD_SUPERCOIND], [test x$build_raind = xyes])
+AM_CONDITIONAL([BUILD_RAIND], [test x$build_raind = xyes])
 AC_MSG_RESULT($build_raind)
 
 AC_MSG_CHECKING([whether to build rain-cli])
-AM_CONDITIONAL([BUILD_SUPERCOIN_CLI], [test x$build_rain_cli = xyes])
+AM_CONDITIONAL([BUILD_RAIN_CLI], [test x$build_rain_cli = xyes])
 AC_MSG_RESULT($build_rain_cli)
 
 AC_MSG_CHECKING([whether to build rain-tx])
-AM_CONDITIONAL([BUILD_SUPERCOIN_TX], [test x$build_rain_tx = xyes])
+AM_CONDITIONAL([BUILD_RAIN_TX], [test x$build_rain_tx = xyes])
 AC_MSG_RESULT($build_rain_tx)
 
 AC_MSG_CHECKING([whether to build rain-wallet])
-AM_CONDITIONAL([BUILD_SUPERCOIN_WALLET], [test x$build_rain_wallet = xyes])
+AM_CONDITIONAL([BUILD_RAIN_WALLET], [test x$build_rain_wallet = xyes])
 AC_MSG_RESULT($build_rain_wallet)
 
 AC_MSG_CHECKING([whether to build libraries])
-AM_CONDITIONAL([BUILD_SUPERCOIN_LIBS], [test x$build_rain_libs = xyes])
+AM_CONDITIONAL([BUILD_RAIN_LIBS], [test x$build_rain_libs = xyes])
 if test x$build_rain_libs = xyes; then
   AC_DEFINE(HAVE_CONSENSUS_LIB, 1, [Define this symbol if the consensus lib has been built])
   AC_CONFIG_FILES([librainconsensus.pc:librainconsensus.pc.in])
@@ -1636,11 +1636,11 @@ AC_SUBST(COPYRIGHT_YEAR, _COPYRIGHT_YEAR)
 AC_SUBST(COPYRIGHT_HOLDERS, "_COPYRIGHT_HOLDERS")
 AC_SUBST(COPYRIGHT_HOLDERS_SUBSTITUTION, "_COPYRIGHT_HOLDERS_SUBSTITUTION")
 AC_SUBST(COPYRIGHT_HOLDERS_FINAL, "_COPYRIGHT_HOLDERS_FINAL")
-AC_SUBST(SUPERCOIN_DAEMON_NAME)
-AC_SUBST(SUPERCOIN_GUI_NAME)
-AC_SUBST(SUPERCOIN_CLI_NAME)
-AC_SUBST(SUPERCOIN_TX_NAME)
-AC_SUBST(SUPERCOIN_WALLET_TOOL_NAME)
+AC_SUBST(RAIN_DAEMON_NAME)
+AC_SUBST(RAIN_GUI_NAME)
+AC_SUBST(RAIN_CLI_NAME)
+AC_SUBST(RAIN_TX_NAME)
+AC_SUBST(RAIN_WALLET_TOOL_NAME)
 
 AC_SUBST(RELDFLAGS)
 AC_SUBST(DEBUG_CPPFLAGS)

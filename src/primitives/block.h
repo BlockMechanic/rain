@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_PRIMITIVES_BLOCK_H
-#define SUPERCOIN_PRIMITIVES_BLOCK_H
+#ifndef RAIN_PRIMITIVES_BLOCK_H
+#define RAIN_PRIMITIVES_BLOCK_H
 
 #include <primitives/transaction.h>
 #include <serialize.h>
@@ -129,8 +129,7 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITEAS(CBlockHeader, *this);
         READWRITE(vtx);
-	   // if(vtx.size() > 1 && vtx[1]->IsCoinStake())
-		    READWRITE(vchBlockSig);
+        READWRITE(vchBlockSig);
     }
 
     void SetNull()
@@ -154,7 +153,7 @@ public:
 
     std::pair<COutPoint, unsigned int> GetProofOfStake() const
     {
-        return IsProofOfStake()? std::make_pair(vtx[1]->vin[0].prevout, vtx[1]->nTime) : std::make_pair(COutPoint(), (unsigned int)0);
+        return IsProofOfStake() ? std::make_pair(vtx[1]->vin[0].prevout, vtx[1]->nTime) : std::make_pair(COutPoint(), (unsigned int)0);
     }
 
     CBlockHeader GetBlockHeader() const
@@ -205,4 +204,4 @@ struct CBlockLocator
     }
 };
 
-#endif // SUPERCOIN_PRIMITIVES_BLOCK_H
+#endif // RAIN_PRIMITIVES_BLOCK_H

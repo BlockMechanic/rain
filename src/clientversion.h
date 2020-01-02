@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CLIENTVERSION_H
-#define SUPERCOIN_CLIENTVERSION_H
+#ifndef RAIN_CLIENTVERSION_H
+#define RAIN_CLIENTVERSION_H
 
 #if defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
@@ -50,4 +50,4 @@ std::string FormatSubVersion(const std::string& name, int nClientVersion, const 
 
 #endif // WINDRES_PREPROC
 
-#endif // SUPERCOIN_CLIENTVERSION_H
+#endif // RAIN_CLIENTVERSION_H

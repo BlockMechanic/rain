@@ -1,6 +1,6 @@
 // Automatically generated file. Do not modify.
-#ifndef SUPERCOIN_UNIVALUE_UNIVALUE_ESCAPES_H
-#define SUPERCOIN_UNIVALUE_UNIVALUE_ESCAPES_H
+#ifndef RAIN_UNIVALUE_UNIVALUE_ESCAPES_H
+#define RAIN_UNIVALUE_UNIVALUE_ESCAPES_H
 static const char *escapes[256] = {
 	"\\u0000",
 	"\\u0001",
@@ -259,4 +259,4 @@ static const char *escapes[256] = {
 	NULL,
 	NULL,
 };
-#endif // SUPERCOIN_UNIVALUE_UNIVALUE_ESCAPES_H
+#endif // RAIN_UNIVALUE_UNIVALUE_ESCAPES_H

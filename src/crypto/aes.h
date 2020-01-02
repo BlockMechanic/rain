@@ -4,8 +4,8 @@
 //
 // C++ wrapper around ctaes, a constant-time AES implementation
 
-#ifndef SUPERCOIN_CRYPTO_AES_H
-#define SUPERCOIN_CRYPTO_AES_H
+#ifndef RAIN_CRYPTO_AES_H
+#define RAIN_CRYPTO_AES_H
 
 extern "C" {
 #include <crypto/ctaes/ctaes.h>
@@ -64,4 +64,4 @@ private:
     unsigned char iv[AES_BLOCKSIZE];
 };
 
-#endif // SUPERCOIN_CRYPTO_AES_H
+#endif // RAIN_CRYPTO_AES_H

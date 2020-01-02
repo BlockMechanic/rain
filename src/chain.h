@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CHAIN_H
-#define SUPERCOIN_CHAIN_H
+#ifndef RAIN_CHAIN_H
+#define RAIN_CHAIN_H
 
 #include <arith_uint256.h>
 #include <consensus/params.h>
@@ -371,14 +371,14 @@ public:
 
     std::string ToString() const
     {
-        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, moneysupply=%d, type=%s, nStakeModifier=%d, merkle=%s, hashBlock=%s)",
-            pprev, nHeight, nMoneySupply, IsProofOfStake() ? "PoS" : "PoW", nStakeModifier,
-            hashMerkleRoot.ToString(),
-            GetBlockHash().ToString());
-        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, merkle=%s, hashBlock=%s)",
-            pprev, nHeight,
-            hashMerkleRoot.ToString(),
-            GetBlockHash().ToString());
+        return strprintf("CBlockIndex(nprev=%08x, nFile=%d, nHeight=%d, nMoneySupply=%d, nFlags=(%s)(%d)(%s), nStakeModifier=%016llx, hashProof=%s, prevoutStake=(%s), merkle=%s, hashBlock=%s)",
+            pprev, nFile, nHeight, nMoneySupply,
+            GeneratedStakeModifier() ? "MOD" : "-", GetStakeEntropyBit(), IsProofOfStake()? "PoS" : "PoW",
+            nStakeModifier,
+            hashProof.ToString(),
+            prevoutStake.ToString(),
+            hashMerkleRoot.ToString().substr(0,10),
+            GetBlockHash().ToString().substr(0,20));
     }
 
     //! Check whether this block index entry is valid up to the passed validity level.
@@ -557,4 +557,4 @@ public:
     CBlockIndex* FindEarliestAtLeast(int64_t nTime, int height) const;
 };
 
-#endif // SUPERCOIN_CHAIN_H
+#endif // RAIN_CHAIN_H

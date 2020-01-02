@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_TEST_PAYMENTREQUESTDATA_H
-#define SUPERCOIN_QT_TEST_PAYMENTREQUESTDATA_H
+#ifndef RAIN_QT_TEST_PAYMENTREQUESTDATA_H
+#define RAIN_QT_TEST_PAYMENTREQUESTDATA_H
 
 //
 // Data for paymentservertests.cpp
@@ -462,4 +462,4 @@ XR2T3Gy2LzRvhVA25QgGqpz0/juS2BtmNbsZPkN9gMMwKimgzc+PuCzmEKwPK9cQ\
 YQ==\
 ";
 
-#endif // SUPERCOIN_QT_TEST_PAYMENTREQUESTDATA_H
+#endif // RAIN_QT_TEST_PAYMENTREQUESTDATA_H

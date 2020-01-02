@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_TRANSACTIONTABLEMODEL_H
-#define SUPERCOIN_QT_TRANSACTIONTABLEMODEL_H
+#ifndef RAIN_QT_TRANSACTIONTABLEMODEL_H
+#define RAIN_QT_TRANSACTIONTABLEMODEL_H
 
 #include <qt/rainunits.h>
 
@@ -141,4 +141,4 @@ public Q_SLOTS:
     friend class TransactionTablePriv;
 };
 
-#endif // SUPERCOIN_QT_TRANSACTIONTABLEMODEL_H
+#endif // RAIN_QT_TRANSACTIONTABLEMODEL_H

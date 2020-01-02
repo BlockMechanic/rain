@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_TRANSACTIONRECORD_H
-#define SUPERCOIN_QT_TRANSACTIONRECORD_H
+#ifndef RAIN_QT_TRANSACTIONRECORD_H
+#define RAIN_QT_TRANSACTIONRECORD_H
 
 #include <amount.h>
 #include <uint256.h>
@@ -152,4 +152,4 @@ public:
     bool statusUpdateNeeded(int numBlocks) const;
 };
 
-#endif // SUPERCOIN_QT_TRANSACTIONRECORD_H
+#endif // RAIN_QT_TRANSACTIONRECORD_H

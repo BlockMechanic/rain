@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_VERSIONBITSINFO_H
-#define SUPERCOIN_VERSIONBITSINFO_H
+#ifndef RAIN_VERSIONBITSINFO_H
+#define RAIN_VERSIONBITSINFO_H
 
 struct VBDeploymentInfo {
     /** Deployment name */
@@ -14,4 +14,4 @@ struct VBDeploymentInfo {
 
 extern const struct VBDeploymentInfo VersionBitsDeploymentInfo[];
 
-#endif // SUPERCOIN_VERSIONBITSINFO_H
+#endif // RAIN_VERSIONBITSINFO_H

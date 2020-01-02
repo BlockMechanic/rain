@@ -19,14 +19,14 @@ fi
 RETVAL=0
 
 prog=raind
-# you can override the lockfile via SUPERCOIND_LOCKFILE in /etc/sysconfig/raind
-lockfile=${SUPERCOIND_LOCKFILE-/var/lock/subsys/raind}
+# you can override the lockfile via RAIND_LOCKFILE in /etc/sysconfig/raind
+lockfile=${RAIND_LOCKFILE-/var/lock/subsys/raind}
 
-# raind defaults to /usr/bin/raind, override with SUPERCOIND_BIN
-raind=${SUPERCOIND_BIN-/usr/bin/raind}
+# raind defaults to /usr/bin/raind, override with RAIND_BIN
+raind=${RAIND_BIN-/usr/bin/raind}
 
-# raind opts default to -disablewallet, override with SUPERCOIND_OPTS
-raind_opts=${SUPERCOIND_OPTS--disablewallet}
+# raind opts default to -disablewallet, override with RAIND_OPTS
+raind_opts=${RAIND_OPTS--disablewallet}
 
 start() {
     echo -n $"Starting $prog: "

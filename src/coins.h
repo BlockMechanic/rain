@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_COINS_H
-#define SUPERCOIN_COINS_H
+#ifndef RAIN_COINS_H
+#define RAIN_COINS_H
 
 #include <primitives/transaction.h>
 #include <compressor.h>
@@ -34,31 +34,36 @@ public:
     //! unspent transaction output
     CTxOut out;
 
+    //! at which height this containing transaction was included in the active block chain
+    uint32_t nHeight : 30;
+
     //! whether containing transaction was a coinbase
     unsigned int fCoinBase : 1;
     unsigned int fCoinStake : 1;
 
-    //! at which height this containing transaction was included in the active block chain
-    uint32_t nHeight : 30;
+    // peercoin: transaction timestamp
+    unsigned int nTime;
 
     //! construct a Coin from a CTxOut and height/coinbase information.
-    Coin(CTxOut&& outIn, int nHeightIn, bool fCoinBaseIn, bool fCoinStakeIn) : out(std::move(outIn)), fCoinBase(fCoinBaseIn), fCoinStake(fCoinStakeIn), nHeight(nHeightIn) {}
-    Coin(const CTxOut& outIn, int nHeightIn, bool fCoinBaseIn, bool fCoinStakeIn) : out(outIn), fCoinBase(fCoinBaseIn), fCoinStake(fCoinStakeIn), nHeight(nHeightIn) {}
+    Coin(CTxOut&& outIn, int nHeightIn, bool fCoinBaseIn, bool fCoinStakeIn, int nTimeIn) : out(std::move(outIn)), nHeight(nHeightIn), fCoinBase(fCoinBaseIn), fCoinStake(fCoinStakeIn), nTime(nTimeIn) {}
+    Coin(const CTxOut& outIn, int nHeightIn, bool fCoinBaseIn, bool fCoinStakeIn, int nTimeIn) : out(outIn), nHeight(nHeightIn), fCoinBase(fCoinBaseIn), fCoinStake(fCoinStakeIn), nTime(nTimeIn) {}
 
     void Clear() {
         out.SetNull();
         fCoinBase = false;
         fCoinStake = false;
         nHeight = 0;
+        nTime = 0;
     }
 
     //! empty constructor
-    Coin() : fCoinBase(false), fCoinStake(false), nHeight(0) { }
+    Coin() : nHeight(0), fCoinBase(false), fCoinStake(false), nTime(0) { }
 
     bool IsCoinBase() const {
         return fCoinBase;
     }
-    bool IsCoinStake() const {
+
+    bool IsCoinStake() const { // peercoin: coinstake
         return fCoinStake;
     }
 
@@ -72,6 +77,8 @@ public:
 #endif
         ::Serialize(s, VARINT(code));
         ::Serialize(s, CTxOutCompressor(REF(out)));
+        // peercoin transaction timestamp
+        ::Serialize(s, VARINT(nTime));
     }
 
     template<typename Stream>
@@ -82,6 +89,8 @@ public:
         fCoinBase = code & 1;
         fCoinStake = (code >> 1) & 1;
         ::Unserialize(s, CTxOutCompressor(out));
+        // peercoin transaction timestamp
+        ::Unserialize(s, VARINT(nTime));
     }
 
     bool IsSpent() const {
@@ -351,4 +360,4 @@ private:
 
 };
 
-#endif // SUPERCOIN_COINS_H
+#endif // RAIN_COINS_H

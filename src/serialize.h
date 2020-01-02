@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SERIALIZE_H
-#define SUPERCOIN_SERIALIZE_H
+#ifndef RAIN_SERIALIZE_H
+#define RAIN_SERIALIZE_H
 
 #include <compat/endian.h>
 
@@ -1013,4 +1013,4 @@ size_t GetSerializeSizeMany(const S& s, const T&... t)
     return sc.size();
 }
 
-#endif // SUPERCOIN_SERIALIZE_H
+#endif // RAIN_SERIALIZE_H

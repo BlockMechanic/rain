@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SHUTDOWN_H
-#define SUPERCOIN_SHUTDOWN_H
+#ifndef RAIN_SHUTDOWN_H
+#define RAIN_SHUTDOWN_H
 
 void StartShutdown();
 void AbortShutdown();

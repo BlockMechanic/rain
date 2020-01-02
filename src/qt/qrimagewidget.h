@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_QRIMAGEWIDGET_H
-#define SUPERCOIN_QT_QRIMAGEWIDGET_H
+#ifndef RAIN_QT_QRIMAGEWIDGET_H
+#define RAIN_QT_QRIMAGEWIDGET_H
 
 #include <QImage>
 #include <QLabel>
@@ -42,4 +42,4 @@ private:
     QMenu *contextMenu;
 };
 
-#endif // SUPERCOIN_QT_QRIMAGEWIDGET_H
+#endif // RAIN_QT_QRIMAGEWIDGET_H

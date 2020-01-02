@@ -9,8 +9,8 @@
 //
 // For more information, see BIP 173.
 
-#ifndef SUPERCOIN_BECH32_H
-#define SUPERCOIN_BECH32_H
+#ifndef RAIN_BECH32_H
+#define RAIN_BECH32_H
 
 #include <stdint.h>
 #include <string>
@@ -27,4 +27,4 @@ std::pair<std::string, std::vector<uint8_t>> Decode(const std::string& str);
 
 } // namespace bech32
 
-#endif // SUPERCOIN_BECH32_H
+#endif // RAIN_BECH32_H

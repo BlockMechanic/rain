@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CRYPTO_COMMON_H
-#define SUPERCOIN_CRYPTO_COMMON_H
+#ifndef RAIN_CRYPTO_COMMON_H
+#define RAIN_CRYPTO_COMMON_H
 
 #if defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
@@ -100,4 +100,4 @@ uint64_t static inline CountBits(uint64_t x)
     return ret;
 }
 
-#endif // SUPERCOIN_CRYPTO_COMMON_H
+#endif // RAIN_CRYPTO_COMMON_H

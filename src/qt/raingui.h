@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_SUPERCOINGUI_H
-#define SUPERCOIN_QT_SUPERCOINGUI_H
+#ifndef RAIN_QT_RAINGUI_H
+#define RAIN_QT_RAINGUI_H
 
 #if defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
@@ -378,4 +378,4 @@ private Q_SLOTS:
     void onMenuSelection(QAction* action);
 };
 
-#endif // SUPERCOIN_QT_SUPERCOINGUI_H
+#endif // RAIN_QT_RAINGUI_H

@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_PREVECTOR_H
-#define SUPERCOIN_PREVECTOR_H
+#ifndef RAIN_PREVECTOR_H
+#define RAIN_PREVECTOR_H
 
 #include <assert.h>
 #include <stdlib.h>
@@ -525,4 +525,4 @@ public:
 };
 #pragma pack(pop)
 
-#endif // SUPERCOIN_PREVECTOR_H
+#endif // RAIN_PREVECTOR_H

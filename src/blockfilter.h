@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_BLOCKFILTER_H
-#define SUPERCOIN_BLOCKFILTER_H
+#ifndef RAIN_BLOCKFILTER_H
+#define RAIN_BLOCKFILTER_H
 
 #include <stdint.h>
 #include <string>
@@ -167,4 +167,4 @@ public:
     }
 };
 
-#endif // SUPERCOIN_BLOCKFILTER_H
+#endif // RAIN_BLOCKFILTER_H

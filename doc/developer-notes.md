@@ -740,13 +740,13 @@ namespace {
     the location of the source file actually is relevant.
 
 - Use include guards to avoid the problem of double inclusion. The header file
-  `foo/bar.h` should use the include guard identifier `SUPERCOIN_FOO_BAR_H`, e.g.
+  `foo/bar.h` should use the include guard identifier `RAIN_FOO_BAR_H`, e.g.
 
 ```c++
-#ifndef SUPERCOIN_FOO_BAR_H
-#define SUPERCOIN_FOO_BAR_H
+#ifndef RAIN_FOO_BAR_H
+#define RAIN_FOO_BAR_H
 ...
-#endif // SUPERCOIN_FOO_BAR_H
+#endif // RAIN_FOO_BAR_H
 ```
 
 GUI

@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_OPTIONSDIALOG_H
-#define SUPERCOIN_QT_OPTIONSDIALOG_H
+#ifndef RAIN_QT_OPTIONSDIALOG_H
+#define RAIN_QT_OPTIONSDIALOG_H
 
 #include <QDialog>
 #include <QValidator>
@@ -75,4 +75,4 @@ private:
     QDataWidgetMapper *mapper;
 };
 
-#endif // SUPERCOIN_QT_OPTIONSDIALOG_H
+#endif // RAIN_QT_OPTIONSDIALOG_H

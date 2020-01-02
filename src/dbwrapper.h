@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_DBWRAPPER_H
-#define SUPERCOIN_DBWRAPPER_H
+#ifndef RAIN_DBWRAPPER_H
+#define RAIN_DBWRAPPER_H
 
 #include <clientversion.h>
 #include <fs.h>
@@ -349,4 +349,4 @@ public:
 
 };
 
-#endif // SUPERCOIN_DBWRAPPER_H
+#endif // RAIN_DBWRAPPER_H

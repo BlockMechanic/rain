@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_THREADINTERRUPT_H
-#define SUPERCOIN_THREADINTERRUPT_H
+#ifndef RAIN_THREADINTERRUPT_H
+#define RAIN_THREADINTERRUPT_H
 
 #include <sync.h>
 
@@ -34,4 +34,4 @@ private:
     std::atomic<bool> flag;
 };
 
-#endif //SUPERCOIN_THREADINTERRUPT_H
+#endif //RAIN_THREADINTERRUPT_H

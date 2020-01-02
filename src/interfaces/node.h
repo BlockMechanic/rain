@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_INTERFACES_NODE_H
-#define SUPERCOIN_INTERFACES_NODE_H
+#ifndef RAIN_INTERFACES_NODE_H
+#define RAIN_INTERFACES_NODE_H
 
 #include <addrdb.h>     // For banmap_t
 #include <amount.h>     // For CAmount
@@ -265,4 +265,4 @@ std::unique_ptr<Node> MakeNode();
 
 } // namespace interfaces
 
-#endif // SUPERCOIN_INTERFACES_NODE_H
+#endif // RAIN_INTERFACES_NODE_H

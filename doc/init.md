@@ -78,7 +78,7 @@ files out-of-the-box. This is because the command line options specified in the
 init files take precedence over the configurations in
 `/etc/rain/rain.conf`. However, some init systems have their own
 configuration mechanisms that would allow for overriding the command line
-options specified in the init files (e.g. setting `SUPERCOIND_DATADIR` for
+options specified in the init files (e.g. setting `RAIND_DATADIR` for
 OpenRC).
 
 ### macOS
@@ -124,7 +124,7 @@ use old versions of Upstart and do not supply the start-stop-daemon utility.
 Copy raind.init to /etc/init.d/raind. Test by running `service raind start`.
 
 Using this script, you can adjust the path and flags to the raind program by
-setting the SUPERCOIND and FLAGS environment variables in the file
+setting the RAIND and FLAGS environment variables in the file
 /etc/sysconfig/raind. You can also use the DAEMONOPTS environment variable here.
 
 ### macOS

@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_AMOUNT_H
-#define SUPERCOIN_AMOUNT_H
+#ifndef RAIN_AMOUNT_H
+#define RAIN_AMOUNT_H
 
 #include <stdint.h>
 
@@ -25,4 +25,4 @@ static const CAmount COIN = 100000000;
 static const CAmount MAX_MONEY = 2000000000 * COIN;
 inline bool MoneyRange(const CAmount& nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
 
-#endif //  SUPERCOIN_AMOUNT_H
+#endif //  RAIN_AMOUNT_H

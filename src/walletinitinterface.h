@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_WALLETINITINTERFACE_H
-#define SUPERCOIN_WALLETINITINTERFACE_H
+#ifndef RAIN_WALLETINITINTERFACE_H
+#define RAIN_WALLETINITINTERFACE_H
 
 struct InitInterfaces;
 
@@ -23,4 +23,4 @@ public:
 
 extern const WalletInitInterface& g_wallet_init_interface;
 
-#endif // SUPERCOIN_WALLETINITINTERFACE_H
+#endif // RAIN_WALLETINITINTERFACE_H

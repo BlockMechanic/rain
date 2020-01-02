@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_RPC_BLOCKCHAIN_H
-#define SUPERCOIN_RPC_BLOCKCHAIN_H
+#ifndef RAIN_RPC_BLOCKCHAIN_H
+#define RAIN_RPC_BLOCKCHAIN_H
 
 #include <amount.h>
 #include <sync.h>

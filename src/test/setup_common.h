@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_TEST_SETUP_COMMON_H
-#define SUPERCOIN_TEST_SETUP_COMMON_H
+#ifndef RAIN_TEST_SETUP_COMMON_H
+#define RAIN_TEST_SETUP_COMMON_H
 
 #include <chainparamsbase.h>
 #include <fs.h>

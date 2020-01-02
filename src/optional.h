@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_OPTIONAL_H
-#define SUPERCOIN_OPTIONAL_H
+#ifndef RAIN_OPTIONAL_H
+#define RAIN_OPTIONAL_H
 
 #include <utility>
 
@@ -23,4 +23,4 @@ Optional<T> MakeOptional(bool condition, T&& value)
 //! Substitute for C++17 std::nullopt
 static auto& nullopt = boost::none;
 
-#endif // SUPERCOIN_OPTIONAL_H
+#endif // RAIN_OPTIONAL_H

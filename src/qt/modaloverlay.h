@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_MODALOVERLAY_H
-#define SUPERCOIN_QT_MODALOVERLAY_H
+#ifndef RAIN_QT_MODALOVERLAY_H
+#define RAIN_QT_MODALOVERLAY_H
 
 #include <QDateTime>
 #include <QWidget>
@@ -48,4 +48,4 @@ private:
     void UpdateHeaderSyncLabel();
 };
 
-#endif // SUPERCOIN_QT_MODALOVERLAY_H
+#endif // RAIN_QT_MODALOVERLAY_H

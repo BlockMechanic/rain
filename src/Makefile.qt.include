@@ -175,7 +175,7 @@ if MOBILE_GUI
 QT_MOC_CPP += qt/moc_rainmobilegui.cpp
 endif  
 
-SUPERCOIN_MM = \
+RAIN_MM = \
   qt/macdockiconhandler.mm \
   qt/macnotificationhandler.mm \
   qt/macos_appnap.mm
@@ -191,7 +191,7 @@ QT_QRC = qt/rain.qrc
 QT_QRC_LOCALE_CPP = qt/qrc_rain_locale.cpp
 QT_QRC_LOCALE = qt/rain_locale.qrc
 
-SUPERCOIN_QT_H = \
+RAIN_QT_H = \
   qt/addressbookpage.h \
   qt/addresstablemodel.h \
   qt/askpassphrasedialog.h \
@@ -254,7 +254,7 @@ SUPERCOIN_QT_H = \
   qt/messagepage.h
 
 if MOBILE_GUI
-SUPERCOIN_QT_H += qt/rainmobilegui.h
+RAIN_QT_H += qt/rainmobilegui.h
 endif  
 
 RES_ICONS = \
@@ -327,7 +327,7 @@ RES_ICONS = \
   qt/res/icons/messages.png \
   qt/res/icons/home.png
 
-SUPERCOIN_QT_BASE_CPP = \
+RAIN_QT_BASE_CPP = \
   qt/bantablemodel.cpp \
   qt/rain.cpp \
   qt/rainaddressvalidator.cpp \
@@ -355,12 +355,12 @@ SUPERCOIN_QT_BASE_CPP = \
   qt/qvalidatedtextedit.cpp
 
 if MOBILE_GUI
-SUPERCOIN_QT_BASE_CPP += qt/rainmobilegui.cpp
+RAIN_QT_BASE_CPP += qt/rainmobilegui.cpp
 endif 
 
-SUPERCOIN_QT_WINDOWS_CPP = qt/winshutdownmonitor.cpp
+RAIN_QT_WINDOWS_CPP = qt/winshutdownmonitor.cpp
 
-SUPERCOIN_QT_WALLET_CPP = \
+RAIN_QT_WALLET_CPP = \
   qt/addressbookpage.cpp \
   qt/addresstablemodel.cpp \
   qt/askpassphrasedialog.cpp \
@@ -392,12 +392,12 @@ SUPERCOIN_QT_WALLET_CPP = \
   qt/sendmessagespage.cpp \
   qt/messagepage.cpp
 
-SUPERCOIN_QT_CPP = $(SUPERCOIN_QT_BASE_CPP)
+RAIN_QT_CPP = $(RAIN_QT_BASE_CPP)
 if TARGET_WINDOWS
-SUPERCOIN_QT_CPP += $(SUPERCOIN_QT_WINDOWS_CPP)
+RAIN_QT_CPP += $(RAIN_QT_WINDOWS_CPP)
 endif
 if ENABLE_WALLET
-SUPERCOIN_QT_CPP += $(SUPERCOIN_QT_WALLET_CPP)
+RAIN_QT_CPP += $(RAIN_QT_WALLET_CPP)
 endif # ENABLE_WALLET
 
 RES_IMAGES =
@@ -406,19 +406,19 @@ RES_MOVIES = $(wildcard $(srcdir)/qt/res/movies/spinner-*.png)
 
 RES_QML = $(wildcard $(srcdir)/qt/res/qml/*.qml)
 
-SUPERCOIN_RC = qt/res/rain-qt-res.rc
+RAIN_RC = qt/res/rain-qt-res.rc
 
-SUPERCOIN_QT_INCLUDES = -DQT_NO_KEYWORDS
+RAIN_QT_INCLUDES = -DQT_NO_KEYWORDS
 
-qt_librainqt_a_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES) $(SUPERCOIN_QT_INCLUDES) \
+qt_librainqt_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES) $(RAIN_QT_INCLUDES) \
   $(QT_INCLUDES) $(QT_DBUS_INCLUDES) $(QR_CFLAGS)
 qt_librainqt_a_CXXFLAGS = $(AM_CXXFLAGS) $(QT_PIE_FLAGS)
 qt_librainqt_a_OBJCXXFLAGS = $(AM_OBJCXXFLAGS) $(QT_PIE_FLAGS)
 
-qt_librainqt_a_SOURCES = $(SUPERCOIN_QT_CPP) $(SUPERCOIN_QT_H) $(QT_FORMS_UI) \
+qt_librainqt_a_SOURCES = $(RAIN_QT_CPP) $(RAIN_QT_H) $(QT_FORMS_UI) \
   $(QT_QRC) $(QT_QRC_LOCALE) $(QT_TS) $(RES_ICONS) $(RES_IMAGES) $(RES_MOVIES)
 if TARGET_DARWIN
-  qt_librainqt_a_SOURCES += $(SUPERCOIN_MM)
+  qt_librainqt_a_SOURCES += $(RAIN_MM)
 endif
 
 nodist_qt_librainqt_a_SOURCES = $(QT_MOC_CPP) $(QT_MOC) $(QT_QRC_CPP) $(QT_QRC_LOCALE_CPP)
@@ -432,22 +432,22 @@ $(QT_MOC): $(QT_FORMS_H)
 $(qt_librainqt_a_OBJECTS) $(qt_rain_qt_OBJECTS) : | $(QT_MOC)
 
 # rain-qt binary #
-qt_rain_qt_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES) $(SUPERCOIN_QT_INCLUDES) \
+qt_rain_qt_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES) $(RAIN_QT_INCLUDES) \
   $(QT_INCLUDES) $(PROTOBUF_CFLAGS) $(QR_CFLAGS)
 qt_rain_qt_CXXFLAGS = $(AM_CXXFLAGS) $(QT_PIE_FLAGS)
 
 qt_rain_qt_SOURCES = qt/main.cpp
 if TARGET_WINDOWS
-  qt_rain_qt_SOURCES += $(SUPERCOIN_RC)
+  qt_rain_qt_SOURCES += $(RAIN_RC)
 endif
-qt_rain_qt_LDADD = qt/librainqt.a $(LIBSUPERCOIN_SERVER)
+qt_rain_qt_LDADD = qt/librainqt.a $(LIBRAIN_SERVER)
 if ENABLE_WALLET
-qt_rain_qt_LDADD += $(LIBSUPERCOIN_UTIL) $(LIBSUPERCOIN_WALLET)
+qt_rain_qt_LDADD += $(LIBRAIN_UTIL) $(LIBRAIN_WALLET)
 endif
 if ENABLE_ZMQ
-qt_rain_qt_LDADD += $(LIBSUPERCOIN_ZMQ) $(ZMQ_LIBS)
+qt_rain_qt_LDADD += $(LIBRAIN_ZMQ) $(ZMQ_LIBS)
 endif
-qt_rain_qt_LDADD += $(LIBSUPERCOIN_CLI) $(LIBSUPERCOIN_COMMON) $(LIBSUPERCOIN_UTIL) $(LIBSUPERCOIN_CONSENSUS) $(LIBSUPERCOIN_CRYPTO) $(LIBUNIVALUE) $(LIBLEVELDB) $(LIBLEVELDB_SSE42) $(LIBMEMENV) \
+qt_rain_qt_LDADD += $(LIBRAIN_CLI) $(LIBRAIN_COMMON) $(LIBRAIN_UTIL) $(LIBRAIN_CONSENSUS) $(LIBRAIN_CRYPTO) $(LIBUNIVALUE) $(LIBLEVELDB) $(LIBLEVELDB_SSE42) $(LIBMEMENV) \
   $(BOOST_LIBS) $(QT_LIBS) $(QT_DBUS_LIBS) $(QR_LIBS) $(BDB_LIBS) $(MINIUPNPC_LIBS) $(LIBSECP256K1) \
   $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS)
 
@@ -468,7 +468,7 @@ $(srcdir)/qt/rainstrings.cpp: $(librain_server_a_SOURCES) $(librain_wallet_a_SOU
 	@test -n $(XGETTEXT) || echo "xgettext is required for updating translations"
 	$(AM_V_GEN) cd $(srcdir); XGETTEXT=$(XGETTEXT) PACKAGE_NAME="$(PACKAGE_NAME)" COPYRIGHT_HOLDERS="$(COPYRIGHT_HOLDERS)" COPYRIGHT_HOLDERS_SUBSTITUTION="$(COPYRIGHT_HOLDERS_SUBSTITUTION)" $(PYTHON) ../share/qt/extract_strings_qt.py $^
 
-translate: $(srcdir)/qt/rainstrings.cpp $(QT_FORMS_UI) $(QT_FORMS_UI) $(SUPERCOIN_QT_BASE_CPP) qt/rain.cpp $(SUPERCOIN_QT_WINDOWS_CPP) $(SUPERCOIN_QT_WALLET_CPP) $(SUPERCOIN_QT_H) $(SUPERCOIN_MM)
+translate: $(srcdir)/qt/rainstrings.cpp $(QT_FORMS_UI) $(QT_FORMS_UI) $(RAIN_QT_BASE_CPP) qt/rain.cpp $(RAIN_QT_WINDOWS_CPP) $(RAIN_QT_WALLET_CPP) $(RAIN_QT_H) $(RAIN_MM)
 	@test -n $(LUPDATE) || echo "lupdate is required for updating translations"
 	$(AM_V_GEN) QT_SELECT=$(QT_SELECT) $(LUPDATE) $^ -locations relative -no-obsolete -ts $(srcdir)/qt/locale/rain_en.ts
 
@@ -489,7 +489,7 @@ CLEAN_QT = $(nodist_qt_librainqt_a_SOURCES) $(QT_QM) $(QT_FORMS_H) qt/*.gcda qt/
 CLEANFILES += $(CLEAN_QT)
 
 rain_qt_clean: FORCE
-	rm -f $(CLEAN_QT) $(qt_librainqt_a_OBJECTS) $(qt_rain_qt_OBJECTS) qt/rain-qt$(EXEEXT) $(LIBSUPERCOINSUPERCOINQT)
+	rm -f $(CLEAN_QT) $(qt_librainqt_a_OBJECTS) $(qt_rain_qt_OBJECTS) qt/rain-qt$(EXEEXT) $(LIBRAINRAINQT)
 
 rain_qt : qt/rain-qt$(EXEEXT)
 

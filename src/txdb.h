@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_TXDB_H
-#define SUPERCOIN_TXDB_H
+#ifndef RAIN_TXDB_H
+#define RAIN_TXDB_H
 
 #include <coins.h>
 #include <dbwrapper.h>
@@ -21,6 +21,7 @@ class CBlockIndex;
 class CCoinsViewDBCursor;
 class uint256;
 struct CHeightTxIndexKey;
+struct CDiskTxPos;
 
 //! No need to periodic flush if at least this much space still available.
 static constexpr int MAX_BLOCK_COINSDB_USAGE = 10;
@@ -99,6 +100,8 @@ public:
     bool ReadLastBlockFile(int &nFile);
     bool WriteReindexing(bool fReindexing);
     void ReadReindexing(bool &fReindexing);
+    bool ReadTxIndex(const uint256 &txid, CDiskTxPos &pos);
+    bool WriteTxIndex(const std::vector<std::pair<uint256, CDiskTxPos> > &vect);
     bool WriteFlag(const std::string &name, bool fValue);
     bool ReadFlag(const std::string &name, bool &fValue);
     bool LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex);
@@ -129,4 +132,4 @@ public:
     bool EraseStakeIndex(unsigned int height);
 };
 
-#endif // SUPERCOIN_TXDB_H
+#endif // RAIN_TXDB_H

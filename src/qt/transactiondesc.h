@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_TRANSACTIONDESC_H
-#define SUPERCOIN_QT_TRANSACTIONDESC_H
+#ifndef RAIN_QT_TRANSACTIONDESC_H
+#define RAIN_QT_TRANSACTIONDESC_H
 
 #include <QObject>
 #include <QString>
@@ -32,4 +32,4 @@ private:
     static QString FormatTxStatus(const interfaces::WalletTx& wtx, const interfaces::WalletTxStatus& status, bool inMempool, int numBlocks, int64_t adjustedTime);
 };
 
-#endif // SUPERCOIN_QT_TRANSACTIONDESC_H
+#endif // RAIN_QT_TRANSACTIONDESC_H

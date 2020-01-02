@@ -1,4 +1,4 @@
-# TOR SUPPORT IN SUPERCOIN
+# TOR SUPPORT IN RAIN
 
 It is possible to run Rain Core as a Tor hidden service, and connect to such services.
 

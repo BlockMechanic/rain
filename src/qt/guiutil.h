@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_GUIUTIL_H
-#define SUPERCOIN_QT_GUIUTIL_H
+#ifndef RAIN_QT_GUIUTIL_H
+#define RAIN_QT_GUIUTIL_H
 
 #include <amount.h>
 #include <fs.h>
@@ -269,4 +269,4 @@ namespace GUIUtil
     int TextWidth(const QFontMetrics& fm, const QString& text);
 } // namespace GUIUtil
 
-#endif // SUPERCOIN_QT_GUIUTIL_H
+#endif // RAIN_QT_GUIUTIL_H

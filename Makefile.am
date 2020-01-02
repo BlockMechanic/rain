@@ -11,17 +11,17 @@ endif
 
 export PYTHONPATH
 
-if BUILD_SUPERCOIN_LIBS
+if BUILD_RAIN_LIBS
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = librainconsensus.pc
 endif
 
-SUPERCOIND_BIN=$(top_builddir)/src/$(SUPERCOIN_DAEMON_NAME)$(EXEEXT)
-SUPERCOIN_QT_BIN=$(top_builddir)/src/qt/$(SUPERCOIN_GUI_NAME)$(EXEEXT)
-SUPERCOIN_CLI_BIN=$(top_builddir)/src/$(SUPERCOIN_CLI_NAME)$(EXEEXT)
-SUPERCOIN_TX_BIN=$(top_builddir)/src/$(SUPERCOIN_TX_NAME)$(EXEEXT)
-SUPERCOIN_WALLET_BIN=$(top_builddir)/src/$(SUPERCOIN_WALLET_TOOL_NAME)$(EXEEXT)
-SUPERCOIN_WIN_INSTALLER=$(PACKAGE)-$(PACKAGE_VERSION)-win$(WINDOWS_BITS)-setup$(EXEEXT)
+RAIND_BIN=$(top_builddir)/src/$(RAIN_DAEMON_NAME)$(EXEEXT)
+RAIN_QT_BIN=$(top_builddir)/src/qt/$(RAIN_GUI_NAME)$(EXEEXT)
+RAIN_CLI_BIN=$(top_builddir)/src/$(RAIN_CLI_NAME)$(EXEEXT)
+RAIN_TX_BIN=$(top_builddir)/src/$(RAIN_TX_NAME)$(EXEEXT)
+RAIN_WALLET_BIN=$(top_builddir)/src/$(RAIN_WALLET_TOOL_NAME)$(EXEEXT)
+RAIN_WIN_INSTALLER=$(PACKAGE)-$(PACKAGE_VERSION)-win$(WINDOWS_BITS)-setup$(EXEEXT)
 
 empty :=
 space := $(empty) $(empty)
@@ -72,13 +72,13 @@ COVERAGE_INFO = baseline.info \
 dist-hook:
 	-$(GIT) archive --format=tar HEAD -- src/clientversion.cpp | $(AMTAR) -C $(top_distdir) -xf -
 
-$(SUPERCOIN_WIN_INSTALLER): all-recursive
+$(RAIN_WIN_INSTALLER): all-recursive
 	$(MKDIR_P) $(top_builddir)/release
-	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(SUPERCOIND_BIN) $(top_builddir)/release
-	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(SUPERCOIN_QT_BIN) $(top_builddir)/release
-	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(SUPERCOIN_CLI_BIN) $(top_builddir)/release
-	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(SUPERCOIN_TX_BIN) $(top_builddir)/release
-	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(SUPERCOIN_WALLET_BIN) $(top_builddir)/release
+	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(RAIND_BIN) $(top_builddir)/release
+	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(RAIN_QT_BIN) $(top_builddir)/release
+	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(RAIN_CLI_BIN) $(top_builddir)/release
+	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(RAIN_TX_BIN) $(top_builddir)/release
+	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM) $(RAIN_WALLET_BIN) $(top_builddir)/release
 	@test -f $(MAKENSIS) && $(MAKENSIS) -V2 $(top_builddir)/share/setup.nsi || \
 	  echo error: could not build $@
 	@echo built $@
@@ -101,7 +101,7 @@ $(OSX_APP)/Contents/Resources/rain.icns: $(OSX_INSTALLER_ICONS)
 
 $(OSX_APP)/Contents/MacOS/Rain-Qt: all-recursive
 	$(MKDIR_P) $(@D)
-	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM)  $(SUPERCOIN_QT_BIN) $@
+	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM)  $(RAIN_QT_BIN) $@
 
 $(OSX_APP)/Contents/Resources/Base.lproj/InfoPlist.strings:
 	$(MKDIR_P) $(@D)
@@ -160,22 +160,22 @@ appbundle: $(OSX_APP_BUILT)
 deploy: $(OSX_DMG)
 endif
 if TARGET_WINDOWS
-deploy: $(SUPERCOIN_WIN_INSTALLER)
+deploy: $(RAIN_WIN_INSTALLER)
 endif
 
-$(SUPERCOIN_QT_BIN): FORCE
+$(RAIN_QT_BIN): FORCE
 	$(MAKE) -C src qt/$(@F)
 
-$(SUPERCOIND_BIN): FORCE
+$(RAIND_BIN): FORCE
 	$(MAKE) -C src $(@F)
 
-$(SUPERCOIN_CLI_BIN): FORCE
+$(RAIN_CLI_BIN): FORCE
 	$(MAKE) -C src $(@F)
 
-$(SUPERCOIN_TX_BIN): FORCE
+$(RAIN_TX_BIN): FORCE
 	$(MAKE) -C src $(@F)
 
-$(SUPERCOIN_WALLET_BIN): FORCE
+$(RAIN_WALLET_BIN): FORCE
 	$(MAKE) -C src $(@F)
 
 if USE_LCOV
@@ -286,7 +286,7 @@ EXTRA_DIST += \
     test/util/data/txcreatesignv2.hex \
     test/util/rpcauth-test.py
 
-CLEANFILES = $(OSX_DMG) $(SUPERCOIN_WIN_INSTALLER)
+CLEANFILES = $(OSX_DMG) $(RAIN_WIN_INSTALLER)
 
 .INTERMEDIATE: $(COVERAGE_INFO)
 

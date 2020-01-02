@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_LIMITEDMAP_H
-#define SUPERCOIN_LIMITEDMAP_H
+#ifndef RAIN_LIMITEDMAP_H
+#define RAIN_LIMITEDMAP_H
 
 #include <assert.h>
 #include <map>
@@ -97,4 +97,4 @@ public:
     }
 };
 
-#endif // SUPERCOIN_LIMITEDMAP_H
+#endif // RAIN_LIMITEDMAP_H

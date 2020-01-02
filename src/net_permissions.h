@@ -6,8 +6,8 @@
 #include <vector>
 #include <netaddress.h>
 
-#ifndef SUPERCOIN_NET_PERMISSIONS_H
-#define SUPERCOIN_NET_PERMISSIONS_H
+#ifndef RAIN_NET_PERMISSIONS_H
+#define RAIN_NET_PERMISSIONS_H
 enum NetPermissionFlags
 {
     PF_NONE = 0,
@@ -59,4 +59,4 @@ public:
     CSubNet m_subnet;
 };
 
-#endif // SUPERCOIN_NET_PERMISSIONS_H
+#endif // RAIN_NET_PERMISSIONS_H

@@ -1,5 +1,5 @@
-#ifndef SUPERCOIN_QT_TEST_WALLETTESTS_H
-#define SUPERCOIN_QT_TEST_WALLETTESTS_H
+#ifndef RAIN_QT_TEST_WALLETTESTS_H
+#define RAIN_QT_TEST_WALLETTESTS_H
 
 #include <QObject>
 #include <QTest>
@@ -12,4 +12,4 @@ private Q_SLOTS:
     void walletTests();
 };
 
-#endif // SUPERCOIN_QT_TEST_WALLETTESTS_H
+#endif // RAIN_QT_TEST_WALLETTESTS_H

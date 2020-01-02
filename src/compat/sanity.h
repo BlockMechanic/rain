@@ -2,10 +2,10 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_COMPAT_SANITY_H
-#define SUPERCOIN_COMPAT_SANITY_H
+#ifndef RAIN_COMPAT_SANITY_H
+#define RAIN_COMPAT_SANITY_H
 
 bool glibc_sanity_test();
 bool glibcxx_sanity_test();
 
-#endif // SUPERCOIN_COMPAT_SANITY_H
+#endif // RAIN_COMPAT_SANITY_H

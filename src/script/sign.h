@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SCRIPT_SIGN_H
-#define SUPERCOIN_SCRIPT_SIGN_H
+#ifndef RAIN_SCRIPT_SIGN_H
+#define RAIN_SCRIPT_SIGN_H
 
 #include <boost/optional.hpp>
 #include <hash.h>
@@ -171,4 +171,4 @@ bool IsSolvable(const SigningProvider& provider, const CScript& script);
 /** Check whether a scriptPubKey is known to be segwit. */
 bool IsSegWitOutput(const SigningProvider& provider, const CScript& script);
 
-#endif // SUPERCOIN_SCRIPT_SIGN_H
+#endif // RAIN_SCRIPT_SIGN_H

@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CRYPTO_POLY1305_H
-#define SUPERCOIN_CRYPTO_POLY1305_H
+#ifndef RAIN_CRYPTO_POLY1305_H
+#define RAIN_CRYPTO_POLY1305_H
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -14,4 +14,4 @@
 void poly1305_auth(unsigned char out[POLY1305_TAGLEN], const unsigned char *m, size_t inlen,
     const unsigned char key[POLY1305_KEYLEN]);
 
-#endif // SUPERCOIN_CRYPTO_POLY1305_H
+#endif // RAIN_CRYPTO_POLY1305_H

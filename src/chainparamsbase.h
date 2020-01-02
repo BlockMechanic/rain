@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CHAINPARAMSBASE_H
-#define SUPERCOIN_CHAINPARAMSBASE_H
+#ifndef RAIN_CHAINPARAMSBASE_H
+#define RAIN_CHAINPARAMSBASE_H
 
 #include <memory>
 #include <string>
@@ -52,4 +52,4 @@ const CBaseChainParams& BaseParams();
 /** Sets the params returned by Params() to those for the given network. */
 void SelectBaseParams(const std::string& chain);
 
-#endif // SUPERCOIN_CHAINPARAMSBASE_H
+#endif // RAIN_CHAINPARAMSBASE_H

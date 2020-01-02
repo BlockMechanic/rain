@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_RECEIVEREQUESTDIALOG_H
-#define SUPERCOIN_QT_RECEIVEREQUESTDIALOG_H
+#ifndef RAIN_QT_RECEIVEREQUESTDIALOG_H
+#define RAIN_QT_RECEIVEREQUESTDIALOG_H
 
 #include <qt/walletmodel.h>
 
@@ -36,4 +36,4 @@ private:
     SendCoinsRecipient info;
 };
 
-#endif // SUPERCOIN_QT_RECEIVEREQUESTDIALOG_H
+#endif // RAIN_QT_RECEIVEREQUESTDIALOG_H

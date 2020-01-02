@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_RPCCONSOLE_H
-#define SUPERCOIN_QT_RPCCONSOLE_H
+#ifndef RAIN_QT_RPCCONSOLE_H
+#define RAIN_QT_RPCCONSOLE_H
 
 #include <qt/guiutil.h>
 #include <qt/peertablemodel.h>
@@ -172,4 +172,4 @@ private Q_SLOTS:
     void updateAlerts(const QString& warnings);
 };
 
-#endif // SUPERCOIN_QT_RPCCONSOLE_H
+#endif // RAIN_QT_RPCCONSOLE_H

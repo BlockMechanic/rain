@@ -97,7 +97,7 @@
 // Application startup time (used for uptime calculation)
 const int64_t nStartupTime = GetTime();
 
-const char * const SUPERCOIN_CONF_FILENAME = "rain.conf";
+const char * const RAIN_CONF_FILENAME = "rain.conf";
 
 ArgsManager gArgs;
 
@@ -915,7 +915,7 @@ bool ArgsManager::ReadConfigFiles(std::string& error, bool ignore_invalid_keys)
         m_config_sections.clear();
     }
 
-    const std::string confPath = GetArg("-conf", SUPERCOIN_CONF_FILENAME);
+    const std::string confPath = GetArg("-conf", RAIN_CONF_FILENAME);
     fsbridge::ifstream stream(GetConfigFile(confPath));
 
     // ok to not have a config file

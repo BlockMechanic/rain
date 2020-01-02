@@ -3,12 +3,12 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SCRIPT_SUPERCOINCONSENSUS_H
-#define SUPERCOIN_SCRIPT_SUPERCOINCONSENSUS_H
+#ifndef RAIN_SCRIPT_RAINCONSENSUS_H
+#define RAIN_SCRIPT_RAINCONSENSUS_H
 
 #include <stdint.h>
 
-#if defined(BUILD_SUPERCOIN_INTERNAL) && defined(HAVE_CONFIG_H)
+#if defined(BUILD_RAIN_INTERNAL) && defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
   #if defined(_WIN32)
     #if defined(DLL_EXPORT)
@@ -21,7 +21,7 @@
   #elif defined(HAVE_FUNC_ATTRIBUTE_VISIBILITY)
     #define EXPORT_SYMBOL __attribute__ ((visibility ("default")))
   #endif
-#elif defined(MSC_VER) && !defined(STATIC_LIBSUPERCOINCONSENSUS)
+#elif defined(MSC_VER) && !defined(STATIC_LIBRAINCONSENSUS)
   #define EXPORT_SYMBOL __declspec(dllimport)
 #endif
 
@@ -33,7 +33,7 @@
 extern "C" {
 #endif
 
-#define SUPERCOINCONSENSUS_API_VER 1
+#define RAINCONSENSUS_API_VER 1
 
 typedef enum rainconsensus_error_t
 {
@@ -80,4 +80,4 @@ EXPORT_SYMBOL unsigned int rainconsensus_version();
 
 #undef EXPORT_SYMBOL
 
-#endif // SUPERCOIN_SCRIPT_SUPERCOINCONSENSUS_H
+#endif // RAIN_SCRIPT_RAINCONSENSUS_H

@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_UTIL_TIME_H
-#define SUPERCOIN_UTIL_TIME_H
+#ifndef RAIN_UTIL_TIME_H
+#define RAIN_UTIL_TIME_H
 
 #include <stdint.h>
 #include <string>
@@ -42,4 +42,4 @@ std::string FormatISO8601DateTime(int64_t nTime);
 std::string FormatISO8601Date(int64_t nTime);
 std::string FormatISO8601Time(int64_t nTime);
 std::string DateTimeStrFormat(const char* pszFormat, int64_t nTime);
-#endif // SUPERCOIN_UTIL_TIME_H
+#endif // RAIN_UTIL_TIME_H

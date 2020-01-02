@@ -2,8 +2,8 @@
 // Copyright (c) 2009-2018 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
-#ifndef SUPERCOIN_UTIL_FEES_H
-#define SUPERCOIN_UTIL_FEES_H
+#ifndef RAIN_UTIL_FEES_H
+#define RAIN_UTIL_FEES_H
 
 #include <string>
 
@@ -13,4 +13,4 @@ enum class FeeReason;
 bool FeeModeFromString(const std::string& mode_string, FeeEstimateMode& fee_estimate_mode);
 std::string StringForFeeReason(FeeReason reason);
 
-#endif // SUPERCOIN_UTIL_FEES_H
+#endif // RAIN_UTIL_FEES_H

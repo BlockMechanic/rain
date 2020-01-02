@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_REVERSELOCK_H
-#define SUPERCOIN_REVERSELOCK_H
+#ifndef RAIN_REVERSELOCK_H
+#define RAIN_REVERSELOCK_H
 
 /**
  * An RAII-style reverse lock. Unlocks on construction and locks on destruction.
@@ -31,4 +31,4 @@ private:
     Lock templock;
 };
 
-#endif // SUPERCOIN_REVERSELOCK_H
+#endif // RAIN_REVERSELOCK_H

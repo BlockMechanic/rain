@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_RPC_RAWTRANSACTION_UTIL_H
-#define SUPERCOIN_RPC_RAWTRANSACTION_UTIL_H
+#ifndef RAIN_RPC_RAWTRANSACTION_UTIL_H
+#define RAIN_RPC_RAWTRANSACTION_UTIL_H
 
 #include <map>
 
@@ -32,4 +32,4 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
 
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
 
-#endif // SUPERCOIN_RPC_RAWTRANSACTION_UTIL_H
+#endif // RAIN_RPC_RAWTRANSACTION_UTIL_H

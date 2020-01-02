@@ -1,5 +1,5 @@
-#ifndef SUPERCOIN_SUPERCOIN_CONFIG_H
-#define SUPERCOIN_SUPERCOIN_CONFIG_H
+#ifndef RAIN_RAIN_CONFIG_H
+#define RAIN_RAIN_CONFIG_H
 
 /* Define if building universal (internal helper macro) */
 /* #undef AC_APPLE_UNIVERSAL_BUILD */
@@ -421,4 +421,4 @@
 /* Define for large files, on AIX-style hosts. */
 /* #undef _LARGE_FILES */
 
-#endif //SUPERCOIN_SUPERCOIN_CONFIG_H
+#endif //RAIN_RAIN_CONFIG_H

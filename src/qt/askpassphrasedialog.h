@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_ASKPASSPHRASEDIALOG_H
-#define SUPERCOIN_QT_ASKPASSPHRASEDIALOG_H
+#ifndef RAIN_QT_ASKPASSPHRASEDIALOG_H
+#define RAIN_QT_ASKPASSPHRASEDIALOG_H
 
 #include <QDialog>
 
@@ -54,4 +54,4 @@ protected:
     bool eventFilter(QObject *object, QEvent *event);
 };
 
-#endif // SUPERCOIN_QT_ASKPASSPHRASEDIALOG_H
+#endif // RAIN_QT_ASKPASSPHRASEDIALOG_H

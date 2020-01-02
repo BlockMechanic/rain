@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_STREAMS_H
-#define SUPERCOIN_STREAMS_H
+#ifndef RAIN_STREAMS_H
+#define RAIN_STREAMS_H
 
 #include <support/allocators/zeroafterfree.h>
 #include <serialize.h>
@@ -854,4 +854,4 @@ public:
     }
 };
 
-#endif // SUPERCOIN_STREAMS_H
+#endif // RAIN_STREAMS_H

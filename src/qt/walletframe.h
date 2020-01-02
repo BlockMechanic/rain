@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_WALLETFRAME_H
-#define SUPERCOIN_QT_WALLETFRAME_H
+#ifndef RAIN_QT_WALLETFRAME_H
+#define RAIN_QT_WALLETFRAME_H
 
 #include <QFrame>
 #include <QMap>
@@ -114,4 +114,4 @@ public Q_SLOTS:
     bool getSPVMode();
 };
 
-#endif // SUPERCOIN_QT_WALLETFRAME_H
+#endif // RAIN_QT_WALLETFRAME_H

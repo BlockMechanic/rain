@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_RPC_PROTOCOL_H
-#define SUPERCOIN_RPC_PROTOCOL_H
+#ifndef RAIN_RPC_PROTOCOL_H
+#define RAIN_RPC_PROTOCOL_H
 
 //! HTTP status codes
 enum HTTPStatusCode
@@ -83,4 +83,4 @@ enum RPCErrorCode
     RPC_FORBIDDEN_BY_SAFE_MODE      = -2,  //!< Server is in safe mode, and command is not allowed in safe mode
 };
 
-#endif // SUPERCOIN_RPC_PROTOCOL_H
+#endif // RAIN_RPC_PROTOCOL_H

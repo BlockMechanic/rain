@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_SUPERCOIN_H
-#define SUPERCOIN_QT_SUPERCOIN_H
+#ifndef RAIN_QT_RAIN_H
+#define RAIN_QT_RAIN_H
 
 #if defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
@@ -130,4 +130,4 @@ private:
 
 int GuiMain(int argc, char* argv[]);
 
-#endif // SUPERCOIN_QT_SUPERCOIN_H
+#endif // RAIN_QT_RAIN_H

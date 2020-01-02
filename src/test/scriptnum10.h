@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_TEST_SCRIPTNUM10_H
-#define SUPERCOIN_TEST_SCRIPTNUM10_H
+#ifndef RAIN_TEST_SCRIPTNUM10_H
+#define RAIN_TEST_SCRIPTNUM10_H
 
 #include <limits>
 #include <stdexcept>
@@ -179,4 +179,4 @@ private:
 };
 
 
-#endif // SUPERCOIN_TEST_BIGNUM_H
+#endif // RAIN_TEST_BIGNUM_H

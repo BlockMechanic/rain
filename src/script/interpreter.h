@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SCRIPT_INTERPRETER_H
-#define SUPERCOIN_SCRIPT_INTERPRETER_H
+#ifndef RAIN_SCRIPT_INTERPRETER_H
+#define RAIN_SCRIPT_INTERPRETER_H
 
 #include <script/script_error.h>
 #include <primitives/transaction.h>
@@ -200,4 +200,4 @@ bool IsDERSignature(const valtype &vchSig, ScriptError* serror = NULL, bool have
 
 bool IsCompressedOrUncompressedPubKey(const valtype &vchPubKey);
 
-#endif // SUPERCOIN_SCRIPT_INTERPRETER_H
+#endif // RAIN_SCRIPT_INTERPRETER_H

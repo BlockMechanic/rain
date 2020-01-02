@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_UINT256_H
-#define SUPERCOIN_UINT256_H
+#ifndef RAIN_UINT256_H
+#define RAIN_UINT256_H
 
 #include <assert.h>
 #include <cstring>
@@ -190,4 +190,4 @@ inline uint512 uint512S(const std::string& str)
     return rv;
 }
 
-#endif // SUPERCOIN_UINT256_H
+#endif // RAIN_UINT256_H

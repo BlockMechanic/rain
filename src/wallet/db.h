@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_WALLET_DB_H
-#define SUPERCOIN_WALLET_DB_H
+#ifndef RAIN_WALLET_DB_H
+#define RAIN_WALLET_DB_H
 
 #include <clientversion.h>
 #include <fs.h>
@@ -413,4 +413,4 @@ public:
     bool static Rewrite(BerkeleyDatabase& database, const char* pszSkip = nullptr);
 };
 
-#endif // SUPERCOIN_WALLET_DB_H
+#endif // RAIN_WALLET_DB_H

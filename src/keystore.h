@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_KEYSTORE_H
-#define SUPERCOIN_KEYSTORE_H
+#ifndef RAIN_KEYSTORE_H
+#define RAIN_KEYSTORE_H
 
 #include <key.h>
 #include <pubkey.h>
@@ -80,4 +80,4 @@ CKeyID GetKeyForDestination(const CKeyStore& store, const CTxDestination& dest);
 /** Checks if a CKey is in the given CKeyStore compressed or otherwise*/
 bool HaveKey(const CKeyStore& store, const CKey& key);
 
-#endif // SUPERCOIN_KEYSTORE_H
+#endif // RAIN_KEYSTORE_H

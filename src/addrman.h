@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_ADDRMAN_H
-#define SUPERCOIN_ADDRMAN_H
+#ifndef RAIN_ADDRMAN_H
+#define RAIN_ADDRMAN_H
 
 #include <netaddress.h>
 #include <protocol.h>
@@ -623,4 +623,4 @@ public:
 
 };
 
-#endif // SUPERCOIN_ADDRMAN_H
+#endif // RAIN_ADDRMAN_H

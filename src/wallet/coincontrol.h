@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_WALLET_COINCONTROL_H
-#define SUPERCOIN_WALLET_COINCONTROL_H
+#ifndef RAIN_WALLET_COINCONTROL_H
+#define RAIN_WALLET_COINCONTROL_H
 
 #include <policy/feerate.h>
 #include <policy/fees.h>
@@ -87,4 +87,4 @@ private:
     std::set<COutPoint> setSelected;
 };
 
-#endif // SUPERCOIN_WALLET_COINCONTROL_H
+#endif // RAIN_WALLET_COINCONTROL_H

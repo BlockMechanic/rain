@@ -47,8 +47,8 @@
 #include <QTextDocument>
 #include <QUrlQuery>
 
-const int SUPERCOIN_IPC_CONNECT_TIMEOUT = 1000; // milliseconds
-const QString SUPERCOIN_IPC_PREFIX("rain:");
+const int RAIN_IPC_CONNECT_TIMEOUT = 1000; // milliseconds
+const QString RAIN_IPC_PREFIX("rain:");
 
 //
 // Create a name that is unique for:
@@ -96,7 +96,7 @@ void PaymentServer::ipcParseCommandLine(interfaces::Node& node, int argc, char* 
         // network as that would require fetching and parsing the payment request.
         // That means clicking such an URI which contains a testnet payment request
         // will start a mainnet instance and throw a "wrong network" error.
-        if (arg.startsWith(SUPERCOIN_IPC_PREFIX, Qt::CaseInsensitive)) // rain: URI
+        if (arg.startsWith(RAIN_IPC_PREFIX, Qt::CaseInsensitive)) // rain: URI
         {
             savedPaymentRequests.append(arg);
 
@@ -131,7 +131,7 @@ bool PaymentServer::ipcSendCommandLine()
     {
         QLocalSocket* socket = new QLocalSocket();
         socket->connectToServer(ipcServerName(), QIODevice::WriteOnly);
-        if (!socket->waitForConnected(SUPERCOIN_IPC_CONNECT_TIMEOUT))
+        if (!socket->waitForConnected(RAIN_IPC_CONNECT_TIMEOUT))
         {
             delete socket;
             socket = nullptr;
@@ -146,7 +146,7 @@ bool PaymentServer::ipcSendCommandLine()
 
         socket->write(block);
         socket->flush();
-        socket->waitForBytesWritten(SUPERCOIN_IPC_CONNECT_TIMEOUT);
+        socket->waitForBytesWritten(RAIN_IPC_CONNECT_TIMEOUT);
         socket->disconnectFromServer();
 
         delete socket;
@@ -236,7 +236,7 @@ void PaymentServer::handleURIOrFile(const QString& s)
         Q_EMIT message(tr("URI handling"), tr("'rain://' is not a valid URI. Use 'rain:' instead."),
             CClientUIInterface::MSG_ERROR);
     }
-    else if (s.startsWith(SUPERCOIN_IPC_PREFIX, Qt::CaseInsensitive)) // rain: URI
+    else if (s.startsWith(RAIN_IPC_PREFIX, Qt::CaseInsensitive)) // rain: URI
     {
         QUrlQuery uri((QUrl(s)));
         // normal URI

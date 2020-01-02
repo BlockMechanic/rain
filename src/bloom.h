@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_BLOOM_H
-#define SUPERCOIN_BLOOM_H
+#ifndef RAIN_BLOOM_H
+#define RAIN_BLOOM_H
 
 #include <serialize.h>
 
@@ -136,4 +136,4 @@ private:
     int nHashFuncs;
 };
 
-#endif // SUPERCOIN_BLOOM_H
+#endif // RAIN_BLOOM_H

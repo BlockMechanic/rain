@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_ZMQ_ZMQNOTIFICATIONINTERFACE_H
-#define SUPERCOIN_ZMQ_ZMQNOTIFICATIONINTERFACE_H
+#ifndef RAIN_ZMQ_ZMQNOTIFICATIONINTERFACE_H
+#define RAIN_ZMQ_ZMQNOTIFICATIONINTERFACE_H
 
 #include <validationinterface.h>
 #include <string>
@@ -42,4 +42,4 @@ private:
 
 extern CZMQNotificationInterface* g_zmq_notification_interface;
 
-#endif // SUPERCOIN_ZMQ_ZMQNOTIFICATIONINTERFACE_H
+#endif // RAIN_ZMQ_ZMQNOTIFICATIONINTERFACE_H

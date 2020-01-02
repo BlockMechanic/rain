@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_POLICY_FEERATE_H
-#define SUPERCOIN_POLICY_FEERATE_H
+#ifndef RAIN_POLICY_FEERATE_H
+#define RAIN_POLICY_FEERATE_H
 
 #include <amount.h>
 #include <serialize.h>
@@ -56,4 +56,4 @@ public:
     }
 };
 
-#endif //  SUPERCOIN_POLICY_FEERATE_H
+#endif //  RAIN_POLICY_FEERATE_H

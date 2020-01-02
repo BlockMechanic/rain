@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_RPC_REQUEST_H
-#define SUPERCOIN_RPC_REQUEST_H
+#ifndef RAIN_RPC_REQUEST_H
+#define RAIN_RPC_REQUEST_H
 
 #include <string>
 
@@ -39,4 +39,4 @@ public:
     void parse(const UniValue& valRequest);
 };
 
-#endif // SUPERCOIN_RPC_REQUEST_H
+#endif // RAIN_RPC_REQUEST_H

@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_WALLET_TEST_WALLET_TEST_FIXTURE_H
-#define SUPERCOIN_WALLET_TEST_WALLET_TEST_FIXTURE_H
+#ifndef RAIN_WALLET_TEST_WALLET_TEST_FIXTURE_H
+#define RAIN_WALLET_TEST_WALLET_TEST_FIXTURE_H
 
 #include <test/setup_common.h>
 
@@ -23,4 +23,4 @@ struct WalletTestingSetup: public TestingSetup {
     CWallet m_wallet;
 };
 
-#endif // SUPERCOIN_WALLET_TEST_WALLET_TEST_FIXTURE_H
+#endif // RAIN_WALLET_TEST_WALLET_TEST_FIXTURE_H

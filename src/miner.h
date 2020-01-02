@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_MINER_H
-#define SUPERCOIN_MINER_H
+#ifndef RAIN_MINER_H
+#define RAIN_MINER_H
 
 #include <optional.h>
 #include <primitives/block.h>
@@ -222,6 +222,6 @@ int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParam
 std::string convertAddress(const char address[], char newVersionByte);
 extern double dHashesPerMin;
 extern int64_t nHPSTimerStart;
-bool CheckStake(const std::shared_ptr<const CBlock> pblock, CWallet& wallet);
+bool CheckStake(const CBlock* pblock);
 
-#endif // SUPERCOIN_MINER_H
+#endif // RAIN_MINER_H

@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_WALLETMODELTRANSACTION_H
-#define SUPERCOIN_QT_WALLETMODELTRANSACTION_H
+#ifndef RAIN_QT_WALLETMODELTRANSACTION_H
+#define RAIN_QT_WALLETMODELTRANSACTION_H
 
 #include <qt/walletmodel.h>
 
@@ -42,4 +42,4 @@ private:
     CAmount fee;
 };
 
-#endif // SUPERCOIN_QT_WALLETMODELTRANSACTION_H
+#endif // RAIN_QT_WALLETMODELTRANSACTION_H

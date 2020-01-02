@@ -3,40 +3,40 @@
 # backward compatibility for existing gentoo layout 
 #
 if [ -d "/var/lib/rain/.rain" ]; then
-	SUPERCOIND_DEFAULT_DATADIR="/var/lib/rain/.rain"
+	RAIND_DEFAULT_DATADIR="/var/lib/rain/.rain"
 else
-	SUPERCOIND_DEFAULT_DATADIR="/var/lib/raind"
+	RAIND_DEFAULT_DATADIR="/var/lib/raind"
 fi
 
-SUPERCOIND_CONFIGFILE=${SUPERCOIND_CONFIGFILE:-/etc/rain/rain.conf}
-SUPERCOIND_PIDDIR=${SUPERCOIND_PIDDIR:-/var/run/raind}
-SUPERCOIND_PIDFILE=${SUPERCOIND_PIDFILE:-${SUPERCOIND_PIDDIR}/raind.pid}
-SUPERCOIND_DATADIR=${SUPERCOIND_DATADIR:-${SUPERCOIND_DEFAULT_DATADIR}}
-SUPERCOIND_USER=${SUPERCOIND_USER:-${SUPERCOIN_USER:-rain}}
-SUPERCOIND_GROUP=${SUPERCOIND_GROUP:-rain}
-SUPERCOIND_BIN=${SUPERCOIND_BIN:-/usr/bin/raind}
-SUPERCOIND_NICE=${SUPERCOIND_NICE:-${NICELEVEL:-0}}
-SUPERCOIND_OPTS="${SUPERCOIND_OPTS:-${SUPERCOIN_OPTS}}"
+RAIND_CONFIGFILE=${RAIND_CONFIGFILE:-/etc/rain/rain.conf}
+RAIND_PIDDIR=${RAIND_PIDDIR:-/var/run/raind}
+RAIND_PIDFILE=${RAIND_PIDFILE:-${RAIND_PIDDIR}/raind.pid}
+RAIND_DATADIR=${RAIND_DATADIR:-${RAIND_DEFAULT_DATADIR}}
+RAIND_USER=${RAIND_USER:-${RAIN_USER:-rain}}
+RAIND_GROUP=${RAIND_GROUP:-rain}
+RAIND_BIN=${RAIND_BIN:-/usr/bin/raind}
+RAIND_NICE=${RAIND_NICE:-${NICELEVEL:-0}}
+RAIND_OPTS="${RAIND_OPTS:-${RAIN_OPTS}}"
 
 name="Rain Core Daemon"
 description="Rain cryptocurrency P2P network daemon"
 
 command="/usr/bin/raind"
-command_args="-pid=\"${SUPERCOIND_PIDFILE}\" \
-		-conf=\"${SUPERCOIND_CONFIGFILE}\" \
-		-datadir=\"${SUPERCOIND_DATADIR}\" \
+command_args="-pid=\"${RAIND_PIDFILE}\" \
+		-conf=\"${RAIND_CONFIGFILE}\" \
+		-datadir=\"${RAIND_DATADIR}\" \
 		-daemon \
-		${SUPERCOIND_OPTS}"
+		${RAIND_OPTS}"
 
-required_files="${SUPERCOIND_CONFIGFILE}"
-start_stop_daemon_args="-u ${SUPERCOIND_USER} \
-			-N ${SUPERCOIND_NICE} -w 2000"
-pidfile="${SUPERCOIND_PIDFILE}"
+required_files="${RAIND_CONFIGFILE}"
+start_stop_daemon_args="-u ${RAIND_USER} \
+			-N ${RAIND_NICE} -w 2000"
+pidfile="${RAIND_PIDFILE}"
 
 # The retry schedule to use when stopping the daemon. Could be either
 # a timeout in seconds or multiple signal/timeout pairs (like
 # "SIGKILL/180 SIGTERM/300")
-retry="${SUPERCOIND_SIGTERM_TIMEOUT}"
+retry="${RAIND_SIGTERM_TIMEOUT}"
 
 depend() {
 	need localmount net
@@ -50,29 +50,29 @@ start_pre() {
 	checkpath \
 	-d \
 	--mode 0750 \
-	--owner "${SUPERCOIND_USER}:${SUPERCOIND_GROUP}" \
-	"${SUPERCOIND_DATADIR}"
+	--owner "${RAIND_USER}:${RAIND_GROUP}" \
+	"${RAIND_DATADIR}"
 
 	checkpath \
 	-d \
 	--mode 0755 \
-	--owner "${SUPERCOIND_USER}:${SUPERCOIND_GROUP}" \
-	"${SUPERCOIND_PIDDIR}"
+	--owner "${RAIND_USER}:${RAIND_GROUP}" \
+	"${RAIND_PIDDIR}"
 
 	checkpath -f \
-	-o ${SUPERCOIND_USER}:${SUPERCOIND_GROUP} \
+	-o ${RAIND_USER}:${RAIND_GROUP} \
 	-m 0660 \
-	${SUPERCOIND_CONFIGFILE}
+	${RAIND_CONFIGFILE}
 
 	checkconfig || return 1
 }
 
 checkconfig()
 {
-	if ! grep -qs '^rpcpassword=' "${SUPERCOIND_CONFIGFILE}" ; then
+	if ! grep -qs '^rpcpassword=' "${RAIND_CONFIGFILE}" ; then
 		eerror ""
 		eerror "ERROR: You must set a secure rpcpassword to run raind."
-		eerror "The setting must appear in ${SUPERCOIND_CONFIGFILE}"
+		eerror "The setting must appear in ${RAIND_CONFIGFILE}"
 		eerror ""
 		eerror "This password is security critical to securing wallets "
 		eerror "and must not be the same as the rpcuser setting."

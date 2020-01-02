@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_QT_OPTIONSMODEL_H
-#define SUPERCOIN_QT_OPTIONSMODEL_H
+#ifndef RAIN_QT_OPTIONSMODEL_H
+#define RAIN_QT_OPTIONSMODEL_H
 
 #include <amount.h>
 
@@ -119,4 +119,4 @@ Q_SIGNALS:
     void enableMessageSendConfChanged(bool);
 };
 
-#endif // SUPERCOIN_QT_OPTIONSMODEL_H
+#endif // RAIN_QT_OPTIONSMODEL_H

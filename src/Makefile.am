@@ -21,43 +21,43 @@ else
 LIBUNIVALUE = $(UNIVALUE_LIBS)
 endif
 
-SUPERCOIN_INCLUDES=-I$(builddir) $(BDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
+RAIN_INCLUDES=-I$(builddir) $(BDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
 
-SUPERCOIN_INCLUDES += -I$(srcdir)/secp256k1/include
-SUPERCOIN_INCLUDES += $(UNIVALUE_CFLAGS)
+RAIN_INCLUDES += -I$(srcdir)/secp256k1/include
+RAIN_INCLUDES += $(UNIVALUE_CFLAGS)
 
-LIBSUPERCOIN_SERVER=librain_server.a
-LIBSUPERCOIN_COMMON=librain_common.a
-LIBSUPERCOIN_CONSENSUS=librain_consensus.a
-LIBSUPERCOIN_CLI=librain_cli.a
-LIBSUPERCOIN_UTIL=librain_util.a
-LIBSUPERCOIN_CRYPTO_BASE=crypto/librain_crypto_base.a
-LIBSUPERCOINQT=qt/librainqt.a
+LIBRAIN_SERVER=librain_server.a
+LIBRAIN_COMMON=librain_common.a
+LIBRAIN_CONSENSUS=librain_consensus.a
+LIBRAIN_CLI=librain_cli.a
+LIBRAIN_UTIL=librain_util.a
+LIBRAIN_CRYPTO_BASE=crypto/librain_crypto_base.a
+LIBRAINQT=qt/librainqt.a
 LIBSECP256K1=secp256k1/libsecp256k1.la
 
 if ENABLE_ZMQ
-LIBSUPERCOIN_ZMQ=librain_zmq.a
+LIBRAIN_ZMQ=librain_zmq.a
 endif
-if BUILD_SUPERCOIN_LIBS
-LIBSUPERCOINCONSENSUS=librainconsensus.la
+if BUILD_RAIN_LIBS
+LIBRAINCONSENSUS=librainconsensus.la
 endif
 if ENABLE_WALLET
-LIBSUPERCOIN_WALLET=librain_wallet.a
-LIBSUPERCOIN_WALLET_TOOL=librain_wallet_tool.a
+LIBRAIN_WALLET=librain_wallet.a
+LIBRAIN_WALLET_TOOL=librain_wallet_tool.a
 endif
 
-LIBSUPERCOIN_CRYPTO= $(LIBSUPERCOIN_CRYPTO_BASE)
+LIBRAIN_CRYPTO= $(LIBRAIN_CRYPTO_BASE)
 if ENABLE_SSE41
-LIBSUPERCOIN_CRYPTO_SSE41 = crypto/librain_crypto_sse41.a
-LIBSUPERCOIN_CRYPTO += $(LIBSUPERCOIN_CRYPTO_SSE41)
+LIBRAIN_CRYPTO_SSE41 = crypto/librain_crypto_sse41.a
+LIBRAIN_CRYPTO += $(LIBRAIN_CRYPTO_SSE41)
 endif
 if ENABLE_AVX2
-LIBSUPERCOIN_CRYPTO_AVX2 = crypto/librain_crypto_avx2.a
-LIBSUPERCOIN_CRYPTO += $(LIBSUPERCOIN_CRYPTO_AVX2)
+LIBRAIN_CRYPTO_AVX2 = crypto/librain_crypto_avx2.a
+LIBRAIN_CRYPTO += $(LIBRAIN_CRYPTO_AVX2)
 endif
 if ENABLE_SHANI
-LIBSUPERCOIN_CRYPTO_SHANI = crypto/librain_crypto_shani.a
-LIBSUPERCOIN_CRYPTO += $(LIBSUPERCOIN_CRYPTO_SHANI)
+LIBRAIN_CRYPTO_SHANI = crypto/librain_crypto_shani.a
+LIBRAIN_CRYPTO += $(LIBRAIN_CRYPTO_SHANI)
 endif
 
 $(LIBSECP256K1): $(wildcard secp256k1/src/*.h) $(wildcard secp256k1/src/*.c) $(wildcard secp256k1/include/*)
@@ -66,46 +66,45 @@ $(LIBSECP256K1): $(wildcard secp256k1/src/*.h) $(wildcard secp256k1/src/*.c) $(w
 # Make is not made aware of per-object dependencies to avoid limiting building parallelization
 # But to build the less dependent modules first, we manually select their order here:
 EXTRA_LIBRARIES += \
-  $(LIBSUPERCOIN_CRYPTO) \
-  $(LIBSUPERCOIN_UTIL) \
-  $(LIBSUPERCOIN_COMMON) \
-  $(LIBSUPERCOIN_CONSENSUS) \
-  $(LIBSUPERCOIN_SERVER) \
-  $(LIBSUPERCOIN_CLI) \
-  $(LIBSUPERCOIN_WALLET) \
-  $(LIBSUPERCOIN_WALLET_TOOL) \
-  $(LIBSUPERCOIN_ZMQ)
+  $(LIBRAIN_CRYPTO) \
+  $(LIBRAIN_UTIL) \
+  $(LIBRAIN_COMMON) \
+  $(LIBRAIN_CONSENSUS) \
+  $(LIBRAIN_SERVER) \
+  $(LIBRAIN_CLI) \
+  $(LIBRAIN_WALLET) \
+  $(LIBRAIN_WALLET_TOOL) \
+  $(LIBRAIN_ZMQ)
 
-lib_LTLIBRARIES = $(LIBSUPERCOINCONSENSUS)
+lib_LTLIBRARIES = $(LIBRAINCONSENSUS)
 
 bin_PROGRAMS =
 noinst_PROGRAMS =
 TESTS =
 BENCHMARKS =
 
-if BUILD_SUPERCOIND
+if BUILD_RAIND
   bin_PROGRAMS += raind
 endif
 
-if BUILD_SUPERCOIN_CLI
+if BUILD_RAIN_CLI
   bin_PROGRAMS += rain-cli
 endif
-if BUILD_SUPERCOIN_TX
+if BUILD_RAIN_TX
   bin_PROGRAMS += rain-tx
 endif
 if ENABLE_WALLET
-if BUILD_SUPERCOIN_WALLET
+if BUILD_RAIN_WALLET
   bin_PROGRAMS += rain-wallet
 endif
 endif
 
 .PHONY: FORCE check-symbols check-security
 # rain core #
-SUPERCOIN_CORE_H = \
+RAIN_CORE_H = \
   addrdb.h \
   addrman.h \
   attributes.h \
-  axiom.h \
   banman.h \
   base58.h \
   bignum.h \
@@ -196,7 +195,6 @@ SUPERCOIN_CORE_H = \
   script/sign.h \
   script/signingprovider.h \
   script/standard.h \
-  semiOrderedMap.h \
   shutdown.h \
   smessage/lz4.h \
   smessage/smessage.h \
@@ -279,7 +277,7 @@ librain_util_a-clientversion.$(OBJEXT): obj/build.h
 # Contains code accessing mempool and chain state that is meant to be separated
 # from wallet and gui code (see node/README.md). Shared code should go in
 # librain_common or librain_util libraries, instead.
-librain_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES) $(MINIUPNPC_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
+librain_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES) $(MINIUPNPC_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
 librain_server_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_server_a_SOURCES = \
   addrdb.cpp \
@@ -333,7 +331,7 @@ librain_server_a_SOURCES = \
   validation.cpp \
   validationinterface.cpp \
   versionbits.cpp \
-  $(SUPERCOIN_CORE_H)
+  $(RAIN_CORE_H)
 
 if ENABLE_WALLET
 librain_server_a_SOURCES += wallet/init.cpp
@@ -343,7 +341,7 @@ librain_server_a_SOURCES += dummywallet.cpp
 endif
 
 if ENABLE_ZMQ
-librain_zmq_a_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES) $(ZMQ_CFLAGS)
+librain_zmq_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES) $(ZMQ_CFLAGS)
 librain_zmq_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_zmq_a_SOURCES = \
   zmq/zmqabstractnotifier.cpp \
@@ -355,7 +353,7 @@ endif
 
 # wallet: shared between raind and rain-qt, but only linked
 # when wallet enabled
-librain_wallet_a_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES)
+librain_wallet_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 librain_wallet_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_wallet_a_SOURCES = \
   interfaces/wallet.cpp \
@@ -373,13 +371,13 @@ librain_wallet_a_SOURCES = \
   wallet/walletdb.cpp \
   wallet/walletutil.cpp \
   wallet/coinselection.cpp \
-  $(SUPERCOIN_CORE_H)
+  $(RAIN_CORE_H)
 
-librain_wallet_tool_a_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES)
+librain_wallet_tool_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 librain_wallet_tool_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_wallet_tool_a_SOURCES = \
   wallet/wallettool.cpp \
-  $(SUPERCOIN_CORE_H)
+  $(RAIN_CORE_H)
 
 # crypto primitives library
 crypto_librain_crypto_base_a_CPPFLAGS = $(AM_CPPFLAGS)
@@ -409,9 +407,8 @@ crypto_librain_crypto_base_a_SOURCES = \
   crypto/sha512.cpp \
   crypto/sha512.h \
   crypto/siphash.cpp \
-  crypto/siphash.h \
-  momentum.cpp \
-  momentum.h
+  crypto/siphash.h
+
 
 if USE_ASM
 crypto_librain_crypto_base_a_SOURCES += crypto/sha256_sse4.cpp
@@ -436,13 +433,12 @@ crypto_librain_crypto_shani_a_CPPFLAGS += -DENABLE_SHANI
 crypto_librain_crypto_shani_a_SOURCES = crypto/sha256_shani.cpp
 
 # consensus: shared between all executables that validate any consensus rules.
-librain_consensus_a_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES)
+librain_consensus_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 librain_consensus_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_consensus_a_SOURCES = \
   amount.h \
   arith_uint256.cpp \
   arith_uint256.h \
-  axiom.cpp \
   consensus/merkle.cpp \
   consensus/merkle.h \
   consensus/params.h \
@@ -486,7 +482,7 @@ librain_consensus_a_SOURCES = \
   version.h
 
 # common: shared between raind, and rain-qt and non-server tools
-librain_common_a_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES)
+librain_common_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 librain_common_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_common_a_SOURCES = \
   base58.cpp \
@@ -518,12 +514,12 @@ librain_common_a_SOURCES = \
   script/standard.cpp \
   versionbitsinfo.cpp \
   warnings.cpp \
-  $(SUPERCOIN_CORE_H)
+  $(RAIN_CORE_H)
 
 # util: shared between all executables.
 # This library *must* be included to make sure that the glibc
 # backward-compatibility objects and their sanity checks are linked.
-librain_util_a_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES)
+librain_util_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 librain_util_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_util_a_SOURCES = \
   support/lockedpool.cpp \
@@ -553,7 +549,7 @@ librain_util_a_SOURCES = \
   util/time.cpp \
   util/url.cpp \
   util/validation.cpp \
-  $(SUPERCOIN_CORE_H)
+  $(RAIN_CORE_H)
 
 if GLIBC_BACK_COMPAT
 librain_util_a_SOURCES += compat/glibc_compat.cpp
@@ -561,18 +557,18 @@ AM_LDFLAGS += $(COMPAT_LDFLAGS)
 endif
 
 # cli: shared between rain-cli and rain-qt
-librain_cli_a_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES)
+librain_cli_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 librain_cli_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_cli_a_SOURCES = \
   rpc/client.cpp \
-  $(SUPERCOIN_CORE_H)
+  $(RAIN_CORE_H)
 
 nodist_librain_util_a_SOURCES = $(srcdir)/obj/build.h
 #
 
 # raind binary #
 raind_SOURCES = raind.cpp
-raind_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES)
+raind_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 raind_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 raind_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
 
@@ -583,15 +579,15 @@ endif
 # Libraries below may be listed more than once to resolve circular dependencies (see
 # https://eli.thegreenplace.net/2013/07/09/library-order-in-static-linking#circular-dependency)
 raind_LDADD = \
-  $(LIBSUPERCOIN_SERVER) \
-  $(LIBSUPERCOIN_WALLET) \
-  $(LIBSUPERCOIN_SERVER) \
-  $(LIBSUPERCOIN_COMMON) \
+  $(LIBRAIN_SERVER) \
+  $(LIBRAIN_WALLET) \
+  $(LIBRAIN_SERVER) \
+  $(LIBRAIN_COMMON) \
   $(LIBUNIVALUE) \
-  $(LIBSUPERCOIN_UTIL) \
-  $(LIBSUPERCOIN_ZMQ) \
-  $(LIBSUPERCOIN_CONSENSUS) \
-  $(LIBSUPERCOIN_CRYPTO) \
+  $(LIBRAIN_UTIL) \
+  $(LIBRAIN_ZMQ) \
+  $(LIBRAIN_CONSENSUS) \
+  $(LIBRAIN_CRYPTO) \
   $(LIBLEVELDB) \
   $(LIBLEVELDB_SSE42) \
   $(LIBMEMENV) \
@@ -601,7 +597,7 @@ raind_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVEN
 
 # rain-cli binary #
 rain_cli_SOURCES = rain-cli.cpp
-rain_cli_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES) $(EVENT_CFLAGS)
+rain_cli_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES) $(EVENT_CFLAGS)
 rain_cli_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 rain_cli_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
 
@@ -610,17 +606,17 @@ rain_cli_SOURCES += rain-cli-res.rc
 endif
 
 rain_cli_LDADD = \
-  $(LIBSUPERCOIN_CLI) \
+  $(LIBRAIN_CLI) \
   $(LIBUNIVALUE) \
-  $(LIBSUPERCOIN_UTIL) \
-  $(LIBSUPERCOIN_CRYPTO)
+  $(LIBRAIN_UTIL) \
+  $(LIBRAIN_CRYPTO)
 
 rain_cli_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS)
 #
 
 # rain-tx binary #
 rain_tx_SOURCES = rain-tx.cpp
-rain_tx_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES)
+rain_tx_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 rain_tx_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 rain_tx_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
 
@@ -630,10 +626,10 @@ endif
 
 rain_tx_LDADD = \
   $(LIBUNIVALUE) \
-  $(LIBSUPERCOIN_COMMON) \
-  $(LIBSUPERCOIN_UTIL) \
-  $(LIBSUPERCOIN_CONSENSUS) \
-  $(LIBSUPERCOIN_CRYPTO) \
+  $(LIBRAIN_COMMON) \
+  $(LIBRAIN_UTIL) \
+  $(LIBRAIN_CONSENSUS) \
+  $(LIBRAIN_CRYPTO) \
   $(LIBSECP256K1)
 
 rain_tx_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS)
@@ -641,7 +637,7 @@ rain_tx_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS)
 
 # rain-wallet binary #
 rain_wallet_SOURCES = rain-wallet.cpp
-rain_wallet_CPPFLAGS = $(AM_CPPFLAGS) $(SUPERCOIN_INCLUDES)
+rain_wallet_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 rain_wallet_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 rain_wallet_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
 
@@ -650,13 +646,13 @@ rain_wallet_SOURCES += rain-wallet-res.rc
 endif
 
 rain_wallet_LDADD = \
-  $(LIBSUPERCOIN_WALLET_TOOL) \
-  $(LIBSUPERCOIN_WALLET) \
-  $(LIBSUPERCOIN_COMMON) \
-  $(LIBSUPERCOIN_CONSENSUS) \
-  $(LIBSUPERCOIN_UTIL) \
-  $(LIBSUPERCOIN_CRYPTO) \
-  $(LIBSUPERCOIN_ZMQ) \
+  $(LIBRAIN_WALLET_TOOL) \
+  $(LIBRAIN_WALLET) \
+  $(LIBRAIN_COMMON) \
+  $(LIBRAIN_CONSENSUS) \
+  $(LIBRAIN_UTIL) \
+  $(LIBRAIN_CRYPTO) \
+  $(LIBRAIN_ZMQ) \
   $(LIBLEVELDB) \
   $(LIBLEVELDB_SSE42) \
   $(LIBMEMENV) \
@@ -667,7 +663,7 @@ rain_wallet_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(CRYPTO_LIBS) $(EVENT_PTHREADS_L
 #
 
 # rainconsensus library #
-if BUILD_SUPERCOIN_LIBS
+if BUILD_RAIN_LIBS
 include_HEADERS = script/rainconsensus.h
 librainconsensus_la_SOURCES = support/cleanse.cpp $(crypto_librain_crypto_base_a_SOURCES) $(librain_consensus_a_SOURCES)
 
@@ -677,7 +673,7 @@ endif
 
 librainconsensus_la_LDFLAGS = $(AM_LDFLAGS) -no-undefined $(RELDFLAGS)
 librainconsensus_la_LIBADD = $(LIBSECP256K1)
-librainconsensus_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(builddir)/obj -I$(srcdir)/secp256k1/include -DBUILD_SUPERCOIN_INTERNAL
+librainconsensus_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(builddir)/obj -I$(srcdir)/secp256k1/include -DBUILD_RAIN_INTERNAL
 librainconsensus_la_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
 endif

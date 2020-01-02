@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_INTERFACES_WALLET_H
-#define SUPERCOIN_INTERFACES_WALLET_H
+#ifndef RAIN_INTERFACES_WALLET_H
+#define RAIN_INTERFACES_WALLET_H
 
 #include <amount.h>                    // For CAmount
 #include <pubkey.h>                    // For CKeyID and CScriptID (definitions needed in CTxDestination instantiation)
@@ -400,4 +400,4 @@ std::unique_ptr<Wallet> MakeWallet(const std::shared_ptr<CWallet>& wallet);
 
 } // namespace interfaces
 
-#endif // SUPERCOIN_INTERFACES_WALLET_H
+#endif // RAIN_INTERFACES_WALLET_H

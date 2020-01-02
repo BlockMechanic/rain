@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_ARITH_UINT256_H
-#define SUPERCOIN_ARITH_UINT256_H
+#ifndef RAIN_ARITH_UINT256_H
+#define RAIN_ARITH_UINT256_H
 
 #include <assert.h>
 #include <cstring>
@@ -336,4 +336,4 @@ arith_uint256 UintToArith256(const uint256 &);
 uint512 ArithToUint512(const arith_uint512&);
 arith_uint512 UintToArith512(const uint512&);
 
-#endif // SUPERCOIN_ARITH_UINT256_H
+#endif // RAIN_ARITH_UINT256_H

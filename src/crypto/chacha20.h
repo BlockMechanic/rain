@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CRYPTO_CHACHA20_H
-#define SUPERCOIN_CRYPTO_CHACHA20_H
+#ifndef RAIN_CRYPTO_CHACHA20_H
+#define RAIN_CRYPTO_CHACHA20_H
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -31,4 +31,4 @@ public:
     void Crypt(const unsigned char* input, unsigned char* output, size_t bytes);
 };
 
-#endif // SUPERCOIN_CRYPTO_CHACHA20_H
+#endif // RAIN_CRYPTO_CHACHA20_H

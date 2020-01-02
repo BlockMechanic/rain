@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_INTERFACES_CHAIN_H
-#define SUPERCOIN_INTERFACES_CHAIN_H
+#ifndef RAIN_INTERFACES_CHAIN_H
+#define RAIN_INTERFACES_CHAIN_H
 
 #include <optional.h>               // For Optional and nullopt
 #include <primitives/transaction.h> // For CTransactionRef
@@ -30,6 +30,7 @@ class uint256;
 enum class RBFTransactionState;
 struct CBlockLocator;
 struct FeeCalculation;
+class CWallet;
 
 namespace interfaces {
 
@@ -113,7 +114,7 @@ public:
         virtual bool startStake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread) = 0;
         
         //virtual void cacheKernel(std::map<COutPoint, CStakeCache>& cache, const COutPoint& prevout) =0;
-        virtual	bool checkKernel(const CBlock* block, const COutPoint& prevout) =0;
+        //virtual	bool checkKernel(const CBlock* block, const COutPoint& prevout) =0;
 
 #ifdef ENABLE_SECURE_MESSAGING
         virtual bool smsgStart()=0;

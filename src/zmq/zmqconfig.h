@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_ZMQ_ZMQCONFIG_H
-#define SUPERCOIN_ZMQ_ZMQCONFIG_H
+#ifndef RAIN_ZMQ_ZMQCONFIG_H
+#define RAIN_ZMQ_ZMQCONFIG_H
 
 #if defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
@@ -21,4 +21,4 @@
 
 void zmqError(const char *str);
 
-#endif // SUPERCOIN_ZMQ_ZMQCONFIG_H
+#endif // RAIN_ZMQ_ZMQCONFIG_H

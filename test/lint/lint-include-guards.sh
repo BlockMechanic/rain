@@ -7,7 +7,7 @@
 # Check include guards.
 
 export LC_ALL=C
-HEADER_ID_PREFIX="SUPERCOIN_"
+HEADER_ID_PREFIX="RAIN_"
 HEADER_ID_SUFFIX="_H"
 
 REGEXP_EXCLUDE_FILES_WITH_PREFIX="src/(crypto/ctaes/|leveldb/|secp256k1/|tinyformat.h|univalue/)"

@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_UTIL_MEMORY_H
-#define SUPERCOIN_UTIL_MEMORY_H
+#ifndef RAIN_UTIL_MEMORY_H
+#define RAIN_UTIL_MEMORY_H
 
 #include <memory>
 #include <utility>

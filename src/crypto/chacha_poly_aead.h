@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CRYPTO_CHACHA_POLY_AEAD_H
-#define SUPERCOIN_CRYPTO_CHACHA_POLY_AEAD_H
+#ifndef RAIN_CRYPTO_CHACHA_POLY_AEAD_H
+#define RAIN_CRYPTO_CHACHA_POLY_AEAD_H
 
 #include <crypto/chacha20.h>
 
@@ -143,4 +143,4 @@ public:
     bool GetLength(uint32_t* len24_out, uint64_t seqnr_aad, int aad_pos, const uint8_t* ciphertext);
 };
 
-#endif // SUPERCOIN_CRYPTO_CHACHA_POLY_AEAD_H
+#endif // RAIN_CRYPTO_CHACHA_POLY_AEAD_H

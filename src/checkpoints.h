@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CHECKPOINTS_H
-#define SUPERCOIN_CHECKPOINTS_H
+#ifndef RAIN_CHECKPOINTS_H
+#define RAIN_CHECKPOINTS_H
 
 #include <uint256.h>
 
@@ -32,4 +32,4 @@ const CBlockIndex* AutoSelectSyncCheckpoint();
 bool CheckSync(int nHeight);
 } //namespace Checkpoints
 
-#endif // SUPERCOIN_CHECKPOINTS_H
+#endif // RAIN_CHECKPOINTS_H

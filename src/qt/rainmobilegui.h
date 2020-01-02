@@ -1,5 +1,5 @@
-#ifndef SUPERCOINMOBILEGUI_H
-#define SUPERCOINMOBILEGUI_H
+#ifndef RAINMOBILEGUI_H
+#define RAINMOBILEGUI_H
 
 #include <QtQuick/QQuickView>
 #include <memory>
@@ -71,4 +71,4 @@ private:
     int m_displayUnit;
 };
 
-#endif // SUPERCOINMOBILEGUI_H
+#endif // RAINMOBILEGUI_H

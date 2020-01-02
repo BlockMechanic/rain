@@ -20,21 +20,12 @@
 // Supposed to be 2^n-1
 static const uint32_t STAKE_TIMESTAMP_MASK = 15;
 
-struct CStakeCache{
-    CStakeCache(uint32_t blockFromTime_, CAmount amount_) : blockFromTime(blockFromTime_), amount(amount_){
-    }
-    uint32_t blockFromTime;
-    CAmount amount;
-};
-
-extern void CacheKernel(std::map<COutPoint, CStakeCache>& cache, const COutPoint& prevout, CCoinsViewCache& view);
-
 // Compute the hash modifier for proof-of-stake
 uint256 ComputeStakeModifier(const CBlockIndex* pindexPrev, const uint256& kernel);
 
 // Check whether stake kernel meets hash target
 // Sets hashProofOfStake on success return
-bool CheckStakeKernelHash(CBlockIndex* pindexPrev, unsigned int nBits, const CBlock* blockFrom, unsigned int nTxPrevOffset, const CTransaction* txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake);
+bool CheckStakeKernelHash(CBlockIndex* pindexPrev, unsigned int nBits, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake);
 
 // Check kernel hash target and coinstake signature
 // Sets hashProofOfStake on success return
@@ -49,11 +40,8 @@ bool CheckBlockInputPubKeyMatchesOutputPubKey(const CBlock& block, CCoinsViewCac
 // Recover the pubkey and check that it matches the prevoutStake's scriptPubKey.
 //bool CheckRecoveredPubKeyFromBlockSignature(CBlockIndex* pindexPrev, const CBlockHeader& block, CCoinsViewCache& view);
 
-// Wrapper around CheckStakeKernelHash()
-// Also checks existence of kernel input and min age
-// Convenient for searching a kernel
-bool CheckKernel(CBlockIndex* pindexPrev, const CBlock* block, const COutPoint& prevout, CCoinsViewCache& view);
-
 bool ComputeNextStakeModifier(const CBlockIndex* pindexPrev, uint64_t& nStakeModifier, bool& fGeneratedStakeModifier);
 
+// peercoin: entropy bit for stake modifier if chosen by modifier
+unsigned int GetStakeEntropyBit(const CBlock& block);
 #endif // QUANTUM_POS_H

@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CRYPTO_SHA512_H
-#define SUPERCOIN_CRYPTO_SHA512_H
+#ifndef RAIN_CRYPTO_SHA512_H
+#define RAIN_CRYPTO_SHA512_H
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -25,4 +25,4 @@ public:
     CSHA512& Reset();
 };
 
-#endif // SUPERCOIN_CRYPTO_SHA512_H
+#endif // RAIN_CRYPTO_SHA512_H

@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_TXMEMPOOL_H
-#define SUPERCOIN_TXMEMPOOL_H
+#ifndef RAIN_TXMEMPOOL_H
+#define RAIN_TXMEMPOOL_H
 
 #include <atomic>
 #include <map>
@@ -850,4 +850,4 @@ struct DisconnectedBlockTransactions {
     }
 };
 
-#endif // SUPERCOIN_TXMEMPOOL_H
+#endif // RAIN_TXMEMPOOL_H

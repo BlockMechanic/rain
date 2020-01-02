@@ -4231,21 +4231,6 @@ void PushGetBlocks(CNode* pnode, const CBlockIndex* pindexBegin, const uint256& 
     connman.PushMessage(pnode, msgMaker.Make(NetMsgType::GETBLOCKS, ::ChainActive().GetLocator(pindexBegin), hashEnd));
 }
 
-uint256 static GetOrphanRoot(const uint256& hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
-{
-    std::map<uint256, COrphanBlock*>::iterator it = mapOrphanBlocks.find(hash);
-    if (it == mapOrphanBlocks.end())
-        return hash;
-
-    // Work back to the first block in the orphan chain
-    do {
-        std::map<uint256, COrphanBlock*>::iterator it2 = mapOrphanBlocks.find(it->second->hashPrev);
-        if (it2 == mapOrphanBlocks.end())
-            return it->first;
-        it = it2;
-    } while(true);
-}
-
 // ppcoin: find block wanted by given orphan block
 uint256 WantedByOrphan(const COrphanBlock* pblockOrphan) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
 {
@@ -4253,35 +4238,6 @@ uint256 WantedByOrphan(const COrphanBlock* pblockOrphan) EXCLUSIVE_LOCKS_REQUIRE
     while (mapOrphanBlocks.count(pblockOrphan->hashPrev))
         pblockOrphan = mapOrphanBlocks[pblockOrphan->hashPrev];
     return pblockOrphan->hashPrev;
-}
-
-// Remove a random orphan block (which does not have any dependent orphans).
-void static PruneOrphanBlocks() EXCLUSIVE_LOCKS_REQUIRED(cs_main)
-{
-    size_t nMaxOrphanBlocksSize = gArgs.GetArg("-maxorphanblocksmib", DEFAULT_MAX_ORPHAN_BLOCKS) * ((size_t) 1 << 20);
-    while (nOrphanBlocksSize > nMaxOrphanBlocksSize)
-    {
-        // Pick a random orphan block.
-        uint256 randomhash = GetRandHash();
-        std::multimap<uint256, COrphanBlock*>::iterator it = mapOrphanBlocksByPrev.lower_bound(randomhash);
-        if (it == mapOrphanBlocksByPrev.end())
-            it = mapOrphanBlocksByPrev.begin();
-
-        // As long as this block has other orphans depending on it, move to one of those successors.
-        do {
-            std::multimap<uint256, COrphanBlock*>::iterator it2 = mapOrphanBlocksByPrev.find(it->second->hashBlock);
-            if (it2 == mapOrphanBlocksByPrev.end())
-                break;
-            it = it2;
-        } while(1);
-
-        setStakeSeenOrphan.erase(it->second->stake);
-        uint256 hash = it->second->hashBlock;
-        nOrphanBlocksSize -= it->second->vchBlock.size();
-        delete it->second;
-        mapOrphanBlocksByPrev.erase(it);
-        mapOrphanBlocks.erase(hash);
-    }
 }
 
 void AddPriorityDownload(const std::vector<const CBlockIndex*>& blocksToDownload) {

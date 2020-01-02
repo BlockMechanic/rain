@@ -7,8 +7,8 @@
  * Server/client environment: argument handling, config file parsing,
  * thread wrappers, startup time
  */
-#ifndef SUPERCOIN_UTIL_SYSTEM_H
-#define SUPERCOIN_UTIL_SYSTEM_H
+#ifndef RAIN_UTIL_SYSTEM_H
+#define RAIN_UTIL_SYSTEM_H
 
 #if defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
@@ -40,7 +40,7 @@
 // Application startup time (used for uptime calculation)
 int64_t GetStartupTime();
 
-extern const char * const SUPERCOIN_CONF_FILENAME;
+extern const char * const RAIN_CONF_FILENAME;
 
 void SetupEnvironment();
 bool SetupNetworking();
@@ -405,4 +405,4 @@ private:
 
 } // namespace util
 
-#endif // SUPERCOIN_UTIL_SYSTEM_H
+#endif // RAIN_UTIL_SYSTEM_H

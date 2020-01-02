@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_NODE_COIN_H
-#define SUPERCOIN_NODE_COIN_H
+#ifndef RAIN_NODE_COIN_H
+#define RAIN_NODE_COIN_H
 
 #include <map>
 
@@ -19,4 +19,4 @@ class Coin;
  */
 void FindCoins(std::map<COutPoint, Coin>& coins);
 
-#endif // SUPERCOIN_NODE_COIN_H
+#endif // RAIN_NODE_COIN_H

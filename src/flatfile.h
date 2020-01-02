@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_FLATFILE_H
-#define SUPERCOIN_FLATFILE_H
+#ifndef RAIN_FLATFILE_H
+#define RAIN_FLATFILE_H
 
 #include <string>
 
@@ -93,4 +93,4 @@ public:
     bool Flush(const FlatFilePos& pos, bool finalize = false);
 };
 
-#endif // SUPERCOIN_FLATFILE_H
+#endif // RAIN_FLATFILE_H

@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_INDEX_BASE_H
-#define SUPERCOIN_INDEX_BASE_H
+#ifndef RAIN_INDEX_BASE_H
+#define RAIN_INDEX_BASE_H
 
 #include <dbwrapper.h>
 #include <primitives/block.h>
@@ -110,4 +110,4 @@ public:
     void Stop();
 };
 
-#endif // SUPERCOIN_INDEX_BASE_H
+#endif // RAIN_INDEX_BASE_H

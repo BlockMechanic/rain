@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_UI_INTERFACE_H
-#define SUPERCOIN_UI_INTERFACE_H
+#ifndef RAIN_UI_INTERFACE_H
+#define RAIN_UI_INTERFACE_H
 
 #include <functional>
 #include <memory>
@@ -133,4 +133,4 @@ bool InitError(const std::string& str);
 
 extern CClientUIInterface uiInterface;
 
-#endif // SUPERCOIN_UI_INTERFACE_H
+#endif // RAIN_UI_INTERFACE_H

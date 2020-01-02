@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SCRIPT_KEYORIGIN_H
-#define SUPERCOIN_SCRIPT_KEYORIGIN_H
+#ifndef RAIN_SCRIPT_KEYORIGIN_H
+#define RAIN_SCRIPT_KEYORIGIN_H
 
 #include <serialize.h>
 #include <streams.h>
@@ -34,4 +34,4 @@ struct KeyOriginInfo
     }
 };
 
-#endif // SUPERCOIN_SCRIPT_KEYORIGIN_H
+#endif // RAIN_SCRIPT_KEYORIGIN_H

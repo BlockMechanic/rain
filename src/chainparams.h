@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_CHAINPARAMS_H
-#define SUPERCOIN_CHAINPARAMS_H
+#ifndef RAIN_CHAINPARAMS_H
+#define RAIN_CHAINPARAMS_H
 
 #include <chainparamsbase.h>
 #include <consensus/params.h>
@@ -127,4 +127,4 @@ const CChainParams &Params();
  * @throws std::runtime_error when the chain is not supported.
  */
 void SelectParams(const std::string& chain);
-#endif // SUPERCOIN_CHAINPARAMS_H
+#endif // RAIN_CHAINPARAMS_H

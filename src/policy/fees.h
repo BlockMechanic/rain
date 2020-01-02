@@ -2,8 +2,8 @@
 // Copyright (c) 2009-2018 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
-#ifndef SUPERCOIN_POLICY_FEES_H
-#define SUPERCOIN_POLICY_FEES_H
+#ifndef RAIN_POLICY_FEES_H
+#define RAIN_POLICY_FEES_H
 
 #include <amount.h>
 #include <policy/feerate.h>
@@ -288,4 +288,4 @@ private:
     FastRandomContext insecure_rand;
 };
 
-#endif // SUPERCOIN_POLICY_FEES_H
+#endif // RAIN_POLICY_FEES_H

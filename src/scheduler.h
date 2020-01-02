@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_SCHEDULER_H
-#define SUPERCOIN_SCHEDULER_H
+#ifndef RAIN_SCHEDULER_H
+#define RAIN_SCHEDULER_H
 
 //
 // NOTE:

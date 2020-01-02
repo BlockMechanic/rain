@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_ZMQ_ZMQPUBLISHNOTIFIER_H
-#define SUPERCOIN_ZMQ_ZMQPUBLISHNOTIFIER_H
+#ifndef RAIN_ZMQ_ZMQPUBLISHNOTIFIER_H
+#define RAIN_ZMQ_ZMQPUBLISHNOTIFIER_H
 
 #include <zmq/zmqabstractnotifier.h>
 
@@ -52,4 +52,4 @@ public:
     bool NotifyTransaction(const CTransaction &transaction) override;
 };
 
-#endif // SUPERCOIN_ZMQ_ZMQPUBLISHNOTIFIER_H
+#endif // RAIN_ZMQ_ZMQPUBLISHNOTIFIER_H

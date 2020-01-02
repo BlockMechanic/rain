@@ -258,7 +258,7 @@ def main():
 
     logging.debug("Temporary test directory at %s" % tmpdir)
 
-    enable_raind = config["components"].getboolean("ENABLE_SUPERCOIND")
+    enable_raind = config["components"].getboolean("ENABLE_RAIND")
 
     if not enable_raind:
         print("No functional tests to run.")

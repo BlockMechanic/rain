@@ -44,8 +44,8 @@ before_test:
 - ps:  ${conf_ini} = ${conf_ini}.Replace("@abs_top_builddir@", ${env:APPVEYOR_BUILD_FOLDER})
 - ps:  ${conf_ini} = ${conf_ini}.Replace("@EXEEXT@", ".exe")
 - ps:  ${conf_ini} = ${conf_ini}.Replace("@ENABLE_WALLET_TRUE@", "")
-- ps:  ${conf_ini} = ${conf_ini}.Replace("@BUILD_SUPERCOIN_CLI_TRUE@", "")
-- ps:  ${conf_ini} = ${conf_ini}.Replace("@BUILD_SUPERCOIND_TRUE@", "")
+- ps:  ${conf_ini} = ${conf_ini}.Replace("@BUILD_RAIN_CLI_TRUE@", "")
+- ps:  ${conf_ini} = ${conf_ini}.Replace("@BUILD_RAIND_TRUE@", "")
 - ps:  ${conf_ini} = ${conf_ini}.Replace("@ENABLE_ZMQ_TRUE@", "")
 - ps:  ${utf8} = New-Object System.Text.UTF8Encoding ${false}
 - ps:  '[IO.File]::WriteAllLines([IO.Path]::Combine(${env:APPVEYOR_BUILD_FOLDER}, "test", "config.ini"), ${conf_ini}, ${utf8})'
