@@ -3,8 +3,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef SUPERCOIN_WALLET_WALLET_H
-#define SUPERCOIN_WALLET_WALLET_H
+#ifndef RAIN_WALLET_WALLET_H
+#define RAIN_WALLET_WALLET_H
 
 #include <amount.h>
 #include <interfaces/chain.h>
@@ -747,7 +747,6 @@ private:
     // Local time that the tip block was received. Used to schedule wallet rebroadcasts.
     std::atomic<int64_t> m_best_block_time {0};
 
-    std::map<COutPoint, CStakeCache> stakeCache;
     /**
      * Used to keep track of spent outpoints, and
      * detect and report conflicts (double-spends or
@@ -958,7 +957,7 @@ public:
     /**
      * populate vCoins with vector of available COutputs.
      */
-    void AvailableCoins(interfaces::Chain::Lock& locked_chain, std::vector<COutput>& vCoins, bool fOnlySafe = true, const CCoinControl* coinControl = nullptr, const CAmount& nMinimumAmount = 1, const CAmount& nMaximumAmount = MAX_MONEY, const CAmount& nMinimumSumAmount = MAX_MONEY, const uint64_t nMaximumCount = 0) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    void AvailableCoins(interfaces::Chain::Lock& locked_chain, std::vector<COutput>& vCoins, bool fOnlySafe = true, const CCoinControl* coinControl = nullptr, const CAmount& nMinimumAmount = 1, const CAmount& nMaximumAmount = MAX_MONEY, const CAmount& nMinimumSumAmount = MAX_MONEY, const uint64_t nMaximumCount = 0, uint32_t nSpendTime = 0) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! select coins for staking from the available coins for staking.
     bool SelectCoinsForStaking(CAmount& nTargetValue, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet) const;
@@ -1143,7 +1142,7 @@ public:
     CAmount GetWatchOnlyStake() const;
 
     uint64_t GetStakeWeight() const;
-    bool CreateCoinStake(CBlock *block, const CAmount& nTotalFees, CMutableTransaction& tx, CKey& key);
+    bool CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMutableTransaction& txNew);
 
     bool DummySignTx(CMutableTransaction &txNew, const std::set<CTxOut> &txouts, bool use_max_sig = false) const
     {
@@ -1483,4 +1482,4 @@ public:
 // be IsAllFromMe).
 int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *wallet, bool use_max_sig = false) EXCLUSIVE_LOCKS_REQUIRED(wallet->cs_wallet);
 int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *wallet, const std::vector<CTxOut>& txouts, bool use_max_sig = false);
-#endif // SUPERCOIN_WALLET_WALLET_H
+#endif // RAIN_WALLET_WALLET_H

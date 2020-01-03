@@ -6,6 +6,8 @@
 
 #include <chain.h>
 #include <chainparams.h>
+#include <index/txindex.h>
+
 #include <interfaces/handler.h>
 #include <interfaces/wallet.h>
 #include <miner.h>
@@ -28,6 +30,7 @@
 #include <threadsafety.h>
 #include <timedata.h>
 #include <txmempool.h>
+#include <txdb.h>
 #include <ui_interface.h>
 #include <uint256.h>
 #include <univalue.h>
@@ -95,6 +98,12 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
         CBlockIndex* block = ::ChainActive()[height];
         return block && ((block->nStatus & BLOCK_HAVE_DATA) != 0) && block->nTx > 0;
     }
+    CBlockIndex* currentTip() override
+    {
+        LockAssertion lock(::cs_main);
+        CBlockIndex* block = ::ChainActive().Tip();
+        return block;
+    }
     bool IsProofOfStake(int height) override
     {
         LockAssertion lock(::cs_main);
@@ -112,17 +121,47 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
         return stakeAddress;
     }
     bool startStake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread)override{
-		
+
 		::Stake(fStake, pwallet, stakeThread);
 		return true;
-		
-	}    
+
+	}
    /* void cacheKernel(std::map<COutPoint, CStakeCache>& cache, const COutPoint& prevout) override {
 		CacheKernel(cache, prevout, *pcoinsTip);
 	}
 	bool checkKernel(const CBlock* block, const COutPoint& prevout) override {
-		return CheckKernel(::ChainActive().Tip(), block, prevout, *pcoinsTip);		
+		return CheckKernel(::ChainActive().Tip(), block, prevout, *pcoinsTip);
 	}*/
+    bool getCoinAge(const CTransaction& tx, uint64_t& nCoinAge) override{
+		CCoinsViewCache view(pcoinsTip.get());
+        return GetCoinAge(tx,view,nCoinAge);
+	}
+    int64_t getBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, uint256 prevHash, bool fProofofStake, int64_t nCoinAge, int64_t nFees, int64_t supply) override{
+		return GetBlockSubsidy(nHeight, consensusParams, prevHash, fProofofStake, nCoinAge, nFees, supply);
+	}
+    bool getPostx(const uint256 &hash, CDiskTxPos& postx, CBlockHeader& header, CTransactionRef& tx)override{
+
+		if (!g_txindex)
+			return error("getPostx : transaction index unavailable");
+       
+        if (!pblocktree->ReadTxIndex(hash, postx))
+            return false;
+
+        // Read block header
+        CAutoFile file(OpenBlockFile(postx, true), SER_DISK, CLIENT_VERSION);		
+
+        try {
+            file >> header;
+            fseek(file.Get(), postx.nTxOffset, SEEK_CUR);
+            file >> tx;
+        } catch (std::exception &e) {
+            return error("%s() : deserialize or I/O error in CreateCoinStake()", __PRETTY_FUNCTION__);
+        }
+	}
+    bool checkStakeKernelHash(CBlockIndex* pindexPrev, unsigned int nBits, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake) override {
+		return CheckStakeKernelHash(nBits, pindexPrev, blockFrom, nTxPrevOffset, txPrev, prevout, nTimeTx, hashProofOfStake, fPrintProofOfStake);
+	}
+
 
 #ifdef ENABLE_SECURE_MESSAGING
     bool smsgStart() override{
@@ -392,7 +431,7 @@ public:
     }
     void getSPVTips(CBlockIndex *pIndex,CBlockIndex *chainActiveTip) override {
 
-    chainActiveTip = ::ChainActive().Tip();	
+    chainActiveTip = ::ChainActive().Tip();
     //pIndex = ::HeadersChainActive().Tip();
     }
 
@@ -413,7 +452,7 @@ public:
         return ::ChainActive().Genesis();
 	}
 
-	bool checkpNVSLastKnownBestHeader(CBlockIndex *block) override {     
+	bool checkpNVSLastKnownBestHeader(CBlockIndex *block) override {
     //return ::HeadersChainActive().Contains(block);
     return false;
     }
@@ -426,7 +465,7 @@ public:
     }
 
     bool checkActiveHeader(const CBlockIndex *pindexFork) override {
-    //    return ::HeadersChainActive().Tip() && (::HeadersChainActive().Tip() != pindexFork); 
+    //    return ::HeadersChainActive().Tip() && (::HeadersChainActive().Tip() != pindexFork);
     return false;
     }
 

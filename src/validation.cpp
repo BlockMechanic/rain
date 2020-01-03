@@ -1517,6 +1517,7 @@ int ApplyTxInUndo(Coin&& undo, CCoinsViewCache& view, const COutPoint& out)
         if (!alternate.IsSpent()) {
             undo.nHeight = alternate.nHeight;
             undo.fCoinBase = alternate.fCoinBase;
+            undo.nTime = alternate.nTime;           // peercoin
         } else {
             return DISCONNECT_FAILED; // adding output for transaction without known metadata
         }
@@ -1762,64 +1763,14 @@ static int64_t nTimeCallbacks = 0;
 static int64_t nTimeTotal = 0;
 static int64_t nBlocksTotal = 0;
 
-bool CheckFirstCoinstakeOutput(const CBlock& block)
-{
-    // Coinbase output should be empty if proof-of-stake block
-    int commitpos = GetWitnessCommitmentIndex(block);
-    if(commitpos < 0)
-    {
-        if (block.vtx[0]->vout.size() != 1 || !block.vtx[0]->vout[0].IsEmpty())
-            return false;
-    }
-    else
-    {
-        if (block.vtx[0]->vout.size() != 2 || !block.vtx[0]->vout[0].IsEmpty() || block.vtx[0]->vout[1].nValue)
-            return false;
-    }
-
-    return true;
-}
-
-bool IsCanonicalBlockSignature(const CBlock* pblock, bool checkLowS)
-{
-    if (pblock->IsProofOfWork()) {
-        return pblock->vchBlockSig.empty();
-    }
-
-    return checkLowS ? IsLowDERSignature(pblock->vchBlockSig, NULL, false) : IsDERSignature(pblock->vchBlockSig, NULL, false);
-}
-
-bool CheckCanonicalBlockSignature(const CBlock* pblock)
-{
-    //block signature encoding
-    bool ret = IsCanonicalBlockSignature(pblock, false);
-
-    //block signature encoding (low-s)
-    if(ret) ret = IsCanonicalBlockSignature(pblock, true);
-
-    return ret;
-}
-
-bool CChainState::UpdateHashProof(const CBlock& block, CValidationState& state, const Consensus::Params& consensusParams, CBlockIndex* pindex, CCoinsViewCache& view)
-{
-	// Check for the signiture encoding
-	if (!CheckCanonicalBlockSignature(&block))
-		return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-signature-encoding", "bad block signature encoding");
-
-    // Coinbase output should be empty if proof-of-stake block
-	if (!CheckFirstCoinstakeOutput(block))
-		return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-cb-missing", "coinbase output not empty for proof-of-stake block");
-
-    return true;
-}
 
 // These checks can only be done when all previous block have been added.
 bool StakeContextualBlockChecks(const CBlock& block, CValidationState& state, CBlockIndex* pindex, bool fJustCheck)
 {
-	
 	uint256 hashProof;
+
 	CCoinsViewCache view(pcoinsTip.get());
-	if (block.IsProofOfStake() && !CheckProofOfStake(pindex->pprev, state, *block.vtx[1], block.nBits, hashProof, view)){
+	if (block.IsProofOfStake() && !CheckProofOfStake(state, pindex->pprev, block.vtx[1], block.nBits, hashProof, view)){
             //return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-proof-of-stake", strprintf("%s: check proof-of-stake failed for block %s", __func__, block.GetHash().GetHex()));
         LogPrintf("WARNING: %s: check proof-of-stake failed for block %s\n", __func__, block.GetHash().ToString());
         return false; // do not error here as we expect this during initial block download
@@ -1836,7 +1787,6 @@ bool StakeContextualBlockChecks(const CBlock& block, CValidationState& state, CB
 
     if (fJustCheck)
         return true;
-
 
     // write everything to index
     if (block.IsProofOfStake())
@@ -5324,6 +5274,44 @@ bool CheckBlockSignature(const CBlock& block)
     }
 
     return CPubKey(vchPubKey).Verify(block.GetHash(), block.vchBlockSig);
+}
+
+bool CheckFirstCoinstakeOutput(const CBlock& block)
+{
+    // Coinbase output should be empty if proof-of-stake block
+    int commitpos = GetWitnessCommitmentIndex(block);
+    if(commitpos < 0)
+    {
+        if (block.vtx[0]->vout.size() != 1 || !block.vtx[0]->vout[0].IsEmpty())
+            return false;
+    }
+    else
+    {
+        if (block.vtx[0]->vout.size() != 2 || !block.vtx[0]->vout[0].IsEmpty() || block.vtx[0]->vout[1].nValue)
+            return false;
+    }
+
+    return true;
+}
+
+bool IsCanonicalBlockSignature(const CBlock* pblock, bool checkLowS)
+{
+    if (pblock->IsProofOfWork()) {
+        return pblock->vchBlockSig.empty();
+    }
+
+    return checkLowS ? IsLowDERSignature(pblock->vchBlockSig, NULL, false) : IsDERSignature(pblock->vchBlockSig, NULL, false);
+}
+
+bool CheckCanonicalBlockSignature(const CBlock* pblock)
+{
+    //block signature encoding
+    bool ret = IsCanonicalBlockSignature(pblock, false);
+
+    //block signature encoding (low-s)
+    if(ret) ret = IsCanonicalBlockSignature(pblock, true);
+
+    return ret;
 }
 
 #endif

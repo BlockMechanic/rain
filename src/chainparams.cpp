@@ -130,7 +130,7 @@ public:
         consensus.nCOIN_YEAR_REWARD_NEW  = 10 * COIN/100;
         consensus.nPowTargetTimespan = 15 * 60;
         consensus.nPowTargetSpacing = 60;
-        consensus.nModifierInterval = 13 * 60; // Potcoin: nModifierInterval
+        consensus.nModifierInterval = 10 * 60; // Potcoin: nModifierInterval
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 1916; // 95% of 2016

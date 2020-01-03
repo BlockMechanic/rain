@@ -70,11 +70,7 @@ public:
     template<typename Stream>
     void Serialize(Stream &s) const {
         assert(!IsSpent());
-#ifdef ENABLE_PROOF_OF_STAKE
         uint32_t code = (nHeight << 2) + (fCoinBase ? 1 : 0) + (fCoinStake ? 2 : 0);
-#else
-        uint32_t code = nHeight << 2 + fCoinBase;
-#endif
         ::Serialize(s, VARINT(code));
         ::Serialize(s, CTxOutCompressor(REF(out)));
         // peercoin transaction timestamp

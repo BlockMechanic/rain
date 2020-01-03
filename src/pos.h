@@ -25,11 +25,11 @@ uint256 ComputeStakeModifier(const CBlockIndex* pindexPrev, const uint256& kerne
 
 // Check whether stake kernel meets hash target
 // Sets hashProofOfStake on success return
-bool CheckStakeKernelHash(CBlockIndex* pindexPrev, unsigned int nBits, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake);
+bool CheckStakeKernelHash(unsigned int nBits, CBlockIndex* pindexPrev, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake);
 
 // Check kernel hash target and coinstake signature
 // Sets hashProofOfStake on success return
-bool CheckProofOfStake(CBlockIndex* pindexPrev, CValidationState& state, const CTransaction& tx, unsigned int nBits, uint256& hashProofOfStake, CCoinsViewCache& view);
+bool CheckProofOfStake(CValidationState& state, CBlockIndex* pindexPrev, const CTransactionRef& tx, unsigned int nBits, uint256& hashProofOfStake, CCoinsViewCache& view);
 // Check whether the coinstake timestamp meets protocol
 bool CheckCoinStakeTimestamp(uint32_t nTimeBlock, uint32_t nTimeTx);
 
