@@ -937,7 +937,7 @@ int SecureMsgReadIni()
             }
         } else
         {
-            LogPrintf("Unknown setting name: '%s'.", pName);
+            //LogPrintf("Unknown setting name: '%s'.", pName);
         }
     }
 

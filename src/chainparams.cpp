@@ -130,7 +130,7 @@ public:
         consensus.nCOIN_YEAR_REWARD_NEW  = 10 * COIN/100;
         consensus.nPowTargetTimespan = 15 * 60;
         consensus.nPowTargetSpacing = 60;
-        consensus.nModifierInterval = 10 * 60; // Potcoin: nModifierInterval
+        consensus.nModifierInterval = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 1916; // 95% of 2016
@@ -201,7 +201,7 @@ public:
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1E};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE4};
 
-        bech32_hrp = "tc";
+        bech32_hrp = "rn";
 
         vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_main, pnSeed6_main + ARRAYLEN(pnSeed6_main));
 

@@ -1771,9 +1771,7 @@ bool StakeContextualBlockChecks(const CBlock& block, CValidationState& state, CB
 
 	CCoinsViewCache view(pcoinsTip.get());
 	if (block.IsProofOfStake() && !CheckProofOfStake(state, pindex->pprev, block.vtx[1], block.nBits, hashProof, view)){
-            //return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-proof-of-stake", strprintf("%s: check proof-of-stake failed for block %s", __func__, block.GetHash().GetHex()));
-        LogPrintf("WARNING: %s: check proof-of-stake failed for block %s\n", __func__, block.GetHash().ToString());
-        return false; // do not error here as we expect this during initial block download
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-proof-of-stake", strprintf("%s: check proof-of-stake failed for block %s", __func__, block.GetHash().GetHex()));
     }
 
     // peercoin: compute stake entropy bit for stake modifier
@@ -1782,7 +1780,7 @@ bool StakeContextualBlockChecks(const CBlock& block, CValidationState& state, CB
     // peercoin: compute stake modifier
     uint64_t nStakeModifier = 0;
     bool fGeneratedStakeModifier = false;
-    if (!ComputeNextStakeModifier(pindex, nStakeModifier, fGeneratedStakeModifier))
+    if (!ComputeNextStakeModifier(pindex->pprev, nStakeModifier, fGeneratedStakeModifier))
         return error("ConnectBlock() : ComputeNextStakeModifier() failed");
 
     if (fJustCheck)
@@ -1792,11 +1790,11 @@ bool StakeContextualBlockChecks(const CBlock& block, CValidationState& state, CB
     if (block.IsProofOfStake())
     {
         pindex->prevoutStake = block.vtx[1]->vin[0].prevout;
-        pindex->hashProof = hashProof;
     }
     if (!pindex->SetStakeEntropyBit(nEntropyBit))
         return error("ConnectBlock() : SetStakeEntropyBit() failed");
     pindex->SetStakeModifier(nStakeModifier, fGeneratedStakeModifier);
+    pindex->hashProof = hashProof;
     setDirtyBlockIndex.insert(pindex);  // queue a write to disk
 
     return true;
@@ -1894,7 +1892,8 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     int64_t nTimeStart = GetTimeMicros();
 
     if (pindex->nStakeModifier == 0 && !StakeContextualBlockChecks(block, state, pindex, fJustCheck))
-        return error("%s: failed PoS check %s", __func__, FormatStateMessage(state));
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, error("%s: Failed PoS check, got %d", __func__,FormatStateMessage(state)),
+                                 REJECT_INVALID, "bad-pos");
 
     // Check it again in case a previous version let a bad block in
     // NOTE: We don't currently (re-)invoke ContextualCheckBlock() or
