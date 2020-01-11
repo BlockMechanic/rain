@@ -301,10 +301,8 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
     }
 
     // Now check if proof-of-stake hash meets target protocol
-    if (CBigNum(hashProof) > bnCoinDayWeight * bnTargetPerCoinDay){
-        //if (pindexPrev->nHeight > 1524520)
-            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "target-error", strprintf(" %s, proof-of-stake hash does not meet target at height %d, tx = %s, hashProof=%s , target = %s", __func__, pindexPrev->nHeight, txPrev->GetHash().ToString(), hashProof.ToString(), (bnCoinDayWeight * bnTargetPerCoinDay).ToString()));
-    }
+    if (CBigNum(hashProof) > bnCoinDayWeight * bnTargetPerCoinDay)
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "target-error", strprintf(" %s, proof-of-stake hash does not meet target at height %d, tx = %s, hashProof=%s , target = %s", __func__, pindexPrev->nHeight, txPrev->GetHash().ToString(), hashProof.ToString(), (bnCoinDayWeight * bnTargetPerCoinDay).ToString()));
 
     return true;
 }
@@ -366,8 +364,8 @@ bool CheckCoinStakeTimestamp(uint32_t nTimeBlock, uint32_t nTimeTx)
 unsigned int GetStakeEntropyBit(const CBlock& block)
 {
     unsigned int nEntropyBit = ((UintToArith256(block.GetHash()).GetLow64()) & 1llu);
-	if (gArgs.GetBoolArg("-printstakemodifier", false))
-		LogPrintf("GetStakeEntropyBit: hashBlock=%s nEntropyBit=%u\n", block.GetHash().ToString().c_str(), nEntropyBit);
+    if (gArgs.GetBoolArg("-printstakemodifier", false))
+        LogPrintf("GetStakeEntropyBit: hashBlock=%s nEntropyBit=%u\n", block.GetHash().ToString().c_str(), nEntropyBit);
 
     return nEntropyBit;
 }
