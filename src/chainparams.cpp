@@ -153,7 +153,7 @@ public:
         consensus.nMinimumChainWork = uint256S("0x00");
 
         // By default assume that the signatures in ancestors of this block are valid.
-        consensus.defaultAssumeValid = uint256S("0x6232aaf8e4c4a8ba2e44ad8cf2e7a9416721851a3eb68451125095fc0308e8fa"); //563378
+        consensus.defaultAssumeValid = uint256S("0xaa8da8f5445ccd4fc2350013b65283cc9661aa847eabe6e2a335b6350b7c7373"); //1524520
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
@@ -190,12 +190,12 @@ public:
         // This is fine at runtime as we'll fall back to using them as a oneshot if they don't support the
         // service bits we want, but we should get them updated to support all service bits wanted by any
         // release ASAP to avoid it where possible.
-        vSeeds.emplace_back("192.3.83.8");
+        //vSeeds.emplace_back("192.3.83.8");
         vSeeds.emplace_back("69.131.110.46"); 
         vSeeds.emplace_back("72.203.101.202"); 
         vSeeds.emplace_back("98.184.203.7"); 
 
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,65);
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,60);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,5);
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,128);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1E};

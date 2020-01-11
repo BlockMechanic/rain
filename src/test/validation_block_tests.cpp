@@ -233,7 +233,7 @@ BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
     std::unique_ptr<CConnman> g_connman = std::unique_ptr<CConnman>(new CConnman(GetRand(std::numeric_limits<uint64_t>::max()), GetRand(std::numeric_limits<uint64_t>::max())));
     
     auto ProcessBlock = [&ignored, &g_connman](std::shared_ptr<const CBlock> block) -> bool {
-        return ProcessNewBlock(Params(), block, /* fForceProcessing */ true, /* fNewBlock */ &ignored, *g_connman);
+        return ProcessNewBlock(Params(), block, /* fForceProcessing */ true, /* fNewBlock */ &ignored);
     };
 
     // Process all mined blocks

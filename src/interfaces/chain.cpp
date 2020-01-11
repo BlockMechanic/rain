@@ -159,7 +159,8 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
         }
 	}
     bool checkStakeKernelHash(CBlockIndex* pindexPrev, unsigned int nBits, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake) override {
-		return CheckStakeKernelHash(nBits, pindexPrev, blockFrom, nTxPrevOffset, txPrev, prevout, nTimeTx, hashProofOfStake, fPrintProofOfStake);
+		CValidationState state;
+		return CheckStakeKernelHash(state, nBits, pindexPrev, blockFrom, nTxPrevOffset, txPrev, prevout, nTimeTx, hashProofOfStake, fPrintProofOfStake);
 	}
 
 

@@ -217,7 +217,7 @@ inline int64_t FutureDrift(uint32_t nTime) { return nTime + 15; }
  * @param[out]  fNewBlock A boolean which is set to indicate if the block was first received via this call
  * @return True if state.IsValid()
  */
-bool ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<const CBlock> pblock, bool fForceProcessing, bool* fNewBlock, CConnman& connman, CNode* pfrom=nullptr, bool fPriorityRequest = false) LOCKS_EXCLUDED(cs_main);
+bool ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<const CBlock> pblock, bool fForceProcessing, bool* fNewBlock, CBlockIndex** ppindex=nullptr, bool* fPoSDuplicate=nullptr) LOCKS_EXCLUDED(cs_main);
 
 /**
  * Process incoming block headers.
@@ -259,7 +259,7 @@ bool GetTransaction(const uint256& hash, CTransactionRef& tx, const Consensus::P
  * validationinterface callback.
  */
 bool ActivateBestChain(CValidationState& state, const CChainParams& chainparams, std::shared_ptr<const CBlock> pblock = std::shared_ptr<const CBlock>());
-extern CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, uint256 prevHash, bool fProofofStake = false, int64_t nCoinAge = 0, int64_t nFees = 0, int64_t supply = 0);
+extern CAmount GetBlockSubsidy(unsigned int nHeight, const Consensus::Params& consensusParams, uint256 prevHash, bool fProofofStake = false, int64_t nCoinAge = 0, int64_t nFees = 0, int64_t supply = 0);
 
 /** Guess verification progress (as a fraction between 0.0=genesis and 1.0=current tip). */
 double GuessVerificationProgress(const ChainTxData& data, const CBlockIndex* pindex);

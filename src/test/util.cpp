@@ -65,7 +65,7 @@ CTxIn MineBlock(const CScript& coinbase_scriptPubKey)
     std::unique_ptr<CConnman> g_connman = std::unique_ptr<CConnman>(new CConnman(GetRand(std::numeric_limits<uint64_t>::max()), GetRand(std::numeric_limits<uint64_t>::max())));
 
 
-    bool processed{ProcessNewBlock(Params(), block, true, nullptr, *g_connman)};
+    bool processed{ProcessNewBlock(Params(), block, true, nullptr)};
     assert(processed);
 
     return CTxIn{block->vtx[0]->GetHash(), 0};

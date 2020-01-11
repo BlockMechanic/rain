@@ -11,6 +11,8 @@
 
 static const int PROTOCOL_VERSION = 60035;
 
+static const int BRAVO_VERSION = 60035;
+
 //! initial proto version, to be increased after version/verack negotiation
 static const int INIT_PROTO_VERSION = 209;
 

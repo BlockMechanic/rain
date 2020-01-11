@@ -528,7 +528,7 @@ bool CheckStake(std::shared_ptr<CBlock> pblock)
 
     // Process this block the same as if we had received it from another node
     bool fNewBlock = false;
-    if (!ProcessNewBlock(Params(), pblock, true, &fNewBlock, *g_connman))
+    if (!ProcessNewBlock(Params(), pblock, true, &fNewBlock))
         return error("CheckStake() : ProcessBlock, block not accepted");
 
     return true;
@@ -726,7 +726,7 @@ void static RainMiner(std::shared_ptr<CTxDestination> coinbase_script)
                         //SetThreadPriority(THREAD_PRIORITY_NORMAL);
 
                         std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(*pblock);
-                        if (!ProcessNewBlock(Params(), shared_pblock, true, nullptr, *g_connman))
+                        if (!ProcessNewBlock(Params(), shared_pblock, true, nullptr))
                             throw std::runtime_error(strprintf("%s: ProcessNewBlock, block not accepted:", __func__));
                         //SetThreadPriority(THREAD_PRIORITY_LOWEST);
                         break;

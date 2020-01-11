@@ -78,7 +78,7 @@ struct Params {
     uint256 posLimit;
     bool fPoSNoRetargeting;
     int nStakeTimestampMask;
-    int nLastPOWBlock;
+    unsigned int nLastPOWBlock;
     
 
     unsigned int nCONSENSUS_CHANGE_BLOCK;

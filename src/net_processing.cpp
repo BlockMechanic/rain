@@ -168,9 +168,15 @@ namespace {
         const CBlockIndex* pindex;                               //!< Optional.
         bool fValidatedHeaders;                                  //!< Whether this block has validated headers at the time of request.
         std::unique_ptr<PartiallyDownloadedBlock> partialBlock;  //!< Optional, used for CMPCTBLOCK downloads
-        bool priorityRequest;                                    //!< Whether its a priority download
     };
     std::map<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> > mapBlocksInFlight GUARDED_BY(cs_main);
+
+    /** peercoin: blocks that are waiting to be processed, the key points to previous CBlockIndex entry */
+    struct WaitElement {
+        std::shared_ptr<CBlock> pblock;
+            int64_t time;
+    };
+    std::map<CBlockIndex*, WaitElement> mapBlocksWait;
 
     /** Stack of nodes which we have set to announce using compact blocks */
     std::list<NodeId> lNodesAnnouncingHeaderAndIDs GUARDED_BY(cs_main);
@@ -462,12 +468,7 @@ static void PushNodeVersion(CNode *pnode, CConnman* connman, int64_t nTime)
 // Returns a bool indicating whether we requested this block.
 // Also used if a block was /not/ received and timed out or started with another peer
 
-struct MarkBlockAsReceivedResult
-{
-    bool fRequested;
-    bool fPriorityRequest;
-};
-MarkBlockAsReceivedResult MarkBlockAsReceived(const uint256& hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main) {
+bool MarkBlockAsReceived(const uint256& hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main) {
     std::map<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator itInFlight = mapBlocksInFlight.find(hash);
     if (itInFlight != mapBlocksInFlight.end()) {
         CNodeState *state = State(itInFlight->second.first);
@@ -481,26 +482,18 @@ MarkBlockAsReceivedResult MarkBlockAsReceived(const uint256& hash) EXCLUSIVE_LOC
             // First block on the queue was received, update the start download time for the next one
             state->nDownloadingSince = std::max(state->nDownloadingSince, GetTimeMicros());
         }
-        bool priorityRequest = itInFlight->second.second->priorityRequest;
+        state->vBlocksInFlight.erase(itInFlight->second.second);
         state->nBlocksInFlight--;
         state->nStallingSince = 0;
-        if (priorityRequest) {
-            // mark as downloaded
-            auto it = std::find_if(blocksToDownloadFirst.begin(), blocksToDownloadFirst.end(),  [&itInFlight](const PriorityBlockRequest &r) { return r.pindex == itInFlight->second.second->pindex; });
-            if (it != blocksToDownloadFirst.end()) {
-                (*it).downloaded = true;
-            }
-        }
-        state->vBlocksInFlight.erase(itInFlight->second.second);
         mapBlocksInFlight.erase(itInFlight);
-        return {true, priorityRequest};
+        return true;
     }
-    return {false, false};
+    return false;
 }
 
 // returns false, still setting pit, if the block was already in flight from the same peer
 // pit will only be valid as long as the same cs_main lock is being held
-static bool MarkBlockAsInFlight(NodeId nodeid, const uint256& hash, const CBlockIndex* pindex = nullptr, std::list<QueuedBlock>::iterator** pit = nullptr, bool priorityRequest = false) EXCLUSIVE_LOCKS_REQUIRED(cs_main) {
+static bool MarkBlockAsInFlight(NodeId nodeid, const uint256& hash, const CBlockIndex* pindex = nullptr, std::list<QueuedBlock>::iterator** pit = nullptr) EXCLUSIVE_LOCKS_REQUIRED(cs_main) {
     CNodeState *state = State(nodeid);
     assert(state != nullptr);
 
@@ -517,7 +510,7 @@ static bool MarkBlockAsInFlight(NodeId nodeid, const uint256& hash, const CBlock
     MarkBlockAsReceived(hash);
 
     std::list<QueuedBlock>::iterator it = state->vBlocksInFlight.insert(state->vBlocksInFlight.end(),
-            {hash, pindex, pindex != nullptr, std::unique_ptr<PartiallyDownloadedBlock>(pit ? new PartiallyDownloadedBlock(&mempool) : nullptr), priorityRequest});
+            {hash, pindex, pindex != nullptr, std::unique_ptr<PartiallyDownloadedBlock>(pit ? new PartiallyDownloadedBlock(&mempool) : nullptr)});
     state->nBlocksInFlight++;
     state->nBlocksInFlightValidHeaders += it->fValidatedHeaders;
     if (state->nBlocksInFlight == 1) {
@@ -1709,6 +1702,7 @@ bool static ProcessHeadersMessage(CNode *pfrom, CConnman *connman, const std::ve
     int32_t& nPoSTemperature = mapPoSTemperature[pfrom->addr];
 
     if (!ProcessNewBlockHeaders(nPoSTemperature, pfrom->lastAcceptedHeader, headers, pfrom->nVersion <= PROTOCOL_VERSION, state, chainparams, &pindexLast, &first_invalid_header)) {
+        if (state.IsInvalid()) {
                 if (nPoSTemperature >= 200) {
                     // A lot of PoS headers followed by some failed header (most likely PoW).
                     // This situation is very unusual, because normaly you don't get a failed PoW header with a ton of PoS headers.
@@ -1719,7 +1713,6 @@ bool static ProcessHeadersMessage(CNode *pfrom, CConnman *connman, const std::ve
                     nPoSTemperature *= 3;
                     Misbehaving(pfrom->GetId(), 2);
                 }
-        if (state.IsInvalid()) {
             MaybePunishNode(pfrom->GetId(), state, via_compact_block, "invalid header received");
             return false;
         }
@@ -1778,10 +1771,6 @@ bool static ProcessHeadersMessage(CNode *pfrom, CConnman *connman, const std::ve
                         pindexLast->GetBlockHash().ToString(),
                         pindexLast->nHeight);
             } else {
-                // Do not request blocks if autorequest is disabled
-                if (!fAutoRequestBlocks) {
-                    return true;
-                }
                 std::vector<CInv> vGetData;
                 // Download as much as possible, from earliest to latest.
                 for (const CBlockIndex *pindex : reverse_iterate(vToFetch)) {
@@ -2136,6 +2125,12 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         Misbehaving(pfrom->GetId(), 1);
         return false;
     }
+
+    // peercoin: set/unset network serialization mode for new clients
+    if (pfrom->nVersion <= BRAVO_VERSION)
+        vRecv.SetType(vRecv.GetType() & ~SER_POSMARKER);
+    else
+        vRecv.SetType(vRecv.GetType() | SER_POSMARKER);
 
     // At this point, the outgoing message serialization version can't change.
     const CNetMsgMaker msgMaker(pfrom->GetSendVersion());
@@ -2718,8 +2713,8 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         if (nPoSTemperature >= MAX_CONSECUTIVE_POS_HEADERS) {
             nPoSTemperature = (MAX_CONSECUTIVE_POS_HEADERS*3)/4;
             if (Params().NetworkIDString() != "test") {
-				MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ true, "too many consecutive pos headers");
-                return error("too many consecutive pos headers");
+                MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ true, "too many consecutive pos headers 1");
+                return error("too many consecutive pos headers 1");
             }
         }
 
@@ -2888,12 +2883,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             // we have a chain with at least nMinimumChainWork), and we ignore
             // compact blocks with less work than our tip, it is safe to treat
             // reconstructed compact blocks as having been requested.
-			MarkBlockAsReceivedResult result;
-			{
-				LOCK(cs_main);
-				result = MarkBlockAsReceived(pblock->GetHash());
-			}
-            ProcessNewBlock(chainparams, pblock, /*fForceProcessing=*/true, &fNewBlock, *connman, pfrom, !result.fPriorityRequest);
+            ProcessNewBlock(chainparams, pblock, /*fForceProcessing=*/true, &fNewBlock);
             if (fNewBlock) {
                 pfrom->nLastBlockTime = GetTime();
             } else {
@@ -2909,7 +2899,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 MarkBlockAsReceived(pblock->GetHash());
             }
         }
-        //return true;
+        return true;
     }
 
     if (strCommand == NetMsgType::BLOCKTXN)
@@ -2982,12 +2972,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             // disk-space attacks), but this should be safe due to the
             // protections in the compact block handler -- see related comment
             // in compact block optimistic reconstruction handling.
-			MarkBlockAsReceivedResult result;
-			{
-				LOCK(cs_main);
-				result = MarkBlockAsReceived(pblock->GetHash());
-			}
-            ProcessNewBlock(chainparams, pblock, /*fForceProcessing=*/true, &fNewBlock, *connman, pfrom, !result.fPriorityRequest);
+            ProcessNewBlock(chainparams, pblock, /*fForceProcessing=*/true, &fNewBlock);
             if (fNewBlock) {
                 pfrom->nLastBlockTime = GetTime();
             } else {
@@ -2995,7 +2980,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 mapBlockSource.erase(pblock->GetHash());
             }
         }
-        //return true;
+        return true;
     }
 
     if (strCommand == NetMsgType::HEADERS)
@@ -3024,7 +3009,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             ReadCompactSize(vRecv); // ignore block signature.
 
             bool fPoS = headers[n].nFlags & CBlockIndex::BLOCK_PROOF_OF_STAKE;
-                    CValidationState state;
+            CValidationState state;
             nTmpPoSTemperature += fPoS ? 1 : -POW_HEADER_COOLING;
             // peer cannot cool himself by PoW headers from other branches
             if (n == 0 && !fPoS && headers[n].hashPrevBlock != pfrom->lastAcceptedHeader)
@@ -3033,8 +3018,8 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             if (nTmpPoSTemperature >= MAX_CONSECUTIVE_POS_HEADERS) {
                 nPoSTemperature = (MAX_CONSECUTIVE_POS_HEADERS*3)/4;
                 if (Params().NetworkIDString() != "test") {
-					MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ true, "too many consecutive pos headers");
-					return error("too many consecutive pos headers");					
+                    MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ true, "too many consecutive pos headers2");
+                    return error("too many consecutive pos headers2 ");
                 }
             }
         }
@@ -3050,37 +3035,130 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             return true;
         }
 
-        std::shared_ptr<CBlock> pblock = std::make_shared<CBlock>();
-        vRecv >> *pblock;
+        std::shared_ptr<CBlock> pblock2 = std::make_shared<CBlock>();
+        vRecv >> *pblock2;
+        int64_t nTimeNow = GetSystemTimeInSeconds();
 
-        LogPrint(BCLog::NET, "received block %s peer=%d\n", pblock->GetHash().ToString(), pfrom->GetId());
+        LogPrint(BCLog::NET, "received block %s peer=%d\n", pblock2->GetHash().ToString(), pfrom->GetId());
 
-        bool forceProcessing = false;
-        MarkBlockAsReceivedResult result;
-        const uint256 hash(pblock->GetHash());
         {
+            const uint256 hash2(pblock2->GetHash());
             LOCK(cs_main);
+            bool fRequested = mapBlocksInFlight.count(hash2);
+
+            BlockMap::iterator miPrev = mapBlockIndex.find(pblock2->hashPrevBlock);
+            if (miPrev == mapBlockIndex.end()) {
+                return error("previous header not found");
+            }
+
+            if (!fRequested) {
+                int32_t& nPoSTemperature = mapPoSTemperature[pfrom->addr];
+                if (nPoSTemperature >= MAX_CONSECUTIVE_POS_HEADERS) {
+                    nPoSTemperature = (MAX_CONSECUTIVE_POS_HEADERS*3)/4;
+                    if (Params().NetworkIDString() != "test") {
+						CValidationState state;
+                        MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ false, "too many consecutive pos headers3");
+                        //g_connman->Ban(pfrom->addr, BanReasonNodeMisbehaving, gArgs.GetArg("-bantime", DEFAULT_MISBEHAVING_BANTIME) * 7);
+                        return error("too many consecutive pos headers3");
+                    }
+                }
+
+                if (pblock2->IsProofOfStake() && !::ChainstateActive().IsInitialBlockDownload())
+                    nPoSTemperature += 1;
+
+                if (!miPrev->second->IsValid(BLOCK_VALID_TRANSACTIONS)) {
+                    MarkBlockAsReceived(hash2);
+                    return error("this block does not connect to any valid known blocks");
+                }
+            }
+            // peercoin: store in memory until we can connect it to some chain
+            WaitElement we; we.pblock = pblock2; we.time = nTimeNow;
+            mapBlocksWait[miPrev->second] = we;
+        }
+
+        static CBlockIndex* pindexLastAccepted = nullptr;
+        if (pindexLastAccepted == nullptr)
+            pindexLastAccepted = ::ChainActive().Tip();
+        bool fContinue = true;
+
+        // peercoin: accept as many blocks as we possibly can from mapBlocksWait
+        while (fContinue) {
+            fContinue = false;
+            bool fSelected = false;
+            bool forceProcessing = false;
+            CBlockIndex* pindexPrev;
+            std::shared_ptr<CBlock> pblock;
+
+            //const uint256 hash(pblock->GetHash());
+            {
+            LOCK(cs_main);
+            // peercoin: try to select next block in a constant time
+            std::map<CBlockIndex*, WaitElement>::iterator it = mapBlocksWait.find(pindexLastAccepted);
+            if (it != mapBlocksWait.end() && pindexLastAccepted != nullptr) {
+                pindexPrev = it->first;
+                pblock = it->second.pblock;
+                mapBlocksWait.erase(pindexPrev);
+                fContinue = true;
+                fSelected = true;
+            } else
+            // otherwise: try to scan for it
+            for (auto& pair : mapBlocksWait) {
+                pindexPrev = pair.first;
+                pblock = pair.second.pblock;
+                const uint256 hash(pblock->GetHash());
+                // remove blocks that were not connected in 60 seconds
+                if (nTimeNow > pair.second.time + 60) {
+                    mapBlocksWait.erase(pindexPrev);
+                    fContinue = true;
+                    MarkBlockAsReceived(hash);
+                    break;
+                }
+                if (!pindexPrev->IsValid(BLOCK_VALID_TRANSACTIONS)) {
+                    if (pindexPrev->nStatus & BLOCK_FAILED_MASK) {
+                        mapBlocksWait.erase(pindexPrev);  // prev block was rejected
+                        fContinue = true;
+                        MarkBlockAsReceived(hash);
+                        break;
+                    }
+                    continue;   // prev block was not (yet) accepted on disk, skip to next one
+                }
+
+                mapBlocksWait.erase(pindexPrev);
+                fContinue = true;
+                fSelected = true;
+                break;
+            }
+            if (!fSelected)
+                continue;
+
+            const uint256 hash(pblock->GetHash());
+
             // Also always process if we requested the block explicitly, as we may
             // need it even though it is not a candidate for a new best tip.
-            result = MarkBlockAsReceived(hash);
-            forceProcessing |= result.fRequested;
-            // mapBlockSource is only used for sending reject messages and DoS scores,
+            forceProcessing |= MarkBlockAsReceived(hash);
+            // mapBlockSource is only used for punishing peers and setting
             // so the race between here and cs_main in ProcessNewBlock is fine.
             mapBlockSource.emplace(hash, std::make_pair(pfrom->GetId(), true));
-        }
-        bool fNewBlock = false;
-        ProcessNewBlock(chainparams, pblock, forceProcessing, &fNewBlock, *connman, pfrom, !result.fPriorityRequest);
-        if (result.fPriorityRequest) {
-            ProcessPriorityRequests(pblock);
-        }
-        if (fNewBlock) {
-            pfrom->nLastBlockTime = GetTime();
-        } else {
-            LOCK(cs_main);
-            mapBlockSource.erase(pblock->GetHash());
+            }
+
+            bool fNewBlock = false;
+            bool fPoSDuplicate = false;
+            ProcessNewBlock(chainparams, pblock, forceProcessing, &fNewBlock, &pindexLastAccepted, &fPoSDuplicate);
+            if (fNewBlock) {
+                pfrom->nLastBlockTime = GetTime();
+            } else {
+                LOCK(cs_main);
+                mapBlockSource.erase(pblock->GetHash());
+            }
+            if (fPoSDuplicate)
+            {
+                LOCK(cs_main);
+                int32_t& nPoSTemperature = mapPoSTemperature[pfrom->addr];
+                nPoSTemperature += 100;
+            }
         }
 #ifdef ENABLE_SECURE_MESSAGING
-        SecureMsgScanBlock(*pblock);
+        SecureMsgScanBlock(*pblock2);
 #endif
         //return true;
     }
@@ -4110,16 +4188,8 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
             for (const CBlockIndex *pindex : vToDownload) {
                 uint32_t nFetchFlags = GetFetchFlags(pto);
                 vGetData.push_back(CInv(MSG_BLOCK | nFetchFlags, pindex->GetBlockHash()));
-                MarkBlockAsInFlight(pto->GetId(), pindex->GetBlockHash(), pindex
-#ifdef ENABLE_SPV
-, nullptr, false
-#endif
-);
-#ifdef ENABLE_SPV
-                LogPrint(BCLog::NET, "Requesting %s block %s (%d) peer=%d\n", (priorityRequest ? " (auxiliary/SPV)" : " "), pindex->GetBlockHash().ToString(), pindex->nHeight, pto->GetId());
-#else
+                MarkBlockAsInFlight(pto->GetId(), pindex->GetBlockHash(), pindex);
                 LogPrint(BCLog::NET, "Requesting block %s (%d) peer=%d\n", pindex->GetBlockHash().ToString(), pindex->nHeight, pto->GetId());
-#endif
             }
             if (state.nBlocksInFlight == 0 && staller != -1) {
                 if (State(staller)->nStallingSince == 0) {
