@@ -3729,8 +3729,8 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CVali
         return false;
 
     // Check for the last proof of work block
-    if (block.IsProofOfWork() && pindex->nHeight+1 > chainparams.GetConsensus().nLastPOWBlock)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "reject proof-of-work", "pow ended");
+    if (block.IsProofOfWork() && pindex->nHeight > chainparams.GetConsensus().nLastPOWBlock)
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, strprintf("reject proof-of-work at height %d \n", pindex->nHeight), "pow ended");
 
     // Try to process all requested blocks that we don't have, but only
     // process an unrequested block if it's new and has enough work to
