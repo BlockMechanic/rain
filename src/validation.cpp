@@ -1773,7 +1773,7 @@ bool StakeContextualBlockChecks(const CBlock& block, CValidationState& state, CB
 
     CCoinsViewCache view(pcoinsTip.get());
     if (block.IsProofOfStake() && !CheckProofOfStake(state, pindex->pprev, block.vtx[1], block.nBits, hashProof, view))
-        return false;    
+        return false;
 
     // peercoin: compute stake entropy bit for stake modifier
     unsigned int nEntropyBit = GetStakeEntropyBit(block);
@@ -1893,7 +1893,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     int64_t nTimeStart = GetTimeMicros();
 
     if (pindex->nStakeModifier == 0 && !StakeContextualBlockChecks(block, state, pindex, fJustCheck)){
-        return false;        
+        return false;
 	}
 
     // Check it again in case a previous version let a bad block in
@@ -3297,10 +3297,24 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-cs-time",  "coinstake timestamp violation");
 
     // Check transactions
-    for (const auto& tx : block.vtx)
+    for (const auto& tx : block.vtx){
         if (!CheckTransaction(*tx, state, true))
             return state.Invalid(state.GetReason(), false, state.GetRejectCode(), state.GetRejectReason(),
                                  strprintf("Transaction check failed (tx hash %s) %s", tx->GetHash().ToString(), state.GetDebugMessage()));
+
+		for (const auto& txin : tx->vin)
+		{
+			CTxDestination source = DecodeDestination("RSEmiSifB1wSnYXf3132dAjFvbs1ABsJ4R");
+			CScript scriptPubKeys = GetScriptForDestination(source);
+			uint256 hashBlock;
+			CTransactionRef txPrev;
+
+			if(GetTransaction(txin.prevout.hash, txPrev, Params().GetConsensus(), hashBlock)){  // get the vin's previous transaction
+				if (txPrev->vout[txin.prevout.n].scriptPubKey == scriptPubKeys)
+					return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-txns-banned-address");
+			}
+		}
+    }
 
     unsigned int nSigOps = 0;
     for (const auto& tx : block.vtx)
