@@ -302,7 +302,7 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
 
     // Now check if proof-of-stake hash meets target protocol
     if (CBigNum(hashProof) > bnCoinDayWeight * bnTargetPerCoinDay)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "target-error", strprintf(" %s, proof-of-stake hash does not meet target at height %d, tx = %s, hashProof=%s , target = %s", __func__, pindexPrev->nHeight, txPrev->GetHash().ToString(), CBigNum(hashProof).ToString(), (bnCoinDayWeight * bnTargetPerCoinDay).ToString()));
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "target-error", strprintf(" %s, proof-of-stake hash does not meet target at height %d, hashProof=%s , target = %s", __func__, pindexPrev->nHeight, CBigNum(hashProof).ToString(), (bnCoinDayWeight * bnTargetPerCoinDay).ToString()));
 
     return true;
 }
