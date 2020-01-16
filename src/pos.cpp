@@ -298,7 +298,7 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
             nStakeModifier,
             nTimeBlockFrom, nTxPrevOffset, txPrev->nTime, prevout.n, nTimeTx,
             hashProof.ToString());
-    //}
+    }
 
     // Now check if proof-of-stake hash meets target protocol
     if (CBigNum(hashProof) > bnCoinDayWeight * bnTargetPerCoinDay)
