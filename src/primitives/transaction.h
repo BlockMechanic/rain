@@ -396,10 +396,10 @@ public:
 /** A mutable version of CTransaction. */
 struct CMutableTransaction
 {
-    uint32_t nTime;
     std::vector<CTxIn> vin;
     std::vector<CTxOut> vout;
     int32_t nVersion;
+    uint32_t nTime;
     uint32_t nLockTime;
 
     CMutableTransaction();

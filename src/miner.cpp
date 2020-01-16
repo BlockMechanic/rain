@@ -108,7 +108,7 @@ void BlockAssembler::resetBlock()
 Optional<int64_t> BlockAssembler::m_last_block_num_txs{nullopt};
 Optional<int64_t> BlockAssembler::m_last_block_weight{nullopt};
 
-std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& scriptPubKeyIn, bool fProofOfStake)
+std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& scriptPubKeyIn, bool fProofOfStake, CWallet* pwallet, bool* pfPoSCancel)
 {
     int64_t nTimeStart = GetTimeMicros();
 
@@ -124,8 +124,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     assert(pindexPrev != nullptr);
     nHeight = pindexPrev->nHeight + 1;
 
-    CAmount reward = GetBlockSubsidy(nHeight, chainparams.GetConsensus(), pindexPrev->GetBlockHash());
-
     // Create coinbase transaction.
     CMutableTransaction coinbaseTx;
     coinbaseTx.vin.resize(1);
@@ -134,11 +132,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
 
     if (pblock->IsProofOfWork()) {
-        coinbaseTx.vout[0].nValue = reward;
+        coinbaseTx.vout[0].nValue = GetBlockSubsidy(nHeight, chainparams.GetConsensus(), pindexPrev->GetBlockHash());
     }
-
-    if (fProofOfStake)
-        pblock->vtx[1] = MakeTransactionRef(std::move(coinbaseTx));
 
     // Add dummy coinbase tx as first transaction
     pblock->vtx.emplace_back();
@@ -147,13 +142,14 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     // peercoin: if coinstake available add coinstake tx
     static int64_t nLastCoinStakeSearchTime = GetAdjustedTime();  // only initialized at startup
+    pblock->nBits          = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus(), fProofOfStake);
 
     if (fProofOfStake)  // attemp to find a coinstake
     {
-		std::shared_ptr<CWallet> pwallet = GetWallet("default");
-		if (!pwallet)
-		   return nullptr;
+        if (!pwallet)
+           return nullptr;
 
+        *pfPoSCancel = true;
         CMutableTransaction txCoinStake;
         int64_t nSearchTime = txCoinStake.nTime; // search to current time
         if (nSearchTime > nLastCoinStakeSearchTime)
@@ -166,13 +162,14 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
                     coinbaseTx.vout[0].SetEmpty();
                     coinbaseTx.nTime = txCoinStake.nTime;
                     pblock->vtx.push_back(MakeTransactionRef(CTransaction(txCoinStake)));
+                    *pfPoSCancel = false;
                 }
             }
-            else 
-                return nullptr;
             nLastCoinStakeSearchInterval = nSearchTime - nLastCoinStakeSearchTime;
             nLastCoinStakeSearchTime = nSearchTime;
         }
+        if (*pfPoSCancel)
+            return nullptr; // peercoin: there is no point to continue if we failed to create coinstake
     }
 
     LOCK2(cs_main, mempool.cs);
@@ -212,14 +209,14 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
-    pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus(), fProofOfStake);
+    if (fIncludeWitness)
+        pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus(), fProofOfStake);
     pblocktemplate->vTxFees[0] = -nFees;
 
     LogPrintf("CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops %d\n", GetBlockWeight(*pblock), nBlockTx, nFees, nBlockSigOpsCost);
 
     // Fill in header
     pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
-    pblock->nBits          = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus(), fProofOfStake);
     if (pblock->IsProofOfStake())
         pblock->nTime      = pblock->vtx[1]->nTime; //same as coinstake timestamp
     if (pblock->IsProofOfWork())
@@ -228,7 +225,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     pblocktemplate->vTxSigOpsCost[0] = WITNESS_SCALE_FACTOR * GetLegacySigOpCount(*pblock->vtx[0]);
 
     CValidationState state;
-    if (!fProofOfStake && !TestBlockValidity(state, chainparams, *pblock, pindexPrev, false, false)) {
+    if (!TestBlockValidity(state, chainparams, *pblock, pindexPrev, false, false)) {
         throw std::runtime_error(strprintf("%s: TestBlockValidity failed: %s", __func__, FormatStateMessage(state)));
     }
     int64_t nTime2 = GetTimeMicros();
@@ -507,14 +504,6 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
     pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
 }
 
-//////////////////////////////////////////////////////////////////////////////
-//
-// Proof of Stake miner
-//
-
-//
-// Looking for suitable coins for creating new block.
-//
 
 bool CheckStake(std::shared_ptr<CBlock> pblock)
 {
@@ -534,7 +523,7 @@ bool CheckStake(std::shared_ptr<CBlock> pblock)
     return true;
 }
 
-void ThreadStakeMiner(CWallet *pwallet)
+void PoSMiner(CWallet *pwallet)
 {
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
     MilliSleep(90000);
@@ -563,7 +552,7 @@ void ThreadStakeMiner(CWallet *pwallet)
             }
             //don't disable PoS mining for no connections if in regtest mode
             if(!gArgs.GetBoolArg("-emergencystaking", false)) {
-			    LogPrint(BCLog::COINSTAKE, "Emergeny Staking Disabled \n");
+                LogPrint(BCLog::COINSTAKE, "Emergeny Staking Disabled \n");
                 while (g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) == 0 || ::ChainstateActive().IsInitialBlockDownload()) {
                     pwallet->m_last_coin_stake_search_interval = 0;
                     fTryToSync = true;
@@ -582,12 +571,17 @@ void ThreadStakeMiner(CWallet *pwallet)
             // Create new block
             //
             CBlockIndex* pindexPrev = ::ChainActive().Tip();
-            std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(reservekey.reserveScript, true));
+            bool fPoSCancel = false;
+            std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(reservekey.reserveScript, true, pwallet, &fPoSCancel));
             if (!pblocktemplate.get())
             {
-                MilliSleep(5000);
+                if (fPoSCancel == true)
+                {
+                    MilliSleep(5000);
+                    continue;
+                }
                 LogPrintf("Error in PeercoinMiner: Keypool ran out, please call keypoolrefill before restarting the mining thread\n");
-                continue;
+                return;
             }
             CBlock *pblock = &pblocktemplate->block;
             IncrementExtraNonce(pblock, pindexPrev, nExtraNonce);
@@ -597,18 +591,19 @@ void ThreadStakeMiner(CWallet *pwallet)
             {
                 pblock->nFlags = CBlockIndex::BLOCK_PROOF_OF_STAKE;
                 std::shared_ptr<CBlock> shared_pblock = std::make_shared<CBlock>(*pblock);
-
                 if (!SignBlock(shared_pblock, pwallet))
                 {
                     LogPrintf("PoSMiner(): failed to sign PoS block");
                     continue;
                 }
+
                 LogPrintf("CPUMiner : proof-of-stake block found %s\n", pblock->GetHash().ToString());
                 CheckStake(shared_pblock);
+
                 // Try to sign a block (this also checks for a PoS stake)
                 MilliSleep(60 * 1000 + GetRand(4 * 60 * 1000));
             }
-            MilliSleep(10000);
+            MilliSleep(5000);
 
             continue;
         }
@@ -626,6 +621,23 @@ void ThreadStakeMiner(CWallet *pwallet)
     }
 }
 
+// peercoin: stake minter thread
+void static ThreadStakeMinter(void* parg)
+{
+    LogPrintf("ThreadStakeMinter started\n");
+    CWallet* pwallet = (CWallet*)parg;
+    try
+    {
+        PoSMiner(pwallet);
+    }
+    catch (std::exception& e) {
+        PrintExceptionContinue(&e, "ThreadStakeMinter()");
+    } catch (...) {
+        PrintExceptionContinue(NULL, "ThreadStakeMinter()");
+    }
+    LogPrintf("ThreadStakeMinter exiting\n");
+}
+
 void Stake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread)
 {
     if (stakeThread != nullptr)
@@ -637,7 +649,7 @@ void Stake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread)
     if(fStake)
     {
         stakeThread = new boost::thread_group();
-        stakeThread->create_thread(boost::bind(&ThreadStakeMiner, pwallet));
+        stakeThread->create_thread(boost::bind(&ThreadStakeMinter, pwallet));
     }
 
 }

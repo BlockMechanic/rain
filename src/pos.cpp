@@ -279,7 +279,7 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
     uint64_t nStakeModifier = 0;
     int nStakeModifierHeight = 0;
     int64_t nStakeModifierTime = 0;
-
+    
     if (!GetKernelStakeModifier(state, pindexPrev, blockFrom.GetHash(), nStakeModifier, nStakeModifierHeight, nStakeModifierTime, fPrintProofOfStake))
         return false;
 
@@ -298,11 +298,11 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
             nStakeModifier,
             nTimeBlockFrom, nTxPrevOffset, txPrev->nTime, prevout.n, nTimeTx,
             hashProof.ToString());
-    }
+    //}
 
     // Now check if proof-of-stake hash meets target protocol
     if (CBigNum(hashProof) > bnCoinDayWeight * bnTargetPerCoinDay)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "target-error", strprintf(" %s, proof-of-stake hash does not meet target at height %d, tx = %s, hashProof=%s , target = %s", __func__, pindexPrev->nHeight, txPrev->GetHash().ToString(), hashProof.ToString(), (bnCoinDayWeight * bnTargetPerCoinDay).ToString()));
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "target-error", strprintf(" %s, proof-of-stake hash does not meet target at height %d, tx = %s, hashProof=%s , target = %s", __func__, pindexPrev->nHeight, txPrev->GetHash().ToString(), CBigNum(hashProof).ToString(), (bnCoinDayWeight * bnTargetPerCoinDay).ToString()));
 
     return true;
 }
@@ -316,9 +316,9 @@ bool CheckProofOfStake(CValidationState& state, CBlockIndex* pindexPrev, const C
     // Kernel (input 0) must match the stake hash target (nBits)
     const CTxIn& txin = tx->vin[0];
 
-    Coin coinPrev;
-    if(!view.GetCoin(txin.prevout, coinPrev))
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "no-stake-prevout", strprintf(" Stake prevout does not exist for %s ", txin.prevout.hash.ToString()));
+//    Coin coinPrev;
+//    if(!view.GetCoin(txin.prevout, coinPrev))
+//        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "no-stake-prevout", strprintf(" Stake prevout does not exist for %s ", txin.prevout.hash.ToString()));
 
     if (!g_txindex)
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "tx-index-disabled", strprintf("%s: transaction index is not enabled ", __func__));
@@ -344,9 +344,14 @@ bool CheckProofOfStake(CValidationState& state, CBlockIndex* pindexPrev, const C
             return error("%s() : txid mismatch in CheckProofOfStake()", __PRETTY_FUNCTION__);
     }
 
-    // Verify signature
-    if (!VerifySignature(coinPrev, txin.prevout.hash, *tx, 0, SCRIPT_VERIFY_P2SH))
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "VerifySignature failed", strprintf(" VerifySignature failed on coinstake %s ", tx->GetHash().ToString()));
+    {
+        int nIn = 0;
+        const CTxOut& prevOut = txPrev->vout[tx->vin[nIn].prevout.n];
+        TransactionSignatureChecker checker(&(*tx), nIn, prevOut.nValue, PrecomputedTransactionData(*tx));
+
+        if (!VerifyScript(tx->vin[nIn].scriptSig, prevOut.scriptPubKey, &(tx->vin[nIn].scriptWitness), SCRIPT_VERIFY_P2SH, checker, nullptr))
+            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "invalid-pos-script", strprintf(" VerifyScript failed on coinstake %s ", tx->GetHash().ToString()));
+    }
 
     if (!CheckStakeKernelHash(state, nBits, pindexPrev, header, postx.nTxOffset + CBlockHeader::NORMAL_SERIALIZE_SIZE, txPrev, txin.prevout, tx->nTime, hashProof, gArgs.GetBoolArg("-debug", false)))
         return false;

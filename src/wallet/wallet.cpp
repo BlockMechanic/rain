@@ -634,7 +634,7 @@ bool CWallet::Unlock(const SecureString& strWalletPassphrase, bool accept_no_key
     CCrypter crypter;
     CKeyingMaterial _vMasterKey;
     auto locked_chain = chain().lock();
-    
+
     if (!IsLocked())
     {
 #ifdef ENABLE_SECURE_MESSAGING
@@ -864,7 +864,7 @@ void CWallet::AddToSpends(const COutPoint& outpoint, const uint256& wtxid)
 CAmount CWallet::GetStake() const
 {
     CAmount nTotal = 0;
-	auto locked_chain = chain().lock();
+    auto locked_chain = chain().lock();
     LOCK(cs_wallet);
     for (std::map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
     {
@@ -878,7 +878,7 @@ CAmount CWallet::GetStake() const
 CAmount CWallet::GetWatchOnlyStake() const
 {
     CAmount nTotal = 0;
-	auto locked_chain = chain().lock();
+    auto locked_chain = chain().lock();
     LOCK(cs_wallet);
     for (std::map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
     {
@@ -950,7 +950,7 @@ void CWallet::RemoveFromSpends(const uint256& wtxid)
 {
     assert(mapWallet.count(wtxid));
     CWalletTx& thisTx = mapWallet.at(wtxid);
-	if (thisTx.IsCoinBase()) // Coinbases don't spend anything!
+    if (thisTx.IsCoinBase()) // Coinbases don't spend anything!
         return;
 
     for(const CTxIn& txin : thisTx.tx->vin)
@@ -1502,15 +1502,15 @@ void CWallet::UpdatedBlockHeaderTip(bool fInitialDownload, const CBlockIndex *pi
 {
     LOCK(cs_wallet);
 
-    if (pNVSLastKnownBestHeader && !chain().checkpNVSLastKnownBestHeader(pNVSLastKnownBestHeader)) 
+    if (pNVSLastKnownBestHeader && !chain().checkpNVSLastKnownBestHeader(pNVSLastKnownBestHeader))
     {
-		const CBlockIndex *pindexFork = chain().setpNVSLastKnownBestHeader(pNVSLastKnownBestHeader);
-		if(chain().checkActiveHeader(pindexFork))
-		{
-			pNVSLastKnownBestHeader = const_cast<CBlockIndex *>(pindexFork);
-			if (pNVSBestBlock && pNVSBestBlock->nHeight >= pNVSLastKnownBestHeader->nHeight)
-				pNVSBestBlock = const_cast<CBlockIndex *>(pindexFork);
-		}
+        const CBlockIndex *pindexFork = chain().setpNVSLastKnownBestHeader(pNVSLastKnownBestHeader);
+        if(chain().checkActiveHeader(pindexFork))
+        {
+            pNVSLastKnownBestHeader = const_cast<CBlockIndex *>(pindexFork);
+            if (pNVSBestBlock && pNVSBestBlock->nHeight >= pNVSLastKnownBestHeader->nHeight)
+                pNVSBestBlock = const_cast<CBlockIndex *>(pindexFork);
+        }
     }
     pNVSLastKnownBestHeader = const_cast<CBlockIndex *>(pindexNew);
 
@@ -2618,138 +2618,140 @@ CAmount CWallet::GetAvailableBalance(const CCoinControl* coinControl) const
     return balance;
 }
 
-
 void CWallet::AvailableCoins(interfaces::Chain::Lock& locked_chain, std::vector<COutput>& vCoins, bool fOnlySafe, const CCoinControl* coinControl, const CAmount& nMinimumAmount, const CAmount& nMaximumAmount, const CAmount& nMinimumSumAmount, const uint64_t nMaximumCount, uint32_t nSpendTime) const
 {
     AssertLockHeld(cs_wallet);
 
     vCoins.clear();
 
-    CAmount nTotal = 0;
-    // Either the WALLET_FLAG_AVOID_REUSE flag is not set (in which case we always allow), or we default to avoiding, and only in the case where
-    // a coin control object is provided, and has the avoid address reuse flag set to false, do we allow already used addresses
-    bool allow_used_addresses = !IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE) || (coinControl && !coinControl->m_avoid_address_reuse);
-    const int min_depth = {coinControl ? coinControl->m_min_depth : DEFAULT_MIN_DEPTH};
-    const int max_depth = {coinControl ? coinControl->m_max_depth : DEFAULT_MAX_DEPTH};
-
-    for (const auto& entry : mapWallet)
     {
-        const uint256& wtxid = entry.first;
-        const CWalletTx& wtx = entry.second;
 
-        if (!locked_chain.checkFinalTx(*wtx.tx))
-            continue;
+        CAmount nTotal = 0;
+        // Either the WALLET_FLAG_AVOID_REUSE flag is not set (in which case we always allow), or we default to avoiding, and only in the case where
+        // a coin control object is provided, and has the avoid address reuse flag set to false, do we allow already used addresses
+        bool allow_used_addresses = !IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE) || (coinControl && !coinControl->m_avoid_address_reuse);
+        const int min_depth = {coinControl ? coinControl->m_min_depth : DEFAULT_MIN_DEPTH};
+        const int max_depth = {coinControl ? coinControl->m_max_depth : DEFAULT_MAX_DEPTH};
 
-        if (nSpendTime > 0 && wtx.tx->nTime > nSpendTime)
-            continue;  // peercoin: timestamp must not exceed spend time
+        for (const auto& entry : mapWallet)
+        {
+            const uint256& wtxid = entry.first;
+            const CWalletTx& wtx = entry.second;
 
-        if (wtx.IsImmatureCoinBase(locked_chain))
-            continue;
-
-        int nDepth = wtx.GetDepthInMainChain(locked_chain);
-        if (nDepth < 0)
-            continue;
-
-        // We should not consider coins which aren't at least in our mempool
-        // It's possible for these to be conflicted via ancestors which we may never be able to detect
-        if (nDepth == 0 && !wtx.InMempool())
-            continue;
-
-        bool safeTx = wtx.IsTrusted(locked_chain);
-
-        // We should not consider coins from transactions that are replacing
-        // other transactions.
-        //
-        // Example: There is a transaction A which is replaced by bumpfee
-        // transaction B. In this case, we want to prevent creation of
-        // a transaction B' which spends an output of B.
-        //
-        // Reason: If transaction A were initially confirmed, transactions B
-        // and B' would no longer be valid, so the user would have to create
-        // a new transaction C to replace B'. However, in the case of a
-        // one-block reorg, transactions B' and C might BOTH be accepted,
-        // when the user only wanted one of them. Specifically, there could
-        // be a 1-block reorg away from the chain where transactions A and C
-        // were accepted to another chain where B, B', and C were all
-        // accepted.
-        if (nDepth == 0 && wtx.mapValue.count("replaces_txid")) {
-            safeTx = false;
-        }
-
-        // Similarly, we should not consider coins from transactions that
-        // have been replaced. In the example above, we would want to prevent
-        // creation of a transaction A' spending an output of A, because if
-        // transaction B were initially confirmed, conflicting with A and
-        // A', we wouldn't want to the user to create a transaction D
-        // intending to replace A', but potentially resulting in a scenario
-        // where A, A', and D could all be accepted (instead of just B and
-        // D, or just A and A' like the user would want).
-        if (nDepth == 0 && wtx.mapValue.count("replaced_by_txid")) {
-            safeTx = false;
-        }
-
-        if (fOnlySafe && !safeTx) {
-            continue;
-        }
-
-        if (nDepth < min_depth || nDepth > max_depth) {
-            continue;
-        }
-
-        for (unsigned int i = 0; i < wtx.tx->vout.size(); i++) {
-            if (wtx.tx->vout[i].nValue < nMinimumAmount || wtx.tx->vout[i].nValue > nMaximumAmount)
+            if (!locked_chain.checkFinalTx(*wtx.tx))
                 continue;
 
-            if (coinControl && coinControl->HasSelected() && !coinControl->fAllowOtherInputs && !coinControl->IsSelected(COutPoint(entry.first, i)))
+            if (nSpendTime > 0 && wtx.tx->nTime > nSpendTime)
+                continue;  // peercoin: timestamp must not exceed spend time
+
+            if ((wtx.IsCoinBase() || wtx.IsCoinStake()) && wtx.IsImmatureCoinBase(locked_chain))
                 continue;
 
-            if (IsLockedCoin(entry.first, i))
+            int nDepth = wtx.GetDepthInMainChain(locked_chain);
+            if (nDepth < 0)
                 continue;
 
-            if (IsSpent(locked_chain, wtxid, i))
+            // We should not consider coins which aren't at least in our mempool
+            // It's possible for these to be conflicted via ancestors which we may never be able to detect
+            if (nDepth == 0 && !wtx.InMempool())
                 continue;
 
-            isminetype mine = IsMine(wtx.tx->vout[i]);
+            bool safeTx = wtx.IsTrusted(locked_chain);
 
-            if (mine == ISMINE_NO) {
+            // We should not consider coins from transactions that are replacing
+            // other transactions.
+            //
+            // Example: There is a transaction A which is replaced by bumpfee
+            // transaction B. In this case, we want to prevent creation of
+            // a transaction B' which spends an output of B.
+            //
+            // Reason: If transaction A were initially confirmed, transactions B
+            // and B' would no longer be valid, so the user would have to create
+            // a new transaction C to replace B'. However, in the case of a
+            // one-block reorg, transactions B' and C might BOTH be accepted,
+            // when the user only wanted one of them. Specifically, there could
+            // be a 1-block reorg away from the chain where transactions A and C
+            // were accepted to another chain where B, B', and C were all
+            // accepted.
+            if (nDepth == 0 && wtx.mapValue.count("replaces_txid")) {
+                safeTx = false;
+            }
+
+            // Similarly, we should not consider coins from transactions that
+            // have been replaced. In the example above, we would want to prevent
+            // creation of a transaction A' spending an output of A, because if
+            // transaction B were initially confirmed, conflicting with A and
+            // A', we wouldn't want to the user to create a transaction D
+            // intending to replace A', but potentially resulting in a scenario
+            // where A, A', and D could all be accepted (instead of just B and
+            // D, or just A and A' like the user would want).
+            if (nDepth == 0 && wtx.mapValue.count("replaced_by_txid")) {
+                safeTx = false;
+            }
+
+            if (fOnlySafe && !safeTx) {
                 continue;
             }
 
-            if (!allow_used_addresses && IsUsedDestination(wtxid, i)) {
+            if (nDepth < min_depth || nDepth > max_depth)
                 continue;
-            }
 
-            bool solvable = IsSolvable(*this, wtx.tx->vout[i].scriptPubKey);
-            bool spendable = ((mine & ISMINE_SPENDABLE) != ISMINE_NO) || (((mine & ISMINE_WATCH_ONLY) != ISMINE_NO) && (coinControl && coinControl->fAllowWatchOnly && solvable));
+            for (unsigned int i = 0; i < wtx.tx->vout.size(); i++) {
+                if (wtx.tx->vout[i].nValue < nMinimumAmount || wtx.tx->vout[i].nValue > nMaximumAmount)
+                    continue;
 
-            vCoins.push_back(COutput(&wtx, i, nDepth, spendable, solvable, safeTx, (coinControl && coinControl->fAllowWatchOnly)));
+                if (coinControl && coinControl->HasSelected() && !coinControl->fAllowOtherInputs && !coinControl->IsSelected(COutPoint(entry.first, i)))
+                    continue;
 
-            // Checks the sum amount of all UTXO's.
-            if (nMinimumSumAmount != MAX_MONEY) {
-                nTotal += wtx.tx->vout[i].nValue;
+                if (IsLockedCoin(entry.first, i))
+                    continue;
 
-                if (nTotal >= nMinimumSumAmount) {
+                if (IsSpent(locked_chain, wtxid, i))
+                    continue;
+
+                isminetype mine = IsMine(wtx.tx->vout[i]);
+
+                if (mine == ISMINE_NO) {
+                    continue;
+                }
+
+                if (!allow_used_addresses && IsUsedDestination(wtxid, i))
+                    continue;
+
+
+                bool solvable = IsSolvable(*this, wtx.tx->vout[i].scriptPubKey);
+                bool spendable = ((mine & ISMINE_SPENDABLE) != ISMINE_NO) || (((mine & ISMINE_WATCH_ONLY) != ISMINE_NO) && (coinControl && coinControl->fAllowWatchOnly && solvable));
+
+                vCoins.push_back(COutput(&wtx, i, nDepth, spendable, solvable, safeTx, (coinControl && coinControl->fAllowWatchOnly)));
+
+                // Checks the sum amount of all UTXO's.
+                if (nMinimumSumAmount != MAX_MONEY) {
+                    nTotal += wtx.tx->vout[i].nValue;
+
+                    if (nTotal >= nMinimumSumAmount) {
+                        return;
+                    }
+                }
+
+                // Checks the maximum number of UTXO's.
+                if (nMaximumCount > 0 && vCoins.size() >= nMaximumCount) {
                     return;
                 }
-            }
-
-            // Checks the maximum number of UTXO's.
-            if (nMaximumCount > 0 && vCoins.size() >= nMaximumCount) {
-                return;
             }
         }
     }
 }
+
 std::map<CTxDestination, std::vector<COutput>> CWallet::ListCoins(interfaces::Chain::Lock& locked_chain) const
 {
     AssertLockHeld(cs_wallet);
 
     std::map<CTxDestination, std::vector<COutput>> result;
-    std::vector<COutput> availableCoins;
 
+    std::vector<COutput> availableCoins;
     AvailableCoins(locked_chain, availableCoins);
 
-    for (const COutput& coin : availableCoins) {
+    for (const auto& coin : availableCoins) {
         CTxDestination address;
         if (coin.fSpendable &&
             ExtractDestination(FindNonChangeParentOutput(*coin.tx->tx, coin.i).scriptPubKey, address)) {
@@ -2759,7 +2761,7 @@ std::map<CTxDestination, std::vector<COutput>> CWallet::ListCoins(interfaces::Ch
 
     std::vector<COutPoint> lockedCoins;
     ListLockedCoins(lockedCoins);
-    for (const COutPoint& output : lockedCoins) {
+    for (const auto& output : lockedCoins) {
         auto it = mapWallet.find(output.hash);
         if (it != mapWallet.end()) {
             int depth = it->second.GetDepthInMainChain(locked_chain);
@@ -3235,7 +3237,6 @@ bool CWallet::CreateTransaction(interfaces::Chain::Lock& locked_chain, const std
 
                 // Choose coins to use
                 bool bnb_used;
-                bool fOnlyValidatedInputs = true;
                 if (pick_new_inputs) {
                     nValueIn = 0;
                     setCoins.clear();
@@ -3594,8 +3595,8 @@ DBErrors CWallet::ZapWalletTx(std::vector<CWalletTx>& vWtx)
 
 bool CWallet::SetAddressBookWithDB(WalletBatch& batch, const CTxDestination& address, const std::string& strName, const std::string& strPurpose)
 {
-	bool fOwned = ::IsMine(*this, address) != ISMINE_NO;
-	auto locked_chain = chain().lock();
+    bool fOwned = ::IsMine(*this, address) != ISMINE_NO;
+    auto locked_chain = chain().lock();
     bool fUpdated = false;
     {
         LOCK(cs_wallet);
@@ -3643,7 +3644,7 @@ bool CWallet::DelAddressBook(const CTxDestination& address)
     bool fOwned = ::IsMine(*this, address) != ISMINE_NO;
     auto locked_chain = chain().lock();
 
-    
+
     if (fOwned)
     {
 #ifdef ENABLE_SECURE_MESSAGING
@@ -5159,10 +5160,10 @@ bool CWallet::AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<uns
 void CWallet::RequestSPVScan(int64_t optional_timestamp)
 {
     auto locked_chain = chain().lock();
-    
+
     if (chain().checkSPVScan())
         return;
-    
+
     CBlockIndex *pIndex = NULL;
     CBlockIndex *chainActiveTip = NULL;
     chain().getSPVTips(pIndex,chainActiveTip);
@@ -5170,8 +5171,8 @@ void CWallet::RequestSPVScan(int64_t optional_timestamp)
     int64_t oldest_key = std::numeric_limits<int64_t>::max();;
     int nonValidationScanUpToHeight = 0;
 
-	if (pNVSBestBlock)
-		nonValidationScanUpToHeight = pNVSBestBlock->nHeight;
+    if (pNVSBestBlock)
+        nonValidationScanUpToHeight = pNVSBestBlock->nHeight;
 
     {
         LOCK(cs_wallet);
@@ -5266,8 +5267,8 @@ bool CWallet::HaveAvailableCoinsForStaking() const
     auto locked_chain = m_chain->lock();
     CMutableTransaction txNew;
     std::vector<COutput> vAvailableCoins;
-    uint32_t ntime = m_chain->getAdjustedTime(); 
-    
+    uint32_t ntime = m_chain->getAdjustedTime();
+
     AvailableCoins(*locked_chain, vCoins, true, nullptr, 1, MAX_MONEY, MAX_MONEY, 0, ntime);
 
     return vCoins.size() > 0;
@@ -5300,26 +5301,32 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
     if (gArgs.IsArgSet("-reservebalance") && !ParseMoney(gArgs.GetArg("-reservebalance", ""), nReserveBalance))
         return error("CreateCoinStake : invalid reserve balance amount");
     if (nBalance <= nReserveBalance)
-        return false;
+        return error("CreateCoinStake : balance less than reserve");
     std::set<CInputCoin> setCoins;
     std::vector<CTransactionRef> vwtxPrev;
     CAmount nValueIn = 0;
     std::vector<COutput> vAvailableCoins;
     AvailableCoins(*locked_chain, vAvailableCoins, true, nullptr, 1, MAX_MONEY, MAX_MONEY, 0, txNew.nTime);
+
     bool bnb_used;
     CCoinControl temp;
     CoinSelectionParams coin_selection_params; // Parameters for coin selection, init with dummy
     if (!SelectCoins(vAvailableCoins, nBalance - nReserveBalance, setCoins, nValueIn, temp, coin_selection_params, bnb_used))
-        return false;
+        return error("CreateCoinStake : selectcoins failed");
+
     if (setCoins.empty())
-        return false;
+        return error("CreateCoinStake : setcoins empty");
+
     CAmount nCredit = 0;
     CScript scriptPubKeyKernel;
+    CValidationState state;
+
     for (const auto& pcoin : setCoins)
     {
         CDiskTxPos postx;
         CBlockHeader header;
         CTransactionRef tx;
+
         if (!locked_chain->getPostx(pcoin.outpoint.hash, postx, header, tx))
             continue;
 
@@ -5332,10 +5339,8 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
         {
             // Search backward in time from the given txNew timestamp
             // Search nSearchInterval seconds back up to nMaxStakeSearchInterval
-            uint256 hashProofOfStake = uint256();
-            COutPoint prevoutStake = pcoin.outpoint;
-            CBlockIndex *pindex = locked_chain->currentTip();
-            if (locked_chain->checkStakeKernelHash(pindex, nBits, header, postx.nTxOffset + CBlockHeader::NORMAL_SERIALIZE_SIZE, tx, prevoutStake, txNew.nTime - n, hashProofOfStake, gArgs.GetBoolArg("-debug", false)))
+            uint256 hashProof;
+            if (locked_chain->checkStakeKernelHash(state, nBits, locked_chain->currentTip(), header, postx.nTxOffset + CBlockHeader::NORMAL_SERIALIZE_SIZE, tx, pcoin.outpoint, txNew.nTime, hashProof, gArgs.GetBoolArg("-debug", false)))
             {
                 // Found a kernel
                 if (gArgs.GetBoolArg("-debug", false) && gArgs.GetBoolArg("-printcoinstake", false))
@@ -5385,12 +5390,15 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
                 fKernelFound = true;
                 break;
             }
+            else{
+                LogPrintf("%s : %s\n",__func__, FormatStateMessage(state));
+            }
         }
         if (fKernelFound)
             break; // if kernel is found stop searching
     }
     if (nCredit == 0 || nCredit > nBalance - nReserveBalance)
-        return false;
+        return error("CreateCoinStake : ncredit less than req or ==0 is %d",nCredit);
     for (const auto& pcoin : setCoins)
     {
         CDiskTxPos postx;
@@ -5398,7 +5406,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
         CTransactionRef tx;
         if (!locked_chain->getPostx(pcoin.outpoint.hash, postx, header, tx))
             continue;
-            
+
         // Attempt to add more inputs
         // Only add coins of the same key/address as kernel
         if (txNew.vout.size() == 2 && ((pcoin.txout.scriptPubKey == scriptPubKeyKernel || pcoin.txout.scriptPubKey == txNew.vout[1].scriptPubKey))
@@ -5427,14 +5435,14 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
     // Calculate coin age reward
     {
         uint64_t nCoinAge;
-       
+
         if (!locked_chain->getCoinAge(CTransaction(txNew), nCoinAge))
             return error("CreateCoinStake : failed to calculate coin age");
         CBlockIndex *pindex = locked_chain->currentTip();
         CAmount nReward = locked_chain->getBlockSubsidy(pindex->nHeight, Params().GetConsensus(), pindex->pprev->GetBlockHash(), true, nCoinAge, 0, pindex->pprev->nMoneySupply);
         // Refuse to create mint that has zero or negative reward
         if(nReward <= 0) {
-          return false;
+          return error("CreateCoinStake : reward less than or ==0");
         }
         nCredit += nReward;
     }
@@ -5465,16 +5473,17 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
         if (nBytes >= 1000000/5)
             return error("CreateCoinStake : exceeded coinstake size limit");
 
-		FeeCalculation feeCalc;
-		// Get the fee rate to use effective values in coin selection
-		CFeeRate nFeeRateNeeded = GetMinimumFeeRate(*this, temp, &feeCalc);
-		CAmount nFeeNeeded = GetMinimumFee(*this, nBytes, temp, &feeCalc);
-		if (feeCalc.reason == FeeReason::FALLBACK && !m_allow_fallback_fee) {
-			// eventually allow a fallback fee
-			return false;
-		}
+        FeeCalculation feeCalc;
+        // Get the fee rate to use effective values in coin selection
+        CFeeRate nFeeRateNeeded = GetMinimumFeeRate(*this, temp, &feeCalc);
+        CAmount nFeeNeeded = GetMinimumFee(*this, nBytes, temp, &feeCalc);
+        if (feeCalc.reason == FeeReason::FALLBACK && !m_allow_fallback_fee) {
+            // eventually allow a fallback fee
+            return error("CreateCoinStake : calcfee error");
 
-            
+        }
+
+
         // Check enough fee is paid
         if (nMinFee < nFeeNeeded - nMinFeeBase)
         {
@@ -5522,7 +5531,7 @@ uint64_t CWallet::GetStakeWeight() const
     bool bnb_used;
     CCoinControl temp;
     CoinSelectionParams coin_selection_params; // Parameters for coin selection, init with dummy
-    
+
     if (!SelectCoins(vAvailableCoins, nTargetValue, setCoins, nValueIn, temp, coin_selection_params,bnb_used))
         return 0;
 

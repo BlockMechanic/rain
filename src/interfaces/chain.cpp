@@ -101,8 +101,7 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
     CBlockIndex* currentTip() override
     {
         LockAssertion lock(::cs_main);
-        CBlockIndex* block = ::ChainActive().Tip();
-        return block;
+        return ::ChainActive().Tip();
     }
     bool IsProofOfStake(int height) override
     {
@@ -149,7 +148,6 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
 
         // Read block header
         CAutoFile file(OpenBlockFile(postx, true), SER_DISK, CLIENT_VERSION);		
-
         try {
             file >> header;
             fseek(file.Get(), postx.nTxOffset, SEEK_CUR);
@@ -157,9 +155,13 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
         } catch (std::exception &e) {
             return error("%s() : deserialize or I/O error in CreateCoinStake()", __PRETTY_FUNCTION__);
         }
+
+        if (tx->GetHash() != hash)
+            return error("%s() : txid mismatch in CheckProofOfStake()", __PRETTY_FUNCTION__);
+
+        return true;
 	}
-    bool checkStakeKernelHash(CBlockIndex* pindexPrev, unsigned int nBits, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake) override {
-		CValidationState state;
+    bool checkStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockIndex* pindexPrev, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake) override {
 		return CheckStakeKernelHash(state, nBits, pindexPrev, blockFrom, nTxPrevOffset, txPrev, prevout, nTimeTx, hashProofOfStake, fPrintProofOfStake);
 	}
 
