@@ -5301,7 +5301,8 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
     if (gArgs.IsArgSet("-reservebalance") && !ParseMoney(gArgs.GetArg("-reservebalance", ""), nReserveBalance))
         return error("CreateCoinStake : invalid reserve balance amount");
     if (nBalance <= nReserveBalance)
-        return error("CreateCoinStake : balance less than reserve");
+        return false;
+        //return error("CreateCoinStake : balance less than reserve");
     std::set<CInputCoin> setCoins;
     std::vector<CTransactionRef> vwtxPrev;
     CAmount nValueIn = 0;
