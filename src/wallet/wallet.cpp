@@ -5391,15 +5391,16 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
                 fKernelFound = true;
                 break;
             }
-            else{
-                LogPrintf("%s : %s\n",__func__, FormatStateMessage(state));
-            }
         }
         if (fKernelFound)
             break; // if kernel is found stop searching
+        if (!fKernelFound)
+            LogPrintf("%s : %s\n",__func__, FormatStateMessage(state));
     }
+
     if (nCredit == 0 || nCredit > nBalance - nReserveBalance)
-        return error("CreateCoinStake : ncredit less than req or ==0 is %d",nCredit);
+        return false;
+
     for (const auto& pcoin : setCoins)
     {
         CDiskTxPos postx;

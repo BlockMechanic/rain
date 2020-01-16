@@ -279,7 +279,7 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
     uint64_t nStakeModifier = 0;
     int nStakeModifierHeight = 0;
     int64_t nStakeModifierTime = 0;
-    
+
     if (!GetKernelStakeModifier(state, pindexPrev, blockFrom.GetHash(), nStakeModifier, nStakeModifierHeight, nStakeModifierTime, fPrintProofOfStake))
         return false;
 
