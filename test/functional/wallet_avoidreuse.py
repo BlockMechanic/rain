@@ -132,8 +132,8 @@ class AvoidReuseTest(RainTestFramework):
 
     def test_fund_send_fund_senddirty(self):
         '''
-        Test the same as test_fund_send_fund_send, except send the 10 TALK with
-        the avoid_reuse flag set to false. This means the 10 TALK send should succeed,
+        Test the same as test_fund_send_fund_send, except send the 10 RAIN with
+        the avoid_reuse flag set to false. This means the 10 RAIN send should succeed,
         where it fails in test_fund_send_fund_send.
         '''
 
@@ -183,11 +183,11 @@ class AvoidReuseTest(RainTestFramework):
     def test_fund_send_fund_send(self):
         '''
         Test the simple case where [1] generates a new address A, then
-        [0] sends 10 TALK to A.
-        [1] spends 5 TALK from A. (leaving roughly 5 TALK useable)
-        [0] sends 10 TALK to A again.
-        [1] tries to spend 10 TALK (fails; dirty).
-        [1] tries to spend 4 TALK (succeeds; change address sufficient)
+        [0] sends 10 RAIN to A.
+        [1] spends 5 RAIN from A. (leaving roughly 5 RAIN useable)
+        [0] sends 10 RAIN to A again.
+        [1] tries to spend 10 RAIN (fails; dirty).
+        [1] tries to spend 4 RAIN (succeeds; change address sufficient)
         '''
 
         fundaddr = self.nodes[1].getnewaddress()

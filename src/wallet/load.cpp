@@ -114,9 +114,7 @@ void StartWallets(CScheduler& scheduler)
 void FlushWallets()
 {
     for (const std::shared_ptr<CWallet>& pwallet : GetWallets()) {
-#ifdef ENABLE_PROOF_OF_STAKE
         pwallet->StopStake();
-#endif
         pwallet->Flush(false);
     }
 }

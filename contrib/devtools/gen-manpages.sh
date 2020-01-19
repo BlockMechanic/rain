@@ -16,7 +16,7 @@ RAINQT=${RAINQT:-$BINDIR/qt/rain-qt}
 [ ! -x $RAIND ] && echo "$RAIND not found or not executable." && exit 1
 
 # The autodetected version git tag can screw up manpage output a little bit
-TALKVER=($($RAINCLI --version | head -n1 | awk -F'[ -]' '{ print $6, $7 }'))
+RAINVER=($($RAINCLI --version | head -n1 | awk -F'[ -]' '{ print $6, $7 }'))
 
 # Create a footer file with copyright content.
 # This gets autodetected fine for raind if --version-string is not set,
@@ -26,8 +26,8 @@ $RAIND --version | sed -n '1!p' >> footer.h2m
 
 for cmd in $RAIND $RAINCLI $RAINTX $WALLET_TOOL $RAINQT; do
   cmdname="${cmd##*/}"
-  help2man -N --version-string=${TALKVER[0]} --include=footer.h2m -o ${MANDIR}/${cmdname}.1 ${cmd}
-  sed -i "s/\\\-${TALKVER[1]}//g" ${MANDIR}/${cmdname}.1
+  help2man -N --version-string=${RAINVER[0]} --include=footer.h2m -o ${MANDIR}/${cmdname}.1 ${cmd}
+  sed -i "s/\\\-${RAINVER[1]}//g" ${MANDIR}/${cmdname}.1
 done
 
 rm -f footer.h2m

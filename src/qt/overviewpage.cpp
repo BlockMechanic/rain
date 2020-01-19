@@ -28,7 +28,7 @@ class TxViewDelegate : public QAbstractItemDelegate
     Q_OBJECT
 public:
     explicit TxViewDelegate(const PlatformStyle *_platformStyle, QObject *parent=nullptr):
-        QAbstractItemDelegate(parent), unit(RainUnits::TALK),
+        QAbstractItemDelegate(parent), unit(RainUnits::RAIN),
         platformStyle(_platformStyle)
     {
 
@@ -245,7 +245,7 @@ void OverviewPage::setWalletModel(WalletModel *model)
         });
     }
 
-    // update the display unit, to not use the default ("TALK")
+    // update the display unit, to not use the default ("RAIN")
     updateDisplayUnit();
 }
 

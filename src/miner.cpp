@@ -640,18 +640,15 @@ void static ThreadStakeMinter(void* parg)
 
 void Stake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread)
 {
-    if (stakeThread != nullptr)
+    if (!fStake)
     {
         stakeThread->interrupt_all();
-        delete stakeThread;
-        stakeThread = nullptr;
     }
-    if(fStake)
+    if(fStake && pwallet)
     {
         stakeThread = new boost::thread_group();
         stakeThread->create_thread(boost::bind(&ThreadStakeMinter, pwallet));
     }
-
 }
 
 //////////////////////////////////////////////////////////////////////////////

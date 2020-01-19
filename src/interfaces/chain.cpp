@@ -120,17 +120,9 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
         return stakeAddress;
     }
     bool startStake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread)override{
-
 		::Stake(fStake, pwallet, stakeThread);
-		return true;
-
+        return true;
 	}
-   /* void cacheKernel(std::map<COutPoint, CStakeCache>& cache, const COutPoint& prevout) override {
-		CacheKernel(cache, prevout, *pcoinsTip);
-	}
-	bool checkKernel(const CBlock* block, const COutPoint& prevout) override {
-		return CheckKernel(::ChainActive().Tip(), block, prevout, *pcoinsTip);
-	}*/
     bool getCoinAge(const CTransaction& tx, uint64_t& nCoinAge) override{
 		CCoinsViewCache view(pcoinsTip.get());
         return GetCoinAge(tx,view,nCoinAge);
@@ -161,8 +153,8 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
 
         return true;
 	}
-    bool checkStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockIndex* pindexPrev, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake) override {
-		return CheckStakeKernelHash(state, nBits, pindexPrev, blockFrom, nTxPrevOffset, txPrev, prevout, nTimeTx, hashProofOfStake, fPrintProofOfStake);
+    bool checkStakeKernelHash(CValidationState& state, unsigned int nBits, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake) override {
+		return CheckStakeKernelHash(state, nBits, ::ChainActive().Tip(), blockFrom, nTxPrevOffset, txPrev, prevout, nTimeTx, hashProofOfStake, fPrintProofOfStake);
 	}
 
 

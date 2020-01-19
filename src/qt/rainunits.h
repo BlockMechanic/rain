@@ -56,9 +56,9 @@ public:
      */
     enum Unit
     {
-        TALK,
-        mTALK,
-        uTALK,
+        RAIN,
+        mRAIN,
+        uRAIN,
         SAT
     };
 

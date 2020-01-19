@@ -162,7 +162,7 @@ bool parseRainURI(const QUrl &uri, SendCoinsRecipient *out)
         {
             if(!i->second.isEmpty())
             {
-                if(!RainUnits::parse(RainUnits::TALK, i->second, &rv.amount))
+                if(!RainUnits::parse(RainUnits::RAIN, i->second, &rv.amount))
                 {
                     return false;
                 }
@@ -195,7 +195,7 @@ QString formatRainURI(const SendCoinsRecipient &info)
 
     if (info.amount)
     {
-        ret += QString("?amount=%1").arg(RainUnits::format(RainUnits::TALK, info.amount, false, RainUnits::separatorNever));
+        ret += QString("?amount=%1").arg(RainUnits::format(RainUnits::RAIN, info.amount, false, RainUnits::separatorNever));
         paramCount++;
     }
 

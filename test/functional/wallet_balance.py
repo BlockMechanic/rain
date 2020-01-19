@@ -93,7 +93,7 @@ class WalletTest(RainTestFramework):
         assert_equal(self.nodes[0].getbalance(minconf=0, include_watchonly=True), 100)
         assert_equal(self.nodes[1].getbalance(minconf=0, include_watchonly=True), 50)
 
-        # Send 40 TALK from 0 to 1 and 60 TALK from 1 to 0.
+        # Send 40 RAIN from 0 to 1 and 60 RAIN from 1 to 0.
         txs = create_transactions(self.nodes[0], self.nodes[1].getnewaddress(), 40, [Decimal('0.01')])
         self.nodes[0].sendrawtransaction(txs[0]['hex'])
         self.nodes[1].sendrawtransaction(txs[0]['hex'])  # sending on both nodes is faster than waiting for propagation

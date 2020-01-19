@@ -270,10 +270,10 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
     if (nTimeBlockFrom + Params().GetConsensus().nStakeMinAge > nTimeTx) // Min age requirement
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "min-age-error", strprintf(" %s, min age violation on coinstake %s", __func__, txPrev->GetHash().ToString()));
 
-    CBigNum bnTargetPerCoinDay;
+    arith_uint256 bnTargetPerCoinDay;
     bnTargetPerCoinDay.SetCompact(nBits);
     int64_t nValueIn = txPrev->vout[prevout.n].nValue;
-    CBigNum bnCoinDayWeight = CBigNum(nValueIn) * GetWeight((int64_t)txPrev->nTime, (int64_t)nTimeTx) / COIN / (24 * 60 * 60);
+    arith_uint256 bnCoinDayWeight = arith_uint256(nValueIn) * GetWeight((int64_t)txPrev->nTime, (int64_t)nTimeTx) / COIN / (24 * 60 * 60);
     // Calculate hash
     CDataStream ss(SER_GETHASH, 0);
     uint64_t nStakeModifier = 0;
@@ -301,8 +301,8 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
     }
 
     // Now check if proof-of-stake hash meets target protocol
-    if (CBigNum(hashProof) > bnCoinDayWeight * bnTargetPerCoinDay)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "target-error", strprintf(" %s, proof-of-stake hash does not meet target at height %d, hashProof=%s , target = %s", __func__, pindexPrev->nHeight, CBigNum(hashProof).ToString(), (bnCoinDayWeight * bnTargetPerCoinDay).ToString()));
+    if (UintToArith256(hashProof) > bnCoinDayWeight * bnTargetPerCoinDay)
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "target-error", strprintf(" %s, proof-of-stake hash does not meet target at height %d, hashProof=%s , target = %s", __func__, pindexPrev->nHeight, UintToArith256(hashProof).ToString(), (bnCoinDayWeight * bnTargetPerCoinDay).ToString()));
 
     return true;
 }
@@ -316,9 +316,15 @@ bool CheckProofOfStake(CValidationState& state, CBlockIndex* pindexPrev, const C
     // Kernel (input 0) must match the stake hash target (nBits)
     const CTxIn& txin = tx->vin[0];
 
-//    Coin coinPrev;
-//    if(!view.GetCoin(txin.prevout, coinPrev))
-//        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "no-stake-prevout", strprintf(" Stake prevout does not exist for %s ", txin.prevout.hash.ToString()));
+	Coin coinPrev;
+	{
+		LOCK(cs_main);
+		if(!view.GetCoin(txin.prevout, coinPrev)){
+			if(!GetSpentCoinFromMainChain(pindexPrev, txin.prevout, &coinPrev)) {
+				return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "no-stake-prevout", strprintf(" Stake prevout does not exist for %s ", txin.prevout.hash.ToString()));
+			}
+		}
+	}
 
     if (!g_txindex)
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "tx-index-disabled", strprintf("%s: transaction index is not enabled ", __func__));

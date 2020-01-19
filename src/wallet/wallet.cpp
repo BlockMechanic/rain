@@ -5246,7 +5246,7 @@ struct ScriptsElement{
 
 unsigned int GetStakeMaxCombineInputs() { return 100; }
 
-int64_t GetStakeCombineThreshold() { return 100 * COIN; }
+int64_t GetStakeCombineThreshold() { return 10000 * COIN; }
 
 unsigned int GetStakeSplitOutputs() { return 2; }
 
@@ -5321,14 +5321,15 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
     CAmount nCredit = 0;
     CScript scriptPubKeyKernel;
     CValidationState state;
+    m_last_coin_stake_search_interval = nSearchInterval;
 
     for (const auto& pcoin : setCoins)
     {
         CDiskTxPos postx;
         CBlockHeader header;
-        CTransactionRef tx;
+        CTransactionRef txPrev;
 
-        if (!locked_chain->getPostx(pcoin.outpoint.hash, postx, header, tx))
+        if (!locked_chain->getPostx(pcoin.outpoint.hash, postx, header, txPrev))
             continue;
 
         static int nMaxStakeSearchInterval = 60;
@@ -5336,12 +5337,12 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
             continue; // only count coins meeting min age requirement
 
         bool fKernelFound = false;
-        for (unsigned int n=0; n<std::min(nSearchInterval,(int64_t)nMaxStakeSearchInterval) && !fKernelFound; n++)
+        for (unsigned int n=0; n < std::min(nSearchInterval,(int64_t)nMaxStakeSearchInterval) && !fKernelFound; n++)
         {
             // Search backward in time from the given txNew timestamp
             // Search nSearchInterval seconds back up to nMaxStakeSearchInterval
             uint256 hashProof;
-            if (locked_chain->checkStakeKernelHash(state, nBits, locked_chain->currentTip(), header, postx.nTxOffset + CBlockHeader::NORMAL_SERIALIZE_SIZE, tx, pcoin.outpoint, txNew.nTime, hashProof, gArgs.GetBoolArg("-debug", false)))
+            if (locked_chain->checkStakeKernelHash(state, nBits, header, postx.nTxOffset + CBlockHeader::NORMAL_SERIALIZE_SIZE, txPrev, pcoin.outpoint, txNew.nTime -n, hashProof, gArgs.GetBoolArg("-debug", false)))
             {
                 // Found a kernel
                 if (gArgs.GetBoolArg("-debug", false) && gArgs.GetBoolArg("-printcoinstake", false))
@@ -5382,7 +5383,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
                 txNew.nTime -= n;
                 txNew.vin.push_back(CTxIn(pcoin.outpoint.hash, pcoin.outpoint.n));
                 nCredit += pcoin.txout.nValue;
-                vwtxPrev.push_back(tx);
+                vwtxPrev.push_back(txPrev);
                 txNew.vout.push_back(CTxOut(0, scriptPubKeyOut));
                 if (header.GetBlockTime() + nStakeSplitAge > txNew.nTime)
                     txNew.vout.push_back(CTxOut(0, scriptPubKeyOut)); //split stake
@@ -5542,10 +5543,9 @@ uint64_t CWallet::GetStakeWeight() const
 
     uint64_t nWeight = 0;
     LOCK(cs_wallet);
-    for(auto pcoin : setCoins)
+    for(const auto& pcoin : setCoins)
     {
-        //if (pcoin.GetDepthInMainChain(*locked_chain) >= COINBASE_MATURITY)
-        //    nWeight += pcoin.tx->vout[pcoin.second].nValue;
+        nWeight += pcoin.effective_value;
     }
 
     return nWeight;

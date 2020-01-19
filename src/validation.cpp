@@ -812,7 +812,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
         // Remove conflicting transactions from the mempool
         for (CTxMemPool::txiter it : allConflicting)
         {
-            LogPrint(BCLog::MEMPOOL, "replacing tx %s with %s for %s TALK additional fees, %d delta bytes\n",
+            LogPrint(BCLog::MEMPOOL, "replacing tx %s with %s for %s RAIN additional fees, %d delta bytes\n",
                     it->GetTx().GetHash().ToString(),
                     hash.ToString(),
                     FormatMoney(nModifiedFees - nConflictingFees),
@@ -5165,15 +5165,6 @@ bool GetCoinAge(const CTransaction& tx, const CCoinsViewCache &view, uint64_t& n
 
     for (const auto& txin : tx.vin)
     {
-        // First try finding the previous transaction in database
-//        Coin coin;
-
-//        if (!view.GetCoin(txin.prevout, coin))
-//            return error("%s() : previous transaction not in main chain in GetCoinAge()", __func__);
-
-//        if (tx.nTime < coin.nTime)
-//            return error("%s() : Transaction timestamp violation in GetCoinAge()", __func__);
-
         // Transaction index is required to get to block header
         if (!g_txindex)
             return error("%s() : Transaction index not available in GetCoinAge()", __func__);

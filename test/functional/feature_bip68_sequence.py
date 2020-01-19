@@ -66,7 +66,7 @@ class BIP68Test(RainTestFramework):
     def test_disable_flag(self):
         # Create some unconfirmed inputs
         new_addr = self.nodes[0].getnewaddress()
-        self.nodes[0].sendtoaddress(new_addr, 2) # send 2 TALK
+        self.nodes[0].sendtoaddress(new_addr, 2) # send 2 RAIN
 
         utxos = self.nodes[0].listunspent(0, 0)
         assert len(utxos) > 0

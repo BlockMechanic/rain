@@ -121,7 +121,7 @@ public:
 
             const QFontMetrics fm(fontMetrics());
             int h = lineEdit()->minimumSizeHint().height();
-            int w = fm.width(RainUnits::format(RainUnits::TALK, RainUnits::maxMoney(), false, RainUnits::separatorAlways));
+            int w = fm.width(RainUnits::format(RainUnits::RAIN, RainUnits::maxMoney(), false, RainUnits::separatorAlways));
             w += 2; // cursor blinking space
 
             QStyleOptionSpinBox opt;
@@ -147,7 +147,7 @@ public:
     }
 
 private:
-    int currentUnit{RainUnits::TALK};
+    int currentUnit{RainUnits::RAIN};
     CAmount singleStep{CAmount(100000)}; // satoshis
     mutable QSize cachedMinimumSizeHint;
     bool m_allow_empty{true};

@@ -15,9 +15,9 @@ RainUnits::RainUnits(QObject *parent):
 QList<RainUnits::Unit> RainUnits::availableUnits()
 {
     QList<RainUnits::Unit> unitlist;
-    unitlist.append(TALK);
-    unitlist.append(mTALK);
-    unitlist.append(uTALK);
+    unitlist.append(RAIN);
+    unitlist.append(mRAIN);
+    unitlist.append(uRAIN);
     unitlist.append(SAT);
     return unitlist;
 }
@@ -26,9 +26,9 @@ bool RainUnits::valid(int unit)
 {
     switch(unit)
     {
-    case TALK:
-    case mTALK:
-    case uTALK:
+    case RAIN:
+    case mRAIN:
+    case uRAIN:
     case SAT:
         return true;
     default:
@@ -40,9 +40,9 @@ QString RainUnits::longName(int unit)
 {
     switch(unit)
     {
-    case TALK: return QString("TALK");
-    case mTALK: return QString("mTALK");
-    case uTALK: return QString::fromUtf8("µTALK (bits)");
+    case RAIN: return QString("RAIN");
+    case mRAIN: return QString("mRAIN");
+    case uRAIN: return QString::fromUtf8("µRAIN (bits)");
     case SAT: return QString("Satoshi (sat)");
     default: return QString("???");
     }
@@ -52,7 +52,7 @@ QString RainUnits::shortName(int unit)
 {
     switch(unit)
     {
-    case uTALK: return QString::fromUtf8("bits");
+    case uRAIN: return QString::fromUtf8("bits");
     case SAT: return QString("sat");
     default: return longName(unit);
     }
@@ -62,9 +62,9 @@ QString RainUnits::description(int unit)
 {
     switch(unit)
     {
-    case TALK: return QString("Rains");
-    case mTALK: return QString("Milli-Rains (1 / 1" THIN_SP_UTF8 "000)");
-    case uTALK: return QString("Micro-Rains (bits) (1 / 1" THIN_SP_UTF8 "000" THIN_SP_UTF8 "000)");
+    case RAIN: return QString("Rains");
+    case mRAIN: return QString("Milli-Rains (1 / 1" THIN_SP_UTF8 "000)");
+    case uRAIN: return QString("Micro-Rains (bits) (1 / 1" THIN_SP_UTF8 "000" THIN_SP_UTF8 "000)");
     case SAT: return QString("Satoshi (sat) (1 / 100" THIN_SP_UTF8 "000" THIN_SP_UTF8 "000)");
     default: return QString("???");
     }
@@ -74,9 +74,9 @@ qint64 RainUnits::factor(int unit)
 {
     switch(unit)
     {
-    case TALK: return 100000000;
-    case mTALK: return 100000;
-    case uTALK: return 100;
+    case RAIN: return 100000000;
+    case mRAIN: return 100000;
+    case uRAIN: return 100;
     case SAT: return 1;
     default: return 100000000;
     }
@@ -86,9 +86,9 @@ int RainUnits::decimals(int unit)
 {
     switch(unit)
     {
-    case TALK: return 8;
-    case mTALK: return 5;
-    case uTALK: return 2;
+    case RAIN: return 8;
+    case mRAIN: return 5;
+    case uRAIN: return 2;
     case SAT: return 0;
     default: return 0;
     }
