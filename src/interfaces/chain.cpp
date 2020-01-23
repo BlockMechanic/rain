@@ -123,12 +123,8 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
 		::Stake(fStake, pwallet, stakeThread);
         return true;
 	}
-    bool getCoinAge(const CTransaction& tx, uint64_t& nCoinAge) override{
-		CCoinsViewCache view(pcoinsTip.get());
-        return GetCoinAge(tx,view,nCoinAge);
-	}
-    int64_t getBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, uint256 prevHash, bool fProofofStake, int64_t nCoinAge, int64_t nFees, int64_t supply) override{
-		return GetBlockSubsidy(nHeight, consensusParams, prevHash, fProofofStake, nCoinAge, nFees, supply);
+	bool checkKernel(CValidationState& state, unsigned int nBits, uint32_t nTimeBlock, const COutPoint& prevout) override {
+		return CheckKernel(state,nBits,nTimeBlock,prevout);		
 	}
     bool getPostx(const uint256 &hash, CDiskTxPos& postx, CBlockHeader& header, CTransactionRef& tx)override{
 
@@ -153,8 +149,12 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
 
         return true;
 	}
-    bool checkStakeKernelHash(CValidationState& state, unsigned int nBits, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake) override {
-		return CheckStakeKernelHash(state, nBits, ::ChainActive().Tip(), blockFrom, nTxPrevOffset, txPrev, prevout, nTimeTx, hashProofOfStake, fPrintProofOfStake);
+    bool getCoinAge(const CTransaction& tx, uint64_t& nCoinAge) override{
+		CCoinsViewCache view(pcoinsTip.get());
+        return GetCoinAge(tx,view,nCoinAge);
+	}
+    int64_t getBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, uint256 prevHash, bool fProofofStake, int64_t nCoinAge, int64_t nFees, int64_t supply) override{
+		return GetBlockSubsidy(nHeight, consensusParams, prevHash, fProofofStake, nCoinAge, nFees, supply);
 	}
 
 

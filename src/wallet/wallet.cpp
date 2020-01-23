@@ -33,10 +33,7 @@
 #include <validation.h>
 #include <wallet/coincontrol.h>
 #include <wallet/fees.h>
-#include <miner.h>
-#include <pos.h>
 
-#include <bignum.h>
 
 #include <algorithm>
 #include <assert.h>
@@ -5246,9 +5243,9 @@ struct ScriptsElement{
 
 unsigned int GetStakeMaxCombineInputs() { return 100; }
 
-int64_t GetStakeCombineThreshold() { return 10000 * COIN; }
+int64_t GetStakeCombineThreshold() { return 100 * COIN; }
 
-unsigned int GetStakeSplitOutputs() { return 2; }
+unsigned int GetStakeSplitOutputs() { return 10000; }
 
 int64_t GetStakeSplitThreshold() { return GetStakeSplitOutputs() * GetStakeCombineThreshold(); }
 
@@ -5260,8 +5257,6 @@ bool CWallet::HaveAvailableCoinsForStaking() const
 
     if (nBalance <= m_reserve_balance)
         return 0;
-
-    std::vector<const CWalletTx*> vwtxPrev;
 
     std::set<CInputCoin> setCoins;
     auto locked_chain = m_chain->lock();
@@ -5282,10 +5277,6 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
 
     // Select coins with suitable depth
     auto locked_chain = m_chain->lock();
-
-    CBigNum bnTargetPerCoinDay;
-    bnTargetPerCoinDay.SetCompact(nBits);
-
     const Consensus::Params& params = Params().GetConsensus();
 
     LOCK(cs_wallet);
@@ -5325,23 +5316,13 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
 
     for (const auto& pcoin : setCoins)
     {
-        CDiskTxPos postx;
-        CBlockHeader header;
-        CTransactionRef txPrev;
-
-        if (!locked_chain->getPostx(pcoin.outpoint.hash, postx, header, txPrev))
-            continue;
-
         static int nMaxStakeSearchInterval = 60;
-        if (header.GetBlockTime() + params.nStakeMinAge > txNew.nTime - nMaxStakeSearchInterval)
-            continue; // only count coins meeting min age requirement
-
         bool fKernelFound = false;
         for (unsigned int n=0; n < std::min(nSearchInterval,(int64_t)nMaxStakeSearchInterval) && !fKernelFound; n++)
         {
             // Search backward in time from the given txNew timestamp
             // Search nSearchInterval seconds back up to nMaxStakeSearchInterval
-            uint256 hashProof;
+            boost::this_thread::interruption_point();
             if (locked_chain->checkStakeKernelHash(state, nBits, header, postx.nTxOffset + CBlockHeader::NORMAL_SERIALIZE_SIZE, txPrev, pcoin.outpoint, txNew.nTime -n, hashProof, gArgs.GetBoolArg("-debug", false)))
             {
                 // Found a kernel
@@ -5385,8 +5366,8 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
                 nCredit += pcoin.txout.nValue;
                 vwtxPrev.push_back(txPrev);
                 txNew.vout.push_back(CTxOut(0, scriptPubKeyOut));
-                if (header.GetBlockTime() + nStakeSplitAge > txNew.nTime)
-                    txNew.vout.push_back(CTxOut(0, scriptPubKeyOut)); //split stake
+//                if (header.GetBlockTime() + nStakeSplitAge > txNew.nTime)
+//                    txNew.vout.push_back(CTxOut(0, scriptPubKeyOut)); //split stake
                 if (gArgs.GetBoolArg("-debug", false) && gArgs.GetBoolArg("-printcoinstake", false))
                     LogPrintf("CreateCoinStake : added kernel type=%d\n", whichType);
                 fKernelFound = true;
@@ -5452,58 +5433,33 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
 
     CAmount nMinFee = 0;
     CAmount nMinFeeBase = COIN/100;
-    while(true)
+
+    // Set output amount
+    if (txNew.vout.size() == 3)
     {
-        // Set output amount
-        if (txNew.vout.size() == 3)
-        {
-            txNew.vout[1].nValue = ((nCredit - nMinFee) / 2 / nMinFeeBase) * nMinFeeBase;
-            txNew.vout[2].nValue = nCredit - nMinFee - txNew.vout[1].nValue;
-        }
-        else
-            txNew.vout[1].nValue = nCredit - nMinFee;
-
-        // Sign
-        int nIn = 0;
-        for (const auto& pcoin : vwtxPrev)
-        {
-            if (!SignSignature(*this, *pcoin, txNew, nIn++, SIGHASH_ALL))
-                return error("CreateCoinStake : failed to sign coinstake");
-        }
-
-        // Limit size
-        unsigned int nBytes = ::GetSerializeSize(txNew, SER_NETWORK, PROTOCOL_VERSION);
-        if (nBytes >= 1000000/5)
-            return error("CreateCoinStake : exceeded coinstake size limit");
-
-        FeeCalculation feeCalc;
-        // Get the fee rate to use effective values in coin selection
-        CFeeRate nFeeRateNeeded = GetMinimumFeeRate(*this, temp, &feeCalc);
-        CAmount nFeeNeeded = GetMinimumFee(*this, nBytes, temp, &feeCalc);
-        if (feeCalc.reason == FeeReason::FALLBACK && !m_allow_fallback_fee) {
-            // eventually allow a fallback fee
-            return error("CreateCoinStake : calcfee error");
-
-        }
-
-
-        // Check enough fee is paid
-        if (nMinFee < nFeeNeeded - nMinFeeBase)
-        {
-            nMinFee = nFeeNeeded - nMinFeeBase;
-            continue; // try signing again
-        }
-        else
-        {
-            if (gArgs.GetBoolArg("-debug", false) && gArgs.GetBoolArg("-printfee", false))
-                LogPrintf("CreateCoinStake : fee for coinstake %s\n", FormatMoney(nMinFee).c_str());
-            break;
-        }
+        txNew.vout[1].nValue = ((nCredit - nMinFee) / 2 / nMinFeeBase) * nMinFeeBase;
+        txNew.vout[2].nValue = nCredit - nMinFee - txNew.vout[1].nValue;
     }
+    else
+        txNew.vout[1].nValue = nCredit - nMinFee;
+
+    // Sign
+    int nIn = 0;
+    for (const auto& pcoin : vwtxPrev)
+    {
+        if (!SignSignature(*this, *pcoin, txNew, nIn++, SIGHASH_ALL))
+            return error("CreateCoinStake : failed to sign coinstake");
+    }
+
+    // Limit size
+    unsigned int nBytes = ::GetSerializeSize(txNew, SER_NETWORK, PROTOCOL_VERSION);
+    if (nBytes >= 1000000/5)
+        return error("CreateCoinStake : exceeded coinstake size limit");
 
     // Successfully generated coinstake
     return true;
 }
+
 void CWallet::Stake(bool fStake)
 {
     auto locked_chain = m_chain->lock();
@@ -5520,8 +5476,6 @@ uint64_t CWallet::GetStakeWeight() const
 
     if (nBalance <= m_reserve_balance)
         return 0;
-
-    std::vector<const CWalletTx*> vwtxPrev;
 
     std::set<CInputCoin> setCoins;
     CAmount nValueIn = 0;

@@ -279,7 +279,6 @@ public Q_SLOTS:
 #endif // ENABLE_WALLET
 
 private Q_SLOTS:
-    void engageDisengageMining(int cores);
     void toggleSPVMode();
 private:
     /** Set the proxy-enabled icon as shown in the UI. */

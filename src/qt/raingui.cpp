@@ -1316,8 +1316,6 @@ void RainGUI::changeEvent(QEvent *e)
 
 void RainGUI::closeEvent(QCloseEvent *event)
 {
-    if (isMiningEngaged)
-        engageDisengageMining(0);
 #ifndef Q_OS_MAC // Ignored on Mac
     if(clientModel && clientModel->getOptionsModel())
     {
@@ -1643,10 +1641,6 @@ void RainGUI::detectShutdown()
 {
     if (m_node.shutdownRequested())
     {
-        if (isMiningEngaged)
-            engageDisengageMining(0);
-        
-
         qApp->quit();
     }
 }
@@ -1728,21 +1722,6 @@ void RainGUI::mouseMoveEvent(QMouseEvent *event)
     move(event->globalX() - m_nMouseClick_X_Coordinate, event->globalY() - m_nMouseClick_Y_Coordinate);
 }
 #endif
-void RainGUI::engageDisengageMining(int cores)
-{
-    WalletView * const walletView = walletFrame->currentWalletView();
-    WalletModel * const walletModel = walletView->getWalletModel();
-    std::shared_ptr<CTxDestination> coinbase_script;
-    walletModel->getScriptForMining(coinbase_script);
-
-    isMiningEngaged = false;
-    if (cores > 0)
-        isMiningEngaged = true;
-
-    //pwallet->GetScriptForMining(coinbase_script);
-    GenerateRains(isMiningEngaged, cores, coinbase_script);
-
-}
 
 UnitDisplayStatusBarControl::UnitDisplayStatusBarControl(const PlatformStyle *platformStyle) :
     optionsModel(nullptr),

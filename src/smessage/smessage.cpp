@@ -1014,7 +1014,7 @@ int SecureMsgWriteIni()
 
 /** called from AppInit2() in init.cpp */
 bool SecureMsgStart(bool fDontStart, bool fScanChain) {
-    if (fDontStart) {
+    if (!fDontStart) {
         LogPrintf("Secure messaging not started.\n");
         return false;
     }

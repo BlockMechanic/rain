@@ -70,7 +70,7 @@ QString defaultTheme()
 {
     QSettings settings;
     QString theme = settings.value("theme", "").toString();
-    if (theme == "") theme = "qtdark";
+    if (theme == "") theme = "darkorange";
     theme.prepend(":css/");	
 	
     return theme;

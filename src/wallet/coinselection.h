@@ -25,6 +25,7 @@ public:
 
         outpoint = COutPoint(tx->GetHash(), i);
         txout = tx->vout[i];
+        txr = tx;
         effective_value = txout.nValue;
     }
 
@@ -36,6 +37,7 @@ public:
     COutPoint outpoint;
     CTxOut txout;
     CAmount effective_value;
+    CTransactionRef txr; 
 
     /** Pre-computed estimated size of this output as a fully-signed input in a transaction. Can be -1 if it could not be calculated */
     int m_input_bytes{-1};

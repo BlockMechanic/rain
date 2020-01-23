@@ -1837,9 +1837,7 @@ bool AppInitMain(InitInterfaces& interfaces)
         g_banman->DumpBanlist();
     }, DUMP_BANS_INTERVAL * 1000);
 
-#ifdef ENABLE_SECURE_MESSAGING
-    SecureMsgStart(false, true);
-#endif
+    SecureMsgStart(gArgs.GetBoolArg("-securemessaging", true), gArgs.GetBoolArg("-smsgscanchain", false));
 
     return true;
 }

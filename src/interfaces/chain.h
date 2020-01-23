@@ -119,9 +119,7 @@ public:
         virtual bool getCoinAge(const CTransaction& tx, uint64_t& nCoinAge) =0;
         virtual int64_t getBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, uint256 prevHash, bool fProofofStake, int64_t nCoinAge, int64_t nFees, int64_t supply) = 0;
         virtual bool getPostx(const uint256 &hash, CDiskTxPos& postx, CBlockHeader& header, CTransactionRef& tx) =0;
-        //virtual void cacheKernel(std::map<COutPoint, CStakeCache>& cache, const COutPoint& prevout) =0;
-        //virtual	bool checkKernel(const CBlock* block, const COutPoint& prevout) =0;
-        virtual bool checkStakeKernelHash(CValidationState& state, unsigned int nBits, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake, bool fPrintProofOfStake) =0;
+        virtual	bool checkKernel(CValidationState& state, unsigned int nBits, uint32_t nTimeBlock, const COutPoint& prevout) =0;
 
 #ifdef ENABLE_SECURE_MESSAGING
         virtual bool smsgStart()=0;
