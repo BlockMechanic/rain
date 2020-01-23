@@ -304,6 +304,8 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
             hashProof.ToString());
     }
 
+    LogPrintf("nStakeModifier = 0x%016x nStakeModifierHeight=%d nStakeModifierTime=%d \n nTimeBlockFrom=%d nTxPrevOffset=%d txPrev->nTime =%d prevout.n = %d nTimeTx =%d \n target = %s hashProof=%s \n", nStakeModifier, nStakeModifierHeight, nStakeModifierTime, nTimeBlockFrom, nTxPrevOffset, nTimeTxPrev, prevout.n, nTimeTx, bnCoinDayWeight.ToString(), hashProof.ToString());
+
     // Now check if proof-of-stake hash meets target protocol
     if (UintToArith256(hashProof) > bnCoinDayWeight)
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "target-error", strprintf(" %s, proof-of-stake hash does not meet target at height %d, hashProof=%s , target = %s", __func__, pindexPrev->nHeight, UintToArith256(hashProof).ToString(), bnCoinDayWeight.ToString()));
@@ -402,20 +404,23 @@ bool CheckKernel(CValidationState& state, unsigned int nBits, uint32_t nTime, co
     // Try finding the previous transaction in database
     uint256 hashBlock;
     CTransactionRef txPrevDummy;
-    if (!GetTransaction(prevout.hash, txPrevDummy, params, hashBlock)) {
-        LogPrintf("CheckKernel() : could not find previous transaction %s\n", prevout.hash.ToString());
-        return false;
-    }
-    if (mapBlockIndex.count(hashBlock) == 0) {
-        LogPrintf("CheckKernel() : could not find block of previous transaction %s\n", hashBlock.ToString());
-        return false;
-    }
+    if (!GetTransaction(prevout.hash, txPrevDummy, params, hashBlock))
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "tx-not-found", strprintf("%s: transaction not found hash = %s", __func__, prevout.hash.ToString()));
+
+    if (txPrev->GetHash() != txPrevDummy->GetHash())
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "tx-hash-mismatch", strprintf("%s: transaction hashes do not match txPrev = %s vs txPrevDummy = %s", __func__, txPrev->GetHash().ToString(), txPrevDummy->GetHash().ToString()));
+
+    if (mapBlockIndex.count(hashBlock) == 0)
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "block-not-in-index", strprintf("%s: block not found in index = %s", __func__, hashBlock.ToString()));
+
+    CBlockIndex* pblockindex = mapBlockIndex[hashBlock];
+    CBlock block;
+    if (!ReadBlockFromDisk(block, pblockindex, params))
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "block-not-found", strprintf("%s: block not found on disk height = %d  = %s", __func__, pblockindex->nHeight, pblockindex->GetBlockHash().ToString()));
 
     // Check minimum age requirement
-    if (header.GetBlockTime() + params.nStakeMinAge > nTime) {
-        // LogPrintf("CheckKernel() : stake prevout is not mature in block %s\n", hashBlock.ToString());
-        return false;
-    }
+    if (header.GetBlockTime() + params.nStakeMinAge > nTime)
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "stake-prevout-immature", strprintf(" %s, stake prevout is not mature in block %s", __func__, hashBlock.ToString()));
 
     return CheckStakeKernelHash(state, nBits, pindexPrev, header, postx.nTxOffset + CBlockHeader::NORMAL_SERIALIZE_SIZE, txPrev, prevout, nTime, hashProof, gArgs.GetBoolArg("-debug", false));
 }
