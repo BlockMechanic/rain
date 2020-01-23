@@ -5273,7 +5273,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
 {
     // The following split & combine thresholds are important to security
     // Should not be adjusted if you don't understand the consequences
-    static unsigned int nStakeSplitAge = (60 * 60 * 24 * 90);
+//    static unsigned int nStakeSplitAge = (60 * 60 * 24 * 90);
 
     // Select coins with suitable depth
     auto locked_chain = m_chain->lock();
@@ -5323,7 +5323,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
             // Search backward in time from the given txNew timestamp
             // Search nSearchInterval seconds back up to nMaxStakeSearchInterval
             boost::this_thread::interruption_point();
-            if (locked_chain->checkStakeKernelHash(state, nBits, header, postx.nTxOffset + CBlockHeader::NORMAL_SERIALIZE_SIZE, txPrev, pcoin.outpoint, txNew.nTime -n, hashProof, gArgs.GetBoolArg("-debug", false)))
+            if (locked_chain->checkKernel(state, nBits, txNew.nTime - n, pcoin.outpoint))
             {
                 // Found a kernel
                 if (gArgs.GetBoolArg("-debug", false) && gArgs.GetBoolArg("-printcoinstake", false))
@@ -5364,7 +5364,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits, int64_t nSearchInterval, CMuta
                 txNew.nTime -= n;
                 txNew.vin.push_back(CTxIn(pcoin.outpoint.hash, pcoin.outpoint.n));
                 nCredit += pcoin.txout.nValue;
-                vwtxPrev.push_back(txPrev);
+                vwtxPrev.push_back(pcoin.txr);
                 txNew.vout.push_back(CTxOut(0, scriptPubKeyOut));
 //                if (header.GetBlockTime() + nStakeSplitAge > txNew.nTime)
 //                    txNew.vout.push_back(CTxOut(0, scriptPubKeyOut)); //split stake
