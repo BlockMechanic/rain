@@ -464,6 +464,12 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
     if (tx.IsCoinStake())
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "coinstake");
 
+    // Reject transactions with witness before segregated witness activates (override with -prematurewitness)
+    bool witnessEnabled = IsWitnessEnabled(::ChainActive().Tip(), chainparams.GetConsensus());
+    if (!gArgs.GetBoolArg("-prematurewitness", false) && tx.HasWitness() && !witnessEnabled) {
+		return state.Invalid(ValidationInvalidReason::TX_NOT_STANDARD, false, REJECT_NONSTANDARD, "no-witness-yet");
+    }
+
     // Rather not work on nonstandard transactions (unless -testnet/-regtest)
     std::string reason;
     if (fRequireStandard && !IsStandardTx(tx, reason))
@@ -3269,7 +3275,7 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
     // checks that use witness data may be performed here.
 
     // Size limits
-    if (block.vtx.empty() || block.vtx.size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT || ::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT)
+    if (block.vtx.empty() || block.vtx.size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT || ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT)
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-blk-length", "size limits failed");
 
     // First transaction must be coinbase, the rest must not be
@@ -5220,25 +5226,21 @@ bool SignBlock(std::shared_ptr<CBlock> pblock, const CWallet* wallet) EXCLUSIVE_
         return false;
     if (whichType == TX_PUBKEY)
     {
-        // Sign
-        //const valtype& vchPubKey = vSolutions[0];
-        CKey key;
-        // convert to pay to public key type
-        uint160 hash160(vSolutions[0]);
-        CKeyID pubKeyHash(hash160);
-        if (!wallet->GetKey(pubKeyHash, key))
-        {
+		CTxDestination dest;
+		if (!ExtractDestination(txout.scriptPubKey, dest))
+		    LogPrint(BCLog::COINSTAKE, "SignBlock : failed to ExtractDestination\n");
+		
+		CKeyID keyid = GetKeyForDestination(*wallet, dest);
+	    CKey key;
+		if (!wallet->GetKey(keyid, key))
+		{
             LogPrint(BCLog::COINSTAKE, "SignBlock : failed to get key for kernel type=%d\n", whichType);
             return false;  // unable to find corresponding public key
-        }
-
-//        return key.Sign(pblock.GetHash(), block.vchBlockSig);
+		}
         return key.Sign(pblock->GetHashWithoutSign(), pblock->vchBlockSig) && EnsureLowS(pblock->vchBlockSig);
-
     }
     return false;
 }
-
 
 bool CheckBlockSignature(const CBlock& block)
 {

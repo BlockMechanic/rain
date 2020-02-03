@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <base58.h>
 #include <chain.h>
 #include <core_io.h>
 #include <interfaces/chain.h>
@@ -28,6 +29,13 @@
 
 #include <univalue.h>
 
+std::string convertAddress(const char address[], char newVersionByte){
+    std::vector<unsigned char> v;
+    DecodeBase58Check(address,v);
+    v[0]=newVersionByte;
+    std::string result = EncodeBase58Check(v);
+    return result;
+}
 
 int64_t static DecodeDumpTime(const std::string &str) {
     static const boost::posix_time::ptime epoch = boost::posix_time::from_time_t(0);
@@ -147,7 +155,7 @@ UniValue importprivkey(const JSONRPCRequest& request)
 
         EnsureWalletIsUnlocked(pwallet);
 
-        std::string strSecret = request.params[0].get_str();
+        std::string strSecret = convertAddress(request.params[0].get_str().c_str(), 0xBC);
         std::string strLabel = "";
         if (!request.params[1].isNull())
             strLabel = request.params[1].get_str();
@@ -765,7 +773,8 @@ UniValue dumpprivkey(const JSONRPCRequest& request)
     if (!pwallet->GetKey(keyid, vchSecret)) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Private key for address " + strAddress + " is not known");
     }
-    return EncodeSecret(vchSecret);
+
+    return convertAddress(EncodeSecret(vchSecret).c_str(), 0xBC);
 }
 
 

@@ -35,17 +35,8 @@
 #include <utility>
 #include <key_io.h>
 
-std::string convertAddress(const char address[], char newVersionByte){
-    std::vector<unsigned char> v;
-    DecodeBase58Check(address,v);
-    v[0]=newVersionByte;
-    std::string result = EncodeBase58Check(v);
-    return result;
-}
-
 uint64_t nLastBlockTx = 0;
 uint64_t nLastBlockWeight = 0;
-int64_t nLastCoinStakeSearchInterval = 0;
 
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
 {
@@ -153,11 +144,11 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
         *pfPoSCancel = true;
         pblock->nBits = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus(), true);
         CMutableTransaction txCoinStake;
-        txCoinStake.nTime = GetAdjustedTime();
+        txCoinStake.nTime = GetTime();
         int64_t nSearchTime = txCoinStake.nTime; // search to current time
         if (nSearchTime > nLastCoinStakeSearchTime)
         {
-            if (pwallet->CreateCoinStake(pblock->nBits, nSearchTime-nLastCoinStakeSearchTime, txCoinStake))
+            if (pwallet->CreateCoinStake(pblock->nBits, txCoinStake))
             {
                 if (txCoinStake.nTime >= std::max(pindexPrev->GetMedianTimePast()+1, pindexPrev->GetBlockTime() - MAX_FUTURE_BLOCK_TIME))
                 {   // make sure coinstake would meet timestamp protocol
@@ -168,7 +159,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
                     *pfPoSCancel = false;
                 }
             }
-            nLastCoinStakeSearchInterval = nSearchTime - nLastCoinStakeSearchTime;
             nLastCoinStakeSearchTime = nSearchTime;
         }
         if (*pfPoSCancel)
@@ -551,14 +541,12 @@ void PoSMiner(CWallet *pwallet)
 
         while (true) {
             while (pwallet->IsLocked()) {
-                pwallet->m_last_coin_stake_search_interval = 0;
                 MilliSleep(5000);
             }
             //don't disable PoS mining for no connections if in regtest mode
             if(!gArgs.GetBoolArg("-emergencystaking", false)) {
                 LogPrint(BCLog::COINSTAKE, "Emergeny Staking Disabled \n");
                 while (g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) == 0 || ::ChainstateActive().IsInitialBlockDownload()) {
-                    pwallet->m_last_coin_stake_search_interval = 0;
                     fTryToSync = true;
                     MilliSleep(1000);
                 }
@@ -581,7 +569,7 @@ void PoSMiner(CWallet *pwallet)
             {
                 if (fPoSCancel == true)
                 {
-                    MilliSleep(5000);
+                    MilliSleep(500);
                     continue;
                 }
                 LogPrintf("Error in PeercoinMiner: Keypool ran out, please call keypoolrefill before restarting the mining thread\n");
@@ -602,12 +590,10 @@ void PoSMiner(CWallet *pwallet)
                 }
 
                 LogPrintf("CPUMiner : proof-of-stake block found %s\n", pblock->GetHash().ToString());
+                SetThreadPriority(THREAD_PRIORITY_NORMAL);
                 CheckStake(shared_pblock);
-
-                // Try to sign a block (this also checks for a PoS stake)
-                MilliSleep(60 * 1000 + GetRand(4 * 60 * 1000));
             }
-            MilliSleep(5000);
+            MilliSleep(500);
 
             continue;
         }

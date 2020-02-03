@@ -256,28 +256,22 @@ static bool GetKernelStakeModifier(CValidationState& state, CBlockIndex* pindexP
     nStakeModifier = pindex->nStakeModifier;
     return true;
 }
-// Get selection interval section (in seconds)
 
 bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockIndex* pindexPrev, const CBlockHeader& blockFrom, unsigned int nTxPrevOffset, const CTransactionRef& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProof, bool fPrintProofOfStake)
 {
-    unsigned int nTimeTxPrev = txPrev->nTime;
-    unsigned int nTimeBlockFrom = blockFrom.GetBlockTime();
-
-    if (nTimeTxPrev == 0)
-        nTimeTxPrev = nTimeBlockFrom;
-
-    if (nTimeTx < nTimeTxPrev)  // Transaction timestamp violation
+    if (nTimeTx < txPrev->nTime)  // Transaction timestamp violation
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "time-error", strprintf(" %s, nTime violation on coinstake %s", __func__, txPrev->GetHash().ToString()));
 
+    unsigned int nTimeBlockFrom = blockFrom.GetBlockTime();
     if (nTimeBlockFrom + Params().GetConsensus().nStakeMinAge > nTimeTx) // Min age requirement
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "min-age-error", strprintf(" %s, min age violation on coinstake %s", __func__, txPrev->GetHash().ToString()));
 
     arith_uint256 bnTargetPerCoinDay = arith_uint256().SetCompact(nBits);;
     int64_t nValueIn = txPrev->vout[prevout.n].nValue;
-    int64_t nTimeWeight = GetWeight((int64_t)nTimeTxPrev, (int64_t)nTimeTx);
-    arith_uint256 bnCoinDayWeight = arith_uint256(nValueIn) * nTimeWeight / COIN / (24 * 60 * 60);
-    bnCoinDayWeight *= bnTargetPerCoinDay;
+    arith_uint256 bnCoinDayWeight = arith_uint256(nValueIn) * GetWeight((int64_t)txPrev->nTime, (int64_t)nTimeTx) / COIN / (24 * 60 * 60);
 
+    // Calculate hash
+    CDataStream ss(SER_GETHASH, 0);
     uint64_t nStakeModifier = 0;
     int nStakeModifierHeight = 0;
     int64_t nStakeModifierTime = 0;
@@ -285,12 +279,9 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
     if (!GetKernelStakeModifier(state, pindexPrev, blockFrom.GetHash(), nStakeModifier, nStakeModifierHeight, nStakeModifierTime, fPrintProofOfStake))
         return false;
 
-    // Calculate hash
-    CDataStream ss(SER_GETHASH, 0);
     ss << nStakeModifier;
-    ss << nTimeBlockFrom << nTxPrevOffset << nTimeTxPrev << prevout.n << nTimeTx;
+    ss << nTimeBlockFrom << nTxPrevOffset << txPrev->nTime << prevout.n << nTimeTx;
     hashProof = Hash(ss.begin(), ss.end());
-
     if (fPrintProofOfStake)
     {
         LogPrintf("%s : using modifier 0x%016x at height=%d timestamp=%s for block from height=%d timestamp=%s\n", __func__,
@@ -300,15 +291,13 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
             DateTimeStrFormat("%Y-%m-%d %H:%M:%S", blockFrom.GetBlockTime()));
         LogPrintf("%s : check modifier=0x%016x nTimeBlockFrom=%u nTxPrevOffset=%u nTimeTxPrev=%u nPrevout=%u nTimeTx=%u hashProof=%s\n", __func__,
             nStakeModifier,
-            nTimeBlockFrom, nTxPrevOffset, nTimeTxPrev, prevout.n, nTimeTx,
+            nTimeBlockFrom, nTxPrevOffset, txPrev->nTime, prevout.n, nTimeTx,
             hashProof.ToString());
     }
 
-    LogPrintf("nStakeModifier = 0x%016x nStakeModifierHeight=%d nStakeModifierTime=%d \n nTimeBlockFrom=%d nTxPrevOffset=%d txPrev->nTime =%d prevout.n = %d nTimeTx =%d \n target = %s hashProof=%s \n", nStakeModifier, nStakeModifierHeight, nStakeModifierTime, nTimeBlockFrom, nTxPrevOffset, nTimeTxPrev, prevout.n, nTimeTx, bnCoinDayWeight.ToString(), hashProof.ToString());
-
-    // Now check if proof-of-stake hash meets target protocol
-    if (UintToArith256(hashProof) > bnCoinDayWeight)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "target-error", strprintf(" %s, proof-of-stake hash does not meet target at height %d, hashProof=%s , target = %s", __func__, pindexPrev->nHeight, UintToArith256(hashProof).ToString(), bnCoinDayWeight.ToString()));
+    // We need to convert type so it can be compared to target
+    if (UintToArith256(hashProof) > bnCoinDayWeight * bnTargetPerCoinDay)
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "target-error", strprintf(" %s, stake hash does not meet target. modifier=0x%016x nTimeBlockFrom=%u nTxPrevOffset=%u nTimeTxPrev=%u nPrevout=%u, nTimeTx =%d , hashProof=%s , target = %s", __func__, nStakeModifier, nTimeBlockFrom, nTxPrevOffset, txPrev->nTime, prevout.n, nTimeTx, UintToArith256(hashProof).ToString(), (bnCoinDayWeight * bnTargetPerCoinDay).ToString()));
 
     return true;
 }
@@ -365,10 +354,8 @@ bool CheckProofOfStake(CValidationState& state, CBlockIndex* pindexPrev, const C
             return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "invalid-pos-script", strprintf(" VerifyScript failed on coinstake %s ", tx->GetHash().ToString()));
     }
 
-    if (!CheckStakeKernelHash(state, nBits, pindexPrev, header, postx.nTxOffset + CBlockHeader::NORMAL_SERIALIZE_SIZE, txPrev, txin.prevout, tx->nTime, hashProof, gArgs.GetBoolArg("-debug", false)))
-        return false;
+    return CheckStakeKernelHash(state, nBits, pindexPrev, header, postx.nTxOffset + CBlockHeader::NORMAL_SERIALIZE_SIZE, txPrev, txin.prevout, tx->nTime, hashProof, gArgs.GetBoolArg("-debug", false));
 
-    return true;
 }
 
 bool CheckKernel(CValidationState& state, unsigned int nBits, uint32_t nTime, const COutPoint& prevout)
@@ -401,26 +388,9 @@ bool CheckKernel(CValidationState& state, unsigned int nBits, uint32_t nTime, co
             return error("%s() : txid mismatch in CheckKernel()", __PRETTY_FUNCTION__);
     }
 
-    // Try finding the previous transaction in database
-    uint256 hashBlock;
-    CTransactionRef txPrevDummy;
-    if (!GetTransaction(prevout.hash, txPrevDummy, params, hashBlock))
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "tx-not-found", strprintf("%s: transaction not found hash = %s", __func__, prevout.hash.ToString()));
-
-    if (txPrev->GetHash() != txPrevDummy->GetHash())
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "tx-hash-mismatch", strprintf("%s: transaction hashes do not match txPrev = %s vs txPrevDummy = %s", __func__, txPrev->GetHash().ToString(), txPrevDummy->GetHash().ToString()));
-
-    if (mapBlockIndex.count(hashBlock) == 0)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "block-not-in-index", strprintf("%s: block not found in index = %s", __func__, hashBlock.ToString()));
-
-    CBlockIndex* pblockindex = mapBlockIndex[hashBlock];
-    CBlock block;
-    if (!ReadBlockFromDisk(block, pblockindex, params))
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "block-not-found", strprintf("%s: block not found on disk height = %d  = %s", __func__, pblockindex->nHeight, pblockindex->GetBlockHash().ToString()));
-
     // Check minimum age requirement
     if (header.GetBlockTime() + params.nStakeMinAge > nTime)
-        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "stake-prevout-immature", strprintf(" %s, stake prevout is not mature in block %s", __func__, hashBlock.ToString()));
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "stake-prevout-immature", strprintf(" %s, stake prevout is not mature in block %s", __func__, header.GetHash().ToString()));
 
     return CheckStakeKernelHash(state, nBits, pindexPrev, header, postx.nTxOffset + CBlockHeader::NORMAL_SERIALIZE_SIZE, txPrev, prevout, nTime, hashProof, gArgs.GetBoolArg("-debug", false));
 }
