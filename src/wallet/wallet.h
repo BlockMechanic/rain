@@ -63,8 +63,6 @@ WalletCreationStatus CreateWallet(interfaces::Chain& chain, const SecureString& 
 
 unsigned int GetStakeSplitOutputs();
 
-int64_t GetStakeSplitThreshold();
-
 //! Default for -keypool
 static const unsigned int DEFAULT_KEYPOOL_SIZE = 10000;
 //! -paytxfee default
@@ -960,10 +958,10 @@ public:
     void AvailableCoins(interfaces::Chain::Lock& locked_chain, std::vector<COutput>& vCoins, bool fOnlySafe = true, const CCoinControl* coinControl = nullptr, const CAmount& nMinimumAmount = 1, const CAmount& nMaximumAmount = MAX_MONEY, const CAmount& nMinimumSumAmount = MAX_MONEY, const uint64_t nMaximumCount = 0, uint32_t nSpendTime = 0) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! select coins for staking from the available coins for staking.
-    bool SelectCoinsForStaking(CAmount& nTargetValue, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet) const;
+    bool SelectCoinsForStaking(CAmount& nTargetValue, unsigned int nSpendTime, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet) const;
 
-    void AvailableCoinsForStaking(std::vector<COutput>& vCoins) const;
-    bool HaveAvailableCoinsForStaking() const;
+    void AvailableCoinsForStaking(std::vector<COutput>& vCoins, unsigned int nSpendTime) const;
+    bool HaveAvailableCoinsForStaking(unsigned int nSpendTime) const;
 
     /**
      * Return list of available coins and locked coins grouped by non-change output address.

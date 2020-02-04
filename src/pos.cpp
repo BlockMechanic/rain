@@ -217,7 +217,6 @@ static bool GetKernelStakeModifier(CValidationState& state, CBlockIndex* pindexP
     nStakeModifierHeight = pindexFrom->nHeight;
     nStakeModifierTime = pindexFrom->GetBlockTime();
     int64_t nStakeModifierSelectionInterval = GetStakeModifierSelectionInterval();
-
     // we need to iterate index forward but we cannot depend on chainActive.Next()
     // because there is no guarantee that we are checking blocks in active chain.
     // So, we construct a temporary chain that we will iterate over.
@@ -233,7 +232,6 @@ static bool GetKernelStakeModifier(CValidationState& state, CBlockIndex* pindexP
     }
     std::reverse(tmpChain.begin(), tmpChain.end());
     size_t n = 0;
-
     const CBlockIndex* pindex = pindexFrom;
     // loop to find the stake modifier later by a selection interval
     while (nStakeModifierTime < pindexFrom->GetBlockTime() + nStakeModifierSelectionInterval)
@@ -245,8 +243,9 @@ static bool GetKernelStakeModifier(CValidationState& state, CBlockIndex* pindexP
             if (fPrintProofOfStake || (old_pindex->GetBlockTime() + params.nStakeMinAge - nStakeModifierSelectionInterval > GetAdjustedTime()))
                 return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "reached-best-height", strprintf(" %s, reached best block %s at height %d from block %s ", __func__, old_pindex->GetBlockHash().ToString(), old_pindex->nHeight, hashBlockFrom.ToString()));
             else
-                return false;
+                return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "unspecified-error", strprintf(" %s, unspecified error ", __func__));
         }
+        
         if (pindex->GeneratedStakeModifier())
         {
             nStakeModifierHeight = pindex->nHeight;

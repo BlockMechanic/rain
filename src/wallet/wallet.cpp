@@ -5243,11 +5243,11 @@ struct ScriptsElement{
 
 unsigned int GetStakeMaxCombineInputs() { return 100; }
 
-int64_t GetStakeCombineThreshold() { return 1000 * COIN; }
-
+int64_t GetStakeCombineThreshold() { return 10000 * COIN; }
+int64_t GetStakeSplitThreshold() { return 2 * 1000 * 1000 * COIN; }
 unsigned int nStakeSplitAge = 1 * 24 * 60 * 60;
 
-void CWallet::AvailableCoinsForStaking(std::vector<COutput>& vCoins) const
+void CWallet::AvailableCoinsForStaking(std::vector<COutput>& vCoins, unsigned int nSpendTime) const
 {
     vCoins.clear();
 
@@ -5258,6 +5258,11 @@ void CWallet::AvailableCoinsForStaking(std::vector<COutput>& vCoins) const
         {
             const uint256& wtxid = it->first;
             const CWalletTx* pcoin = &(*it).second;
+
+            // Filtering by tx timestamp instead of block timestamp may give false positives but never false negatives
+            if (pcoin->tx->nTime + Params().GetConsensus().nStakeMinAge > nSpendTime)
+                continue;
+
             int nDepth = pcoin->GetDepthInMainChain(*locked_chain);
 
             if (nDepth < 1)
@@ -5281,7 +5286,7 @@ void CWallet::AvailableCoinsForStaking(std::vector<COutput>& vCoins) const
     }
 }
 
-bool CWallet::HaveAvailableCoinsForStaking() const
+bool CWallet::HaveAvailableCoinsForStaking(unsigned int nSpendTime) const
 {
     std::vector<COutput> vCoins;
 
@@ -5290,14 +5295,14 @@ bool CWallet::HaveAvailableCoinsForStaking() const
     if (nBalance <= m_reserve_balance)
         return false;
 
-    AvailableCoinsForStaking(vCoins);
+    AvailableCoinsForStaking(vCoins, nSpendTime);
     return vCoins.size() > 0;
 }
 
-bool CWallet::SelectCoinsForStaking(CAmount& nTargetValue, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet) const
+bool CWallet::SelectCoinsForStaking(CAmount& nTargetValue, unsigned int nSpendTime, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmount& nValueRet) const
 {
     std::vector<COutput> vCoins;
-    AvailableCoinsForStaking(vCoins);
+    AvailableCoinsForStaking(vCoins, nSpendTime);
 
     setCoinsRet.clear();
     nValueRet = 0;
@@ -5361,7 +5366,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits, CMutableTransaction& txNew)
     // Select coins with suitable depth
     auto locked_chain = m_chain->lock();
     CAmount nTargetValue = nBalance - m_reserve_balance;
-    if (!SelectCoinsForStaking(nTargetValue, setCoins, nValueIn))
+    if (!SelectCoinsForStaking(nTargetValue, txNew.nTime, setCoins, nValueIn))
         return false;
 
     if (setCoins.empty())
@@ -5372,8 +5377,6 @@ bool CWallet::CreateCoinStake(unsigned int nBits, CMutableTransaction& txNew)
     CValidationState state;
     m_last_coin_stake_search_interval = txNew.nTime;
     
-    LogPrintf("CreateCoinStake : setCoins size %d \n", setCoins.size());
-
     for(const auto& pcoin : setCoins)
     {
         bool fKernelFound = false;
@@ -5391,13 +5394,13 @@ bool CWallet::CreateCoinStake(unsigned int nBits, CMutableTransaction& txNew)
             scriptPubKeyKernel = pcoin.first->tx->vout[pcoin.second].scriptPubKey;
             if (!Solver(scriptPubKeyKernel, whichType, vSolutions))
             {
-                LogPrint(BCLog::COINSTAKE, "CreateCoinStake : failed to parse kernel\n");
+                LogPrintf( "CreateCoinStake : failed to parse kernel\n");
                 break;
             }
-            LogPrint(BCLog::COINSTAKE, "CreateCoinStake : parsed kernel type=%d\n", whichType);
+            LogPrintf( "CreateCoinStake : parsed kernel type=%d\n", whichType);
             if (whichType != TX_PUBKEY && whichType != TX_PUBKEYHASH)
             {
-                LogPrint(BCLog::COINSTAKE, "CreateCoinStake : no support for kernel type=%d\n", whichType);
+                LogPrintf( "CreateCoinStake : no support for kernel type=%d\n", whichType);
                 break;  // only support pay to public key and pay to address
             }
             if (whichType == TX_PUBKEYHASH || whichType == TX_WITNESS_V0_KEYHASH) // pay to address type or witness keyhash
@@ -5406,7 +5409,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits, CMutableTransaction& txNew)
                 CKey key;
                 if (!GetKey(CKeyID(uint160(vSolutions[0])), key))
                 {
-                    LogPrint(BCLog::COINSTAKE, "CreateCoinStake : failed to get key for kernel type=%d\n", whichType);
+                    LogPrintf( "CreateCoinStake : failed to get key for kernel type=%d\n", whichType);
                     break;  // unable to find corresponding public key
                 }
                 scriptPubKeyOut << ToByteVector(key.GetPubKey()) << OP_CHECKSIG;
@@ -5421,7 +5424,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits, CMutableTransaction& txNew)
             if (pcoin.first->tx->nTime + nStakeSplitAge > txNew.nTime)
                txNew.vout.push_back(CTxOut(0, scriptPubKeyOut)); //split stake
 
-            LogPrint(BCLog::COINSTAKE, "CreateCoinStake : added kernel type=%d\n", whichType);
+            LogPrintf( "CreateCoinStake : added kernel type=%d\n", whichType);
             fKernelFound = true;
             break;
         }
