@@ -3835,11 +3835,6 @@ bool ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<cons
         if (fNewBlock) *fNewBlock = false;
         if (fPoSDuplicate) *fPoSDuplicate = false;
         CValidationState state;
-
- //               PushGetBlocks(pfrom, pindexBestHeader, GetOrphanRoot(hash), connman);
-
- //               if (!::ChainstateActive().IsInitialBlockDownload())
- //                   pfrom->AskFor(CInv(MSG_BLOCK, WantedByOrphan(pblock2)));
         // CheckBlock() does not support multi-threaded block validation because CBlock::fChecked can cause data race.
         // Therefore, the following critical section must include the CheckBlock() call as well.
         LOCK(cs_main);
@@ -5237,52 +5232,31 @@ bool SignBlock(std::shared_ptr<CBlock> pblock, const CWallet* wallet) EXCLUSIVE_
             LogPrint(BCLog::COINSTAKE, "SignBlock : failed to get key for kernel type=%d\n", whichType);
             return false;  // unable to find corresponding public key
 		}
-        return key.Sign(pblock->GetHashWithoutSign(), pblock->vchBlockSig) && EnsureLowS(pblock->vchBlockSig);
+        return key.Sign(pblock->GetHash(), pblock->vchBlockSig) && EnsureLowS(pblock->vchBlockSig);
     }
     return false;
 }
 
+
 bool CheckBlockSignature(const CBlock& block)
 {
-    if (block.IsProofOfWork())
-        return block.vchBlockSig.empty();
-
-    std::vector<unsigned char> vchPubKey;
     if (block.GetHash() == Params().GetConsensus().hashGenesisBlock)
         return block.vchBlockSig.empty();
 
     std::vector<valtype> vSolutions;
     txnouttype whichType;
     const CTxOut& txout = block.IsProofOfStake()? block.vtx[1]->vout[1] : block.vtx[0]->vout[0];
-
     if (!Solver(txout.scriptPubKey, whichType, vSolutions))
         return false;
     if (whichType == TX_PUBKEY)
     {
-        vchPubKey = vSolutions[0];
+        const valtype& vchPubKey = vSolutions[0];
+        CPubKey key(vchPubKey);
         if (block.vchBlockSig.empty())
             return false;
+        return CPubKey(vchPubKey).Verify(block.GetHash(), block.vchBlockSig);
     }
-    else
-    {
-        // Block signing key also can be encoded in the nonspendable output
-        // This allows to not pollute UTXO set with useless outputs e.g. in case of multisig staking
-        const CScript& script = txout.scriptPubKey;
-        CScript::const_iterator pc = script.begin();
-        opcodetype opcode;
-        valtype vchPushValue;
-
-        if (!script.GetOp(pc, opcode, vchPubKey))
-            return false;
-        if (opcode != OP_RETURN)
-            return false;
-        if (!script.GetOp(pc, opcode, vchPubKey))
-            return false;
-        if (!IsCompressedOrUncompressedPubKey(vchPubKey))
-            return false;
-    }
-
-    return CPubKey(vchPubKey).Verify(block.GetHash(), block.vchBlockSig);
+    return false;
 }
 
 bool CheckFirstCoinstakeOutput(const CBlock& block)
