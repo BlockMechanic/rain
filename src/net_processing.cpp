@@ -1340,6 +1340,7 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
 
 void RelayTransaction(const uint256& txid, const CConnman& connman)
 {
+	LogPrintf("Relaying wtx %s\n", txid.ToString());
     CInv inv(MSG_TX, txid);
     connman.ForEachNode([&inv](CNode* pnode)
     {
