@@ -2337,7 +2337,6 @@ bool CWalletTx::SubmitMemoryPoolAndRelay(std::string& err_string, bool relay, in
     // TransactionRemovedFromMempool fires.
     bool ret = pwallet->chain().broadcastTransaction(tx, err_string, pwallet->m_default_max_tx_fee, relay);
     fInMempool |= ret;
-    //fValidated |= ret;
     return ret;
 }
 
@@ -5437,8 +5436,8 @@ bool CWallet::CreateCoinStake(unsigned int nBits, CMutableTransaction& txNew)
 	    }
         if (fKernelFound)
             break; // if kernel is found stop searching
-        if (!fKernelFound && gArgs.GetBoolArg("-debug", false))
-            LogPrint(BCLog::COINSTAKE, "%s : %s \n",__func__, FormatStateMessage(state));
+        if (!fKernelFound)
+            LogPrintf("%s \n", FormatStateMessage(state));
     }
 
     m_last_coin_stake_search_interval = txNew.nTime;

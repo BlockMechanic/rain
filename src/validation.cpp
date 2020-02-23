@@ -481,6 +481,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
     if (::GetSerializeSize(tx, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) < MIN_STANDARD_TX_NONWITNESS_SIZE)
         return state.Invalid(ValidationInvalidReason::TX_NOT_STANDARD, false, REJECT_NONSTANDARD, "tx-size-small");
 
+
     // Only accept nLockTime-using transactions that can be mined in the next
     // block; we don't want our mempool filled up with transactions that can't
     // be mined yet.
@@ -555,10 +556,12 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
                         return state.Invalid(ValidationInvalidReason::TX_CONFLICT, false, REJECT_DUPLICATE, "txn-already-known");
                     }
                 }
+
                 // Otherwise assume this might be an orphan tx for which we just haven't seen parents yet
                 if (pfMissingInputs) {
                     *pfMissingInputs = true;
                 }
+
                 return false; // fMissingInputs and !state.IsInvalid() is used to detect this condition, don't set state.Invalid()
             }
         }
@@ -581,7 +584,6 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
         if (!Consensus::CheckTxInputs(tx, state, view, GetSpendHeight(view), nFees)) {
             return error("%s: Consensus::CheckTxInputs: %s, %s", __func__, tx.GetHash().ToString(), FormatStateMessage(state));
         }
-
         // Check for non-standard pay-to-script-hash in inputs
         if (fRequireStandard && !AreInputsStandard(tx, view))
             return state.Invalid(ValidationInvalidReason::TX_NOT_STANDARD, false, REJECT_NONSTANDARD, "bad-txns-nonstandard-inputs");
@@ -811,6 +813,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
         }
 
         if (test_accept) {
+
             // Tx was accepted, but not added
             return true;
         }
@@ -5224,7 +5227,7 @@ bool SignBlock(std::shared_ptr<CBlock> pblock, const CWallet* wallet) EXCLUSIVE_
 		CTxDestination dest;
 		if (!ExtractDestination(txout.scriptPubKey, dest))
 		    LogPrint(BCLog::COINSTAKE, "SignBlock : failed to ExtractDestination\n");
-		
+
 		CKeyID keyid = GetKeyForDestination(*wallet, dest);
 	    CKey key;
 		if (!wallet->GetKey(keyid, key))
@@ -5237,7 +5240,7 @@ bool SignBlock(std::shared_ptr<CBlock> pblock, const CWallet* wallet) EXCLUSIVE_
     return false;
 }
 
-
+// peercoin: check block signature
 bool CheckBlockSignature(const CBlock& block)
 {
     if (block.GetHash() == Params().GetConsensus().hashGenesisBlock)

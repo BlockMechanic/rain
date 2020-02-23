@@ -281,7 +281,7 @@ bool CheckStakeKernelHash(CValidationState& state, unsigned int nBits, CBlockInd
     ss << nStakeModifier;
     ss << nTimeBlockFrom << nTxPrevOffset << txPrev->nTime << prevout.n << nTimeTx;
     hashProof = Hash(ss.begin(), ss.end());
-    if (fPrintProofOfStake)
+    if (fPrintProofOfStake && gArgs.GetBoolArg("-debugmodifier", false))
     {
         LogPrintf("%s : using modifier 0x%016x at height=%d timestamp=%s for block from height=%d timestamp=%s\n", __func__,
             nStakeModifier, nStakeModifierHeight,

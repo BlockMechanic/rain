@@ -1,7 +1,6 @@
-packages:=boost openssl libevent 
-#gmp
+packages:=boost openssl libevent
 
-qt_packages = qrencode zlib
+qt_packages = zlib qrencode
 
 qt_linux_packages:=qt expat libxcb xcb_proto libXau xproto freetype fontconfig
 qt_android_packages:=qt expat libxcb xcb_proto libXau xproto freetype fontconfig

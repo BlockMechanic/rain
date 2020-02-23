@@ -385,7 +385,7 @@ static UniValue getstakinginfo(const JSONRPCRequest& request)
 
     uint64_t nWeight = 0;
     uint64_t lastCoinStakeSearchInterval = 0;
-#ifdef ENABLE_WALLET
+
     std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
     CWallet* const pwallet = wallet.get();
 
@@ -394,7 +394,7 @@ static UniValue getstakinginfo(const JSONRPCRequest& request)
         nWeight = pwallet->GetStakeWeight();
         lastCoinStakeSearchInterval = pwallet->m_last_coin_stake_search_interval;
     }
-#endif
+
 
     uint64_t nNetworkWeight = GetPoSKernelPS();
     bool staking = lastCoinStakeSearchInterval && nWeight;
@@ -408,7 +408,6 @@ static UniValue getstakinginfo(const JSONRPCRequest& request)
     obj.pushKV("staking", staking);
     obj.pushKV("errors", GetWarnings("statusbar"));
 
-    //obj.pushKV("currentblocktx", (uint64_t)nLastBlockTx);
     obj.pushKV("pooledtx", (uint64_t)mempool.size());
 
     obj.pushKV("difficulty", GetDifficulty(GetLastBlockIndex(pindexBestHeader, true)));
@@ -417,12 +416,12 @@ static UniValue getstakinginfo(const JSONRPCRequest& request)
     obj.pushKV("weight", (uint64_t)nWeight);
     obj.pushKV("netstakeweight", (uint64_t)nNetworkWeight);
 
-    obj.pushKV("expectedtime", nExpectedTime);
+    obj.pushKV("expectedtime", (uint64_t)nExpectedTime);
 
     return obj;
 }
 
-// NOTE: Unlike wallet RPC (which use TALK values), mining RPCs follow GBT (BIP 22) in using satoshi amounts
+// NOTE: Unlike wallet RPC (which use RAIN values), mining RPCs follow GBT (BIP 22) in using satoshi amounts
 static UniValue prioritisetransaction(const JSONRPCRequest& request)
 {
             RPCHelpMan{"prioritisetransaction",
