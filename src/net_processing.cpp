@@ -1639,7 +1639,7 @@ inline void static SendBlockTransactions(const CBlock& block, const BlockTransac
     connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::BLOCKTXN, resp));
 }
 
-bool static ProcessHeadersMessage(CNode *pfrom, CConnman *connman, const std::vector<CBlockHeader>& headers, const CChainParams& chainparams, bool via_compact_block)
+bool static ProcessHeadersMessage(CNode *pfrom, CConnman *connman, const std::vector<CBlockHeader>& headers, const CChainParams& chainparams, bool punish_duplicate_invalid)
 {
     const CNetMsgMaker msgMaker(pfrom->GetSendVersion());
     size_t nCount = headers.size();
@@ -1709,13 +1709,47 @@ bool static ProcessHeadersMessage(CNode *pfrom, CConnman *connman, const std::ve
                     // This situation is very unusual, because normaly you don't get a failed PoW header with a ton of PoS headers.
                     // Probably out of memory attack. Punish peer for a long time.
                     nPoSTemperature = (MAX_CONSECUTIVE_POS_HEADERS*3)/4;
-                    Misbehaving(pfrom->GetId(), 100);
+                    if (Params().NetworkIDString() != "test")
+                        g_banman->Ban(pfrom->addr, BanReasonNodeMisbehaving, gArgs.GetArg("-bantime", DEFAULT_MISBEHAVING_BANTIME) * 7);
                 } else {
                     nPoSTemperature *= 3;
                     Misbehaving(pfrom->GetId(), 2);
                 }
-            MaybePunishNode(pfrom->GetId(), state, via_compact_block, "invalid header received");
-            return false;
+            if (punish_duplicate_invalid && mapBlockIndex.find(first_invalid_header.GetHash()) != mapBlockIndex.end()) {
+                // Goal: don't allow outbound peers to use up our outbound
+                // connection slots if they are on incompatible chains.
+                //
+                // We ask the caller to set punish_invalid appropriately based
+                // on the peer and the method of header delivery (compact
+                // blocks are allowed to be invalid in some circumstances,
+                // under BIP 152).
+                // Here, we try to detect the narrow situation that we have a
+                // valid block header (ie it was valid at the time the header
+                // was received, and hence stored in mapBlockIndex) but know the
+                // block is invalid, and that a peer has announced that same
+                // block as being on its active chain.
+                // Disconnect the peer in such a situation.
+                //
+                // Note: if the header that is invalid was not accepted to our
+                // mapBlockIndex at all, that may also be grounds for
+                // disconnecting the peer, as the chain they are on is likely
+                // to be incompatible. However, there is a circumstance where
+                // that does not hold: if the header's timestamp is more than
+                // 2 hours ahead of our current time. In that case, the header
+                // may become valid in the future, and we don't want to
+                // disconnect a peer merely for serving us one too-far-ahead
+                // block header, to prevent an attacker from splitting the
+                // network by mining a block right at the 2 hour boundary.
+                //
+                // TODO: update the DoS logic (or, rather, rewrite the
+                // DoS-interface between validation and net_processing) so that
+                // the interface is cleaner, and so that we disconnect on all the
+                // reasons that a peer's headers chain is incompatible
+                // with ours (eg block->nVersion softforks, MTP violations,
+                // etc), and not just the duplicate-invalid case.
+                pfrom->fDisconnect = true;
+            }
+            return error("invalid header received");
         }
     }
     pfrom->lastAcceptedHeader = headers.back().GetHash();
@@ -2703,8 +2737,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         int32_t& nPoSTemperature = mapPoSTemperature[pfrom->addr];
         const CBlockIndex *pindex = nullptr;
         CValidationState state;
-        uint256 hhash = ::ChainActive().Tip()->GetBlockHash();
-        if (!ProcessNewBlockHeaders(nPoSTemperature, hhash, {cmpctblock.header}, false, state, chainparams, &pindex)) {
+        if (!ProcessNewBlockHeaders(nPoSTemperature, ::ChainActive().Tip()->GetBlockHash(), {cmpctblock.header}, false, state, chainparams, &pindex)) {
             if (state.IsInvalid()) {
                 MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ true, "invalid header via cmpctblock");
                 return true;
@@ -2714,7 +2747,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         if (nPoSTemperature >= MAX_CONSECUTIVE_POS_HEADERS) {
             nPoSTemperature = (MAX_CONSECUTIVE_POS_HEADERS*3)/4;
             if (Params().NetworkIDString() != "test") {
-                MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ true, "too many consecutive pos headers 1");
+                g_banman->Ban(pfrom->addr, BanReasonNodeMisbehaving, gArgs.GetArg("-bantime", DEFAULT_MISBEHAVING_BANTIME) * 7);
                 return error("too many consecutive pos headers 1");
             }
         }
@@ -2798,6 +2831,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 if (status == READ_STATUS_INVALID) {
                     MarkBlockAsReceived(pindex->GetBlockHash()); // Reset in-flight state in case of whitelist
                     Misbehaving(pfrom->GetId(), 100, strprintf("Peer %d sent us invalid compact block\n", pfrom->GetId()));
+                    LogPrintf("Peer %d sent us invalid compact block\n", pfrom->GetId());
                     return true;
                 } else if (status == READ_STATUS_FAILED) {
                     // Duplicate txindexes, the block is now in-flight, so just request it
@@ -2864,7 +2898,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             // the peer if the header turns out to be for an invalid block.
             // Note that if a peer tries to build on an invalid chain, that
             // will be detected and the peer will be banned.
-            return ProcessHeadersMessage(pfrom, connman, {cmpctblock.header}, chainparams, /*via_compact_block=*/true);
+            return ProcessHeadersMessage(pfrom, connman, {cmpctblock.header}, chainparams, /*via_compact_block=*/false);
         }
 
         if (fBlockReconstructed) {
@@ -2900,7 +2934,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 MarkBlockAsReceived(pblock->GetHash());
             }
         }
-        return true;
+
     }
 
     if (strCommand == NetMsgType::BLOCKTXN)
@@ -2981,7 +3015,6 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 mapBlockSource.erase(pblock->GetHash());
             }
         }
-        return true;
     }
 
     if (strCommand == NetMsgType::HEADERS)
@@ -3002,6 +3035,8 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             return false;
         }
         headers.resize(nCount);
+        {
+        LOCK(cs_main);
         int32_t& nPoSTemperature = mapPoSTemperature[pfrom->addr];
         int nTmpPoSTemperature = nPoSTemperature;
         for (unsigned int n = 0; n < nCount; n++) {
@@ -3019,13 +3054,19 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             if (nTmpPoSTemperature >= MAX_CONSECUTIVE_POS_HEADERS) {
                 nPoSTemperature = (MAX_CONSECUTIVE_POS_HEADERS*3)/4;
                 if (Params().NetworkIDString() != "test") {
-                    MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ true, "too many consecutive pos headers2");
+                    g_banman->Ban(pfrom->addr, BanReasonNodeMisbehaving, gArgs.GetArg("-bantime", DEFAULT_MISBEHAVING_BANTIME) * 7);
                     return error("too many consecutive pos headers2 ");
                 }
             }
         }
+        }
 
-        return ProcessHeadersMessage(pfrom, connman, headers, chainparams, /*via_compact_block=*/false);
+        // Headers received via a HEADERS message should be valid, and reflect
+        // the chain the peer is on. If we receive a known-invalid header,
+        // disconnect the peer if it is using one of our outbound connection
+        // slots.
+        bool should_punish = !pfrom->fInbound && !pfrom->m_manual_connection;
+        return ProcessHeadersMessage(pfrom, connman, headers, chainparams, /*via_compact_block=*/should_punish);
     }
 
     if (strCommand == NetMsgType::BLOCK)
@@ -3057,9 +3098,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 if (nPoSTemperature >= MAX_CONSECUTIVE_POS_HEADERS) {
                     nPoSTemperature = (MAX_CONSECUTIVE_POS_HEADERS*3)/4;
                     if (Params().NetworkIDString() != "test") {
-						CValidationState state;
-                        MaybePunishNode(pfrom->GetId(), state, /*via_compact_block*/ false, "too many consecutive pos headers3");
-                        //g_connman->Ban(pfrom->addr, BanReasonNodeMisbehaving, gArgs.GetArg("-bantime", DEFAULT_MISBEHAVING_BANTIME) * 7);
+                        g_banman->Ban(pfrom->addr, BanReasonNodeMisbehaving, gArgs.GetArg("-bantime", DEFAULT_MISBEHAVING_BANTIME) * 7);
                         return error("too many consecutive pos headers3");
                     }
                 }
@@ -3090,7 +3129,6 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             CBlockIndex* pindexPrev;
             std::shared_ptr<CBlock> pblock;
 
-            //const uint256 hash(pblock->GetHash());
             {
             LOCK(cs_main);
             // peercoin: try to select next block in a constant time
@@ -3161,7 +3199,6 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 #ifdef ENABLE_SECURE_MESSAGING
         SecureMsgScanBlock(*pblock2);
 #endif
-        //return true;
     }
 
     if (strCommand == NetMsgType::GETADDR) {

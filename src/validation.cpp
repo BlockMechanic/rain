@@ -3348,7 +3348,7 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
 bool IsWitnessEnabled(const CBlockIndex* pindexPrev, const Consensus::Params& params)
 {
     LOCK(cs_main);
-    return pindexPrev ? pindexPrev->nHeight >= 1600000 : false;
+    return pindexPrev ? pindexPrev->nHeight >= 16000000 : false;
 }
 
 bool IsNullDummyEnabled(const CBlockIndex* pindexPrev, const Consensus::Params& params)
@@ -3838,6 +3838,7 @@ bool ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<cons
         if (fNewBlock) *fNewBlock = false;
         if (fPoSDuplicate) *fPoSDuplicate = false;
         CValidationState state;
+
         // CheckBlock() does not support multi-threaded block validation because CBlock::fChecked can cause data race.
         // Therefore, the following critical section must include the CheckBlock() call as well.
         LOCK(cs_main);
@@ -3855,7 +3856,6 @@ bool ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<cons
             GetMainSignals().BlockChecked(*pblock, state);
             return error("%s: AcceptBlock FAILED (%s)", __func__, FormatStateMessage(state));
         }
-
         if (pindex->IsProofOfStake()) {
             int32_t ndx = univHash(pindex->hashProof);
             if (fPoSDuplicate && vStakeSeen[ndx] == pindex->hashProof)
@@ -5262,24 +5262,6 @@ bool CheckBlockSignature(const CBlock& block)
     return false;
 }
 
-bool CheckFirstCoinstakeOutput(const CBlock& block)
-{
-    // Coinbase output should be empty if proof-of-stake block
-    int commitpos = GetWitnessCommitmentIndex(block);
-    if(commitpos < 0)
-    {
-        if (block.vtx[0]->vout.size() != 1 || !block.vtx[0]->vout[0].IsEmpty())
-            return false;
-    }
-    else
-    {
-        if (block.vtx[0]->vout.size() != 2 || !block.vtx[0]->vout[0].IsEmpty() || block.vtx[0]->vout[1].nValue)
-            return false;
-    }
-
-    return true;
-}
-
 bool IsCanonicalBlockSignature(const CBlock* pblock, bool checkLowS)
 {
     if (pblock->IsProofOfWork()) {
@@ -5288,19 +5270,6 @@ bool IsCanonicalBlockSignature(const CBlock* pblock, bool checkLowS)
 
     return checkLowS ? IsLowDERSignature(pblock->vchBlockSig, NULL, false) : IsDERSignature(pblock->vchBlockSig, NULL, false);
 }
-
-bool CheckCanonicalBlockSignature(const CBlock* pblock)
-{
-    //block signature encoding
-    bool ret = IsCanonicalBlockSignature(pblock, false);
-
-    //block signature encoding (low-s)
-    if(ret) ret = IsCanonicalBlockSignature(pblock, true);
-
-    return ret;
-}
-
-
 
 class CMainCleanup
 {

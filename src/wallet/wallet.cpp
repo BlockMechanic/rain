@@ -5245,7 +5245,7 @@ unsigned int GetStakeMaxCombineInputs() { return 100; }
 
 int64_t GetStakeCombineThreshold() { return 10000 * COIN; }
 int64_t GetStakeSplitThreshold() { return 2 * 1000 * 1000 * COIN; }
-unsigned int nStakeSplitAge = 1 * 24 * 60 * 60;
+unsigned int nStakeSplitAge = 14 * 24 * 60 * 60;
 
 void CWallet::AvailableCoinsForStaking(std::vector<COutput>& vCoins, unsigned int nSpendTime) const
 {
@@ -5436,7 +5436,7 @@ bool CWallet::CreateCoinStake(unsigned int nBits, CMutableTransaction& txNew)
 	    }
         if (fKernelFound)
             break; // if kernel is found stop searching
-        if (!fKernelFound)
+        if ((!fKernelFound) && (gArgs.GetBoolArg("-debug", false)))
             LogPrintf("%s \n", FormatStateMessage(state));
     }
 

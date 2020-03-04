@@ -1812,9 +1812,14 @@ void CConnman::ThreadOpenConnections(const std::vector<std::string> connect)
             }
 
             // do not allow non-default ports, unless after 50 invalid addresses selected already
+#ifdef ENABLE_IBTP
             //if (addr.GetPort() != Params().GetDefaultPort() && nTries < 50)
             //    continue;
+#else
 
+            if (addr.GetPort() != Params().GetDefaultPort() && nTries < 50)
+                continue;
+#endif
             addrConnect = addr;
             break;
         }
