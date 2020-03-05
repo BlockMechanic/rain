@@ -3035,8 +3035,6 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             return false;
         }
         headers.resize(nCount);
-        {
-        LOCK(cs_main);
         int32_t& nPoSTemperature = mapPoSTemperature[pfrom->addr];
         int nTmpPoSTemperature = nPoSTemperature;
         for (unsigned int n = 0; n < nCount; n++) {
@@ -3058,7 +3056,6 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                     return error("too many consecutive pos headers2 ");
                 }
             }
-        }
         }
 
         // Headers received via a HEADERS message should be valid, and reflect

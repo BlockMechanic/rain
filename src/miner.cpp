@@ -499,14 +499,26 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
 }
 
 
-bool CheckStake(std::shared_ptr<CBlock> pblock)
+bool CheckStake(std::shared_ptr<CBlock> pblock, CWallet& wallet)
 {
     LogPrint(BCLog::COINSTAKE, "%s\n", pblock->ToString());
     LogPrint(BCLog::COINSTAKE, "out %s\n", FormatMoney(pblock->vtx[1]->GetValueOut()));
+
     {
         LOCK(cs_main);
         if (pblock->hashPrevBlock != ::ChainActive().Tip()->GetBlockHash())
             return error("CheckStake() : generated block is stale");
+    }
+
+    auto locked_chain = wallet.chain().lock();
+
+    {
+        LOCK(wallet.cs_wallet);
+        for(const CTxIn& vin : pblock->vtx[1]->vin) {
+            if (wallet.IsSpent(*locked_chain,vin.prevout.hash, vin.prevout.n)) {
+                return error("CheckStake() : generated block became invalid due to stake UTXO being spent");
+            }
+        }
     }
 
     // Process this block the same as if we had received it from another node
@@ -520,7 +532,7 @@ bool CheckStake(std::shared_ptr<CBlock> pblock)
 void PoSMiner(CWallet *pwallet)
 {
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
-    MilliSleep(90000);
+    unsigned int nExtraNonce = 0;
 
     // Make this thread recognisable as the mining thread
     std::string threadName = "stake";
@@ -533,7 +545,6 @@ void PoSMiner(CWallet *pwallet)
     ReserveDestination reservekey(pwallet);
 
     bool fTryToSync = true;
-    //bool regtestMode = Params().GetConsensus().fPoSNoRetargeting;
     try {
         while (true)
         {
@@ -577,6 +588,7 @@ void PoSMiner(CWallet *pwallet)
                     return;
                 }
                 CBlock *pblock = &pblocktemplate->block;
+                IncrementExtraNonce(pblock, ::ChainActive().Tip(), nExtraNonce);
 
                 // if proof-of-stake block found then process block
                 if (pblock->IsProofOfStake())
@@ -592,7 +604,7 @@ void PoSMiner(CWallet *pwallet)
 
                     LogPrintf("CPUMiner : proof-of-stake block found %s\n", pblock->GetHash().ToString());
                     SetThreadPriority(THREAD_PRIORITY_NORMAL);
-                    CheckStake(shared_pblock);
+                    CheckStake(shared_pblock, *pwallet);
                 }              
 			}
         }
