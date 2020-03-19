@@ -123,7 +123,7 @@ public:
         consensus.fPoSNoRetargeting = false;
         consensus.nStakeTimestampMask = 0xf;
         consensus.nLastPOWBlock = 200000;
-        consensus.nCONSENSUS_CHANGE_BLOCK = 1612000;
+        consensus.nCONSENSUS_CHANGE_BLOCK = 1743040;
         consensus.nStakeMinAge = 4 * 60 * 60;
         consensus.nStakeMaxAge = 10* 24 * 60 * 60;
         consensus.nCOIN_YEAR_REWARD = 200 * COIN/100;
