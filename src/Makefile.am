@@ -365,8 +365,6 @@ librain_server_a_SOURCES = \
   batchedlogger.cpp \
   blockencodings.cpp \
   blockfilter.cpp \
-  bls/bls.cpp \
-  bls/bls.h \
   bls/bls_ies.cpp \
   bls/bls_worker.cpp \
   chain.cpp \
@@ -568,6 +566,8 @@ librain_consensus_a_SOURCES = \
   amount.h \
   arith_uint256.cpp \
   arith_uint256.h \
+  bls/bls.cpp \
+  bls/bls.h \
   consensus/merkle.cpp \
   consensus/merkle.h \
   consensus/params.h \
