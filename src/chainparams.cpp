@@ -311,7 +311,7 @@ public:
         nPoolMaxParticipants = 5;
         nFulfilledRequestExpireTime = 60*60; // fulfilled requests expire in 1 hour
 
-        vSporkAddresses = {"Xgtyuk76vhuFW2iT7UAiHgNdWXCf3J34wh"};
+        vSporkAddresses = {"RTat8T37opuVR2S2AdSAUTnjnEtmnLMNDr"};
         nMinSporkKeys = 1;
 
         checkpointData = {
