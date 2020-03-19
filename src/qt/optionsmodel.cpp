@@ -22,6 +22,8 @@
 #ifdef ENABLE_WALLET
 #include <wallet/wallet.h>
 #include <wallet/walletdb.h>
+
+#include <privatesend/privatesend-client.h>
 #endif
 
 #include <QNetworkProxy>
@@ -85,6 +87,17 @@ void OptionsModel::Init(bool resetSettings)
         settings.setValue("fCoinControlFeatures", false);
     fCoinControlFeatures = settings.value("fCoinControlFeatures", false).toBool();
 
+    // PrivateSend
+    if (!settings.contains("fShowAdvancedPSUI"))
+        settings.setValue("fShowAdvancedPSUI", false);
+    fShowAdvancedPSUI = settings.value("fShowAdvancedPSUI", false).toBool();
+
+    if (!settings.contains("fShowPrivateSendPopups"))
+        settings.setValue("fShowPrivateSendPopups", true);
+
+    if (!settings.contains("fLowKeysWarning"))
+        settings.setValue("fLowKeysWarning", true);
+
     // These are shared with the core or have a command-line parameter
     // and we want command-line parameters to overwrite the GUI settings.
     //
@@ -130,6 +143,30 @@ void OptionsModel::Init(bool resetSettings)
         settings.setValue("bSpendZeroConfChange", true);
     if (!m_node.softSetBoolArg("-spendzeroconfchange", settings.value("bSpendZeroConfChange").toBool()))
         addOverriddenOption("-spendzeroconfchange");
+
+    // PrivateSend
+    if (!settings.contains("nPrivateSendRounds"))
+        settings.setValue("nPrivateSendRounds", DEFAULT_PRIVATESEND_ROUNDS);
+    if (!gArgs.SoftSetArg("-privatesendrounds", settings.value("nPrivateSendRounds").toString().toStdString()))
+        addOverriddenOption("-privatesendrounds");
+    privateSendClient.nPrivateSendRounds = settings.value("nPrivateSendRounds").toInt();
+
+    if (!settings.contains("nPrivateSendAmount")) {
+        // for migration from old settings
+        if (!settings.contains("nAnonymizeRainAmount"))
+            settings.setValue("nPrivateSendAmount", DEFAULT_PRIVATESEND_AMOUNT);
+        else
+            settings.setValue("nPrivateSendAmount", settings.value("nAnonymizeRainAmount").toInt());
+    }
+    if (!gArgs.SoftSetArg("-privatesendamount", settings.value("nPrivateSendAmount").toString().toStdString()))
+        addOverriddenOption("-privatesendamount");
+    privateSendClient.nPrivateSendAmount = settings.value("nPrivateSendAmount").toInt();
+
+    if (!settings.contains("fPrivateSendMultiSession"))
+        settings.setValue("fPrivateSendMultiSession", DEFAULT_PRIVATESEND_MULTISESSION);
+    if (!gArgs.SoftSetBoolArg("-privatesendmultisession", settings.value("fPrivateSendMultiSession").toBool()))
+        addOverriddenOption("-privatesendmultisession");
+    privateSendClient.fPrivateSendMultiSession = settings.value("fPrivateSendMultiSession").toBool();
 #endif
 
     // Network
@@ -316,6 +353,20 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
 #ifdef ENABLE_WALLET
         case SpendZeroConfChange:
             return settings.value("bSpendZeroConfChange");
+        case ShowMasternodesTab:
+            return settings.value("fShowMasternodesTab");
+        case ShowAdvancedPSUI:
+            return fShowAdvancedPSUI;
+        case ShowPrivateSendPopups:
+            return settings.value("fShowPrivateSendPopups");
+        case LowKeysWarning:
+            return settings.value("fLowKeysWarning");
+        case PrivateSendRounds:
+            return settings.value("nPrivateSendRounds");
+        case PrivateSendAmount:
+            return settings.value("nPrivateSendAmount");
+        case PrivateSendMultiSession:
+            return settings.value("fPrivateSendMultiSession");
 #endif
         case DisplayUnit:
             return nDisplayUnit;
@@ -429,6 +480,46 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
             if (settings.value("bSpendZeroConfChange") != value) {
                 settings.setValue("bSpendZeroConfChange", value);
                 setRestartRequired(true);
+            }
+            break;
+        case ShowMasternodesTab:
+            if (settings.value("fShowMasternodesTab") != value) {
+                settings.setValue("fShowMasternodesTab", value);
+                setRestartRequired(true);
+            }
+            break;
+        case ShowAdvancedPSUI:
+            fShowAdvancedPSUI = value.toBool();
+            settings.setValue("fShowAdvancedPSUI", fShowAdvancedPSUI);
+            Q_EMIT advancedPSUIChanged(fShowAdvancedPSUI);
+            break;
+        case ShowPrivateSendPopups:
+            settings.setValue("fShowPrivateSendPopups", value);
+            break;
+        case LowKeysWarning:
+            settings.setValue("fLowKeysWarning", value);
+            break;
+        case PrivateSendRounds:
+            if (settings.value("nPrivateSendRounds") != value)
+            {
+                privateSendClient.nPrivateSendRounds = value.toInt();
+                settings.setValue("nPrivateSendRounds", privateSendClient.nPrivateSendRounds);
+                Q_EMIT privateSendRoundsChanged();
+            }
+            break;
+        case PrivateSendAmount:
+            if (settings.value("nPrivateSendAmount") != value)
+            {
+                privateSendClient.nPrivateSendAmount = value.toInt();
+                settings.setValue("nPrivateSendAmount", privateSendClient.nPrivateSendAmount);
+                Q_EMIT privateSentAmountChanged();
+            }
+            break;
+        case PrivateSendMultiSession:
+            if (settings.value("fPrivateSendMultiSession") != value)
+            {
+                privateSendClient.fPrivateSendMultiSession = value.toBool();
+                settings.setValue("fPrivateSendMultiSession", privateSendClient.fPrivateSendMultiSession);
             }
             break;
 #endif

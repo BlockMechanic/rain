@@ -17,6 +17,11 @@
 #include <netbase.h>
 #include <util/system.h>
 
+#include <masternode/masternode-sync.h>
+#include <privatesend/privatesend.h>
+
+#include <llmq/quorums_instantsend.h>
+
 #include <stdint.h>
 
 #include <QDebug>
@@ -63,6 +68,34 @@ int ClientModel::getNumConnections(unsigned int flags) const
     return m_node.getNodeCount(connections);
 }
 
+void ClientModel::setMasternodeList(const CDeterministicMNList& mnList)
+{
+    LOCK(cs_mnlinst);
+    if (mnListCached.GetBlockHash() == mnList.GetBlockHash()) {
+        return;
+    }
+    mnListCached = mnList;
+    Q_EMIT masternodeListChanged();
+}
+
+CDeterministicMNList ClientModel::getMasternodeList() const
+{
+    LOCK(cs_mnlinst);
+    return mnListCached;
+}
+
+void ClientModel::refreshMasternodeList()
+{
+    LOCK(cs_mnlinst);
+    setMasternodeList(deterministicMNManager->GetListAtChainTip());
+}
+
+int ClientModel::getNumBlocks() const
+{
+    LOCK(cs_main);
+    return m_node.getNumBlocks();
+}
+
 int ClientModel::getHeaderTipHeight() const
 {
     if (cachedBestHeaderHeight == -1) {
@@ -91,11 +124,21 @@ int64_t ClientModel::getHeaderTipTime() const
     return cachedBestHeaderTime;
 }
 
+size_t ClientModel::getInstantSentLockCount() const
+{
+    if (!llmq::quorumInstantSendManager) {
+        return 0;
+    }
+    return llmq::quorumInstantSendManager->GetInstantSendLockCount();
+}
+
+
 void ClientModel::updateTimer()
 {
     // no locking required at this point
     // the following calls will acquire the required lock
     Q_EMIT mempoolSizeChanged(m_node.getMempoolSize(), m_node.getMempoolDynamicUsage());
+    Q_EMIT islockCountChanged(getInstantSentLockCount());
     Q_EMIT bytesChanged(m_node.getTotalBytesRecv(), m_node.getTotalBytesSent());
 }
 
@@ -265,6 +308,18 @@ static void BlockTipChanged(ClientModel *clientmodel, bool initialSync, int heig
         nLastUpdateNotification = now;
     }
 }
+
+static void NotifyMasternodeListChanged(ClientModel *clientmodel, const CDeterministicMNList& newList)
+{
+    clientmodel->setMasternodeList(newList);
+}
+
+static void NotifyAdditionalDataSyncProgressChanged(ClientModel *clientmodel, double nSyncProgress)
+{
+    QMetaObject::invokeMethod(clientmodel, "additionalDataSyncProgressChanged", Qt::QueuedConnection,
+                              Q_ARG(double, nSyncProgress));
+}
+
 /*
 static void AuxiliaryBlockRequestProgressUpdate(ClientModel *clientmodel, int64_t created, size_t blocksRequested, size_t blocksLoaded, size_t blocksProcessed)
 {
@@ -285,6 +340,13 @@ void ClientModel::subscribeToCoreSignals()
     m_handler_banned_list_changed = m_node.handleBannedListChanged(std::bind(BannedListChanged, this));
     m_handler_notify_block_tip = m_node.handleNotifyBlockTip(std::bind(BlockTipChanged, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, false));
     m_handler_notify_header_tip = m_node.handleNotifyHeaderTip(std::bind(BlockTipChanged, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, true));
+    m_handler_notify_masternode_list_changed =  m_node.handleNotifyMasternodeListChanged(std::bind(NotifyMasternodeListChanged, this, std::placeholders::_1));
+    m_handler_notify_additional_data_sync_progress_changed =  m_node.handleNotifyAdditionalDataSyncProgressChanged(std::bind(NotifyAdditionalDataSyncProgressChanged, this, std::placeholders::_1));
+
+//    m_handler_notify_islock_received = m_node.handleNotifyISLockReceived(std::bind(NotifyISLockReceived, this));
+//    m_handler_notify_chainlock_received = m_node.handleNotifyChainLockReceived(std::bind(NotifyChainLockReceived, this, std::placeholders::_1));
+
+
 //    m_handler_auxiliary_block_request_progress = m_node.handleAuxiliaryBlockRequestProgress(std::bind(AuxiliaryBlockRequestProgressUpdate, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
 }
 
@@ -298,6 +360,9 @@ void ClientModel::unsubscribeFromCoreSignals()
     m_handler_banned_list_changed->disconnect();
     m_handler_notify_block_tip->disconnect();
     m_handler_notify_header_tip->disconnect();
+    m_handler_notify_masternode_list_changed->disconnect();
+    m_handler_notify_additional_data_sync_progress_changed->disconnect();
+
 //    m_handler_auxiliary_block_request_progress->disconnect();
 }
 

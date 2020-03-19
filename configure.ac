@@ -61,8 +61,8 @@ case $host in
      lt_cv_deplibs_check_method="pass_all"
   ;;
 esac
-dnl Require C++11 compiler (no GNU extensions)
-AX_CXX_COMPILE_STDCXX([11], [noext], [mandatory], [nodefault])
+dnl Require C++14 compiler (no GNU extensions)
+AX_CXX_COMPILE_STDCXX([14], [noext], [mandatory], [nodefault])
 dnl Check if -latomic is required for <std::atomic>
 CHECK_ATOMIC
 
@@ -94,6 +94,7 @@ AC_PATH_PROG(HEXDUMP,hexdump)
 AC_PATH_TOOL(READELF, readelf)
 AC_PATH_TOOL(CPPFILT, c++filt)
 AC_PATH_TOOL(OBJCOPY, objcopy)
+AC_PATH_TOOL(DSYMUTIL, dsymutil)
 AC_PATH_PROG(DOXYGEN, doxygen)
 if test -z "$DOXYGEN"; then
    AC_MSG_WARN([Doxygen not found])
@@ -294,6 +295,13 @@ AC_ARG_ENABLE([debug],
     [enable_debug=$enableval],
     [enable_debug=no])
 
+# Enable crash hooks
+AC_ARG_ENABLE([crash-hooks],
+    [AS_HELP_STRING([--enable-crash-hooks],
+                    [hook into exception/signal/assert handling to gather stack traces (default is no)])],
+    [enable_crashhooks=$enableval],
+    [enable_crashhooks=no])
+
 # Enable different -fsanitize options
 AC_ARG_WITH([sanitizers],
     [AS_HELP_STRING([--with-sanitizers],
@@ -367,6 +375,20 @@ if test x$use_sanitizers != x; then
     __attribute__((weak)) // allow for libFuzzer linking
     ]],[[]])])
 fi
+
+AM_CONDITIONAL([ENABLE_CRASH_HOOKS], [test x$enable_crashhooks = xyes])
+if test "x$enable_crashhooks" = xyes; then
+    AC_DEFINE(ENABLE_CRASH_HOOKS, 1, [Define this symbol if crash hooks should be enabled])
+fi
+AX_CHECK_LINK_FLAG([-Wl,-wrap=__cxa_allocate_exception], [LINK_WRAP_SUPPORTED=yes],,,)
+AM_CONDITIONAL([CRASH_HOOKS_WRAPPED_CXX_ABI],[test x$LINK_WRAP_SUPPORTED = xyes])
+
+if test x$LINK_WRAP_SUPPORTED = "xyes"; then
+  AC_DEFINE(CRASH_HOOKS_WRAPPED_CXX_ABI, 1, [Define this symbol to use wrapped CXX ABIs for exception stacktraces])
+fi
+
+# Needed for MinGW targets when debug symbols are enabled as compiled objects get very large
+AX_CHECK_COMPILE_FLAG([-Wa,-mbig-obj], [CXXFLAGS="$CXXFLAGS -Wa,-mbig-obj"],,,)
 
 ERROR_CXXFLAGS=
 if test "x$enable_werror" = "xyes"; then
@@ -875,11 +897,19 @@ AC_CHECK_DECLS([bswap_16, bswap_32, bswap_64],,,
 
 AC_CHECK_DECLS([__builtin_clz, __builtin_clzl, __builtin_clzll])
 
-dnl Check for malloc_info (for memory statistics information in getmemoryinfo)
-AC_MSG_CHECKING(for getmemoryinfo)
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <malloc.h>]],
- [[ int f = malloc_info(0, NULL); ]])],
- [ AC_MSG_RESULT(yes); AC_DEFINE(HAVE_MALLOC_INFO, 1,[Define this symbol if you have malloc_info]) ],
+dnl Check for MSG_NOSIGNAL
+AC_MSG_CHECKING(for MSG_NOSIGNAL)
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <sys/socket.h>]],
+ [[ int f = MSG_NOSIGNAL; ]])],
+ [ AC_MSG_RESULT(yes); AC_DEFINE(HAVE_MSG_NOSIGNAL, 1,[Define this symbol if you have MSG_NOSIGNAL]) ],
+ [ AC_MSG_RESULT(no)]
+)
+
+dnl Check for MSG_DONTWAIT
+AC_MSG_CHECKING(for MSG_DONTWAIT)
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <sys/socket.h>]],
+ [[ int f = MSG_DONTWAIT; ]])],
+ [ AC_MSG_RESULT(yes); AC_DEFINE(HAVE_MSG_DONTWAIT, 1,[Define this symbol if you have MSG_DONTWAIT]) ],
  [ AC_MSG_RESULT(no)]
 )
 
@@ -888,6 +918,14 @@ AC_MSG_CHECKING(for mallopt M_ARENA_MAX)
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <malloc.h>]],
  [[ mallopt(M_ARENA_MAX, 1); ]])],
  [ AC_MSG_RESULT(yes); AC_DEFINE(HAVE_MALLOPT_ARENA_MAX, 1,[Define this symbol if you have mallopt with M_ARENA_MAX]) ],
+ [ AC_MSG_RESULT(no)]
+)
+
+dnl Check for malloc_info (for memory statistics information in getmemoryinfo)
+AC_MSG_CHECKING(for getmemoryinfo)
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <malloc.h>]],
+ [[ int f = malloc_info(0, NULL); ]])],
+ [ AC_MSG_RESULT(yes); AC_DEFINE(HAVE_MALLOC_INFO, 1,[Define this symbol if you have malloc_info]) ],
  [ AC_MSG_RESULT(no)]
 )
 
@@ -986,6 +1024,13 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <sys/types.h>
  [ AC_MSG_RESULT(no)]
 )
 
+# ensure backtrace() is found, check -lexecinfo if necessary
+if test x$TARGET_OS != xwindows; then
+  AC_SEARCH_LIBS([backtrace], [execinfo], [], [
+    AC_MSG_ERROR([Unable to find backtrace()])
+  ])
+fi
+
 AC_MSG_CHECKING(for if type char equals int8_t)
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <stdint.h>
   #include <type_traits>]],
@@ -1045,6 +1090,7 @@ if test x$want_boost = xno; then
 fi
 AX_BOOST_SYSTEM
 AX_BOOST_FILESYSTEM
+AX_BOOST_PROGRAM_OPTIONS
 AX_BOOST_THREAD
 AX_BOOST_CHRONO
 
@@ -1670,6 +1716,7 @@ AC_SUBST(EVENT_LIBS)
 AC_SUBST(EVENT_PTHREADS_LIBS)
 AC_SUBST(ZMQ_LIBS)
 AC_SUBST(QR_LIBS)
+AC_SUBST(DSYMUTIL_FLAT)
 AC_SUBST(ANDROID_ARCH)
 AC_CONFIG_FILES([Makefile src/Makefile doc/man/Makefile share/setup.nsi share/qt/Info.plist test/config.ini])
 AC_CONFIG_FILES([contrib/devtools/split-debug.sh],[chmod +x contrib/devtools/split-debug.sh])

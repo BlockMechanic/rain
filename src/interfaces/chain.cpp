@@ -39,6 +39,10 @@
 #include <validationinterface.h>
 #include <txdb.h>
 
+#include <privatesend/privatesend-client.h>
+#include <llmq/quorums_instantsend.h>
+#include <llmq/quorums_chainlocks.h>
+
 #include <memory>
 #include <utility>
 
@@ -109,16 +113,7 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
         CBlockIndex* block = ::ChainActive()[height];
         return block && block->IsProofOfStake();
     }
-    uint160 ReadStakeIndex(int height) override
-    {
-		uint160 stakeAddress;
-        LockAssertion lock(::cs_main);
 
-		if(!pblocktree->ReadStakeIndex(height, stakeAddress)){
-			return uint160();
-		}
-        return stakeAddress;
-    }
     bool startStake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread)override{
 		::Stake(fStake, pwallet, stakeThread);
         return true;
@@ -157,6 +152,73 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
 		return GetBlockSubsidy(nHeight, consensusParams, prevHash, fProofofStake, nCoinAge, nFees, supply);
 	}
 
+	int outputpriority(CTransactionRef tx, int i) override
+	{		
+		for (const auto& d : CPrivateSend::GetStandardDenominations()) {
+			// large denoms have lower value
+			if(tx->vout[i].nValue == d) return (float)COIN / d * 10000;
+		}
+		if(tx->vout[i].nValue < 1*COIN) return 20000;
+
+		//nondenom return largest first
+		return -(tx->vout[i].nValue/COIN);
+	}
+	
+	std::vector<CAmount> privsenddenoms () override {	
+	    std::vector<CAmount> vecPrivateSendDenominations = CPrivateSend::GetStandardDenominations();	  
+	    return vecPrivateSendDenominations;	  
+    }
+    
+    bool isDenominatedAmount (CAmount amount) override {
+		return CPrivateSend::IsDenominatedAmount(amount);		
+	}
+
+    bool isCollateralAmount (CAmount amount) override {
+		return CPrivateSend::IsCollateralAmount(amount);		
+	}
+	
+	bool qourumISM_IsLocked(uint256 hash) override {
+		return llmq::quorumInstantSendManager->IsLocked(hash);
+	}
+
+	bool isChainLocked(uint256 hashBlock) 
+	{
+		AssertLockHeld(cs_main);
+		BlockMap::iterator mi = mapBlockIndex.find(hashBlock);
+		if (mi != mapBlockIndex.end() && mi->second != nullptr) {
+			return llmq::chainLocksHandler->HasChainLock(mi->second->nHeight, hashBlock);
+		}
+		return false;
+	}
+
+    CAmount getSmallestDenomination () override {
+		return CPrivateSend::GetSmallestDenomination();
+	}
+
+    CAmount getCollateralAmount () override {
+		return CPrivateSend::GetCollateralAmount();
+	}
+	
+	bool getDenominationsBits(int nDenom, std::vector<int>& vecBits) override {
+		return CPrivateSend::GetDenominationsBits(nDenom, vecBits);
+	}
+	
+	int psRounds() override{
+		return privateSendClient.nPrivateSendRounds;
+	}
+	
+	bool psEnabled () override {
+		return privateSendClient.fEnablePrivateSend;
+	}
+	
+	bool deterministicMNComp (CTransactionRef tx, uint256 hash, int i) override {
+		auto mnList = deterministicMNManager->GetListAtChainTip();
+	    return (deterministicMNManager->IsProTxWithCollateral(tx, i) || mnList.HasMNByCollateral(COutPoint(hash, i)));
+	}
+	
+	void psRemoveSkippedDenom (CAmount amount) override {
+		privateSendClient.RemoveSkippedDenom(amount);
+	}
 
 #ifdef ENABLE_SECURE_MESSAGING
     bool smsgStart() override{
@@ -249,9 +311,9 @@ public:
             UnregisterValidationInterface(this);
         }
     }
-    void TransactionAddedToMempool(const CTransactionRef& tx) override
+    void TransactionAddedToMempool(const CTransactionRef& tx, int64_t nAcceptTime) override
     {
-        m_notifications->TransactionAddedToMempool(tx);
+        m_notifications->TransactionAddedToMempool(tx, nAcceptTime);
     }
     void TransactionRemovedFromMempool(const CTransactionRef& tx) override
     {
@@ -263,14 +325,46 @@ public:
     {
         m_notifications->BlockConnected(*block, tx_conflicted);
     }
-    void BlockDisconnected(const std::shared_ptr<const CBlock>& block) override
+    void BlockDisconnected(const std::shared_ptr<const CBlock>& block, const CBlockIndex* pindexDisconnected) override
     {
-        m_notifications->BlockDisconnected(*block);
+        m_notifications->BlockDisconnected(*block,pindexDisconnected);
     }
+
     void UpdatedBlockTip(const CBlockIndex* index, const CBlockIndex* fork_index, bool is_ibd) override
     {
         m_notifications->UpdatedBlockTip();
     }
+
+    void NotifyTransactionLock(const CTransaction &tx, const llmq::CInstantSendLock& islock) override
+    {
+        m_notifications->NotifyTransactionLock(tx,islock);
+    }
+
+    void NotifyChainLock(const CBlockIndex* pindex, const llmq::CChainLockSig& clsig) override
+    {
+        m_notifications->NotifyChainLock(pindex,clsig);
+    }
+
+    void NotifyGovernanceVote(const CGovernanceVote &vote) override
+    {
+        m_notifications->NotifyGovernanceVote(vote);
+    }
+
+    void NotifyGovernanceObject(const CGovernanceObject &object) override
+    {
+        m_notifications->NotifyGovernanceObject(object);
+    }
+
+    void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) override
+    {
+        m_notifications->NotifyInstantSendDoubleSpendAttempt(currentTx, previousTx);
+    }
+
+    void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) override
+    {
+        m_notifications->NotifyMasternodeListChanged(undo,oldMNList,diff);
+    }
+
     void ChainStateFlushed(const CBlockLocator& locator) override { m_notifications->ChainStateFlushed(locator); }
     Chain& m_chain;
     Chain::Notifications* m_notifications;
@@ -524,7 +618,8 @@ public:
     {
         LOCK2(::cs_main, ::mempool.cs);
         for (const CTxMemPoolEntry& entry : ::mempool.mapTx) {
-            notifications.TransactionAddedToMempool(entry.GetSharedTx());
+			int64_t nAcceptTime =0;
+            notifications.TransactionAddedToMempool(entry.GetSharedTx(),nAcceptTime);
         }
     }
 };

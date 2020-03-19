@@ -19,10 +19,19 @@ struct CBlockLocator;
 class CConnman;
 class CValidationInterface;
 class CValidationState;
+class CGovernanceVote;
+class CGovernanceObject;
+class CDeterministicMNList;
+class CDeterministicMNListDiff;
 class uint256;
 class CScheduler;
 class CTxMemPool;
 enum class MemPoolRemovalReason;
+
+namespace llmq {
+    class CChainLockSig;
+    class CInstantSendLock;
+} // namespace llmq
 
 // These functions dispatch to one or all registered wallets
 
@@ -70,7 +79,9 @@ void SyncWithValidationInterfaceQueue() LOCKS_EXCLUDED(cs_main);
  */
 class CValidationInterface {
 protected:
-    /**
+    virtual void AcceptedBlockHeader(const CBlockIndex *pindexNew) {}
+    virtual void NotifyHeaderTip(const CBlockIndex *pindexNew, bool fInitialDownload) {}
+   /**
      * Protected destructor so that instances can only be deleted by derived classes.
      * If that restriction is no longer desired, this should be made public and virtual.
      */
@@ -90,7 +101,7 @@ protected:
      *
      * Called on a background thread.
      */
-    virtual void TransactionAddedToMempool(const CTransactionRef &ptxn) {}
+    virtual void TransactionAddedToMempool(const CTransactionRef &ptxn, int64_t nAcceptTime) {}
     /**
      * Notifies listeners of a transaction leaving mempool.
      *
@@ -114,7 +125,8 @@ protected:
      *
      * Called on a background thread.
      */
-    virtual void BlockDisconnected(const std::shared_ptr<const CBlock> &block) {}
+    /** Notifies listeners of a block being disconnected */
+    virtual void BlockDisconnected(const std::shared_ptr<const CBlock> &block, const CBlockIndex *pindexDisconnected) {}
     /**
      * Notifies listeners of the new active block chain on-disk.
      *
@@ -132,6 +144,13 @@ protected:
      * Called on a background thread.
      */
     virtual void ChainStateFlushed(const CBlockLocator &locator) {}
+
+    virtual void NotifyTransactionLock(const CTransaction &tx, const llmq::CInstantSendLock& islock) {}
+    virtual void NotifyChainLock(const CBlockIndex* pindex, const llmq::CChainLockSig& clsig) {}
+    virtual void NotifyGovernanceVote(const CGovernanceVote &vote) {}
+    virtual void NotifyGovernanceObject(const CGovernanceObject &object) {}
+    virtual void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) {}
+    virtual void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) {}
     /**
      * Notifies listeners of a block validation result.
      * If the provided CValidationState IsValid, the provided block
@@ -179,11 +198,22 @@ public:
     /** Unregister with mempool */
     void UnregisterWithMempoolSignals(CTxMemPool& pool);
 
+    void AcceptedBlockHeader(const CBlockIndex *pindexNew);
+    void NotifyHeaderTip(const CBlockIndex *pindexNew, bool fInitialDownload);
     void UpdatedBlockTip(const CBlockIndex *, const CBlockIndex *, bool fInitialDownload);
-    void TransactionAddedToMempool(const CTransactionRef &);
+    void TransactionAddedToMempool(const CTransactionRef &, int64_t);
+    void BlockConnected(const std::shared_ptr<const CBlock> &, const CBlockIndex *pindex, const std::vector<CTransactionRef> &);
     void BlockConnected(const std::shared_ptr<const CBlock> &, const CBlockIndex *pindex, const std::shared_ptr<const std::vector<CTransactionRef>> &);
-    void BlockDisconnected(const std::shared_ptr<const CBlock> &);
+    void BlockDisconnected(const std::shared_ptr<const CBlock> &, const CBlockIndex* pindexDisconnected);
     void ChainStateFlushed(const CBlockLocator &);
+    void NotifyTransactionLock(const CTransaction &tx, const llmq::CInstantSendLock& islock);
+    void NotifyChainLock(const CBlockIndex* pindex, const llmq::CChainLockSig& clsig);
+    void NotifyGovernanceVote(const CGovernanceVote &vote);
+    void NotifyGovernanceObject(const CGovernanceObject &object);
+    void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx);
+    void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff);
+
+
     void BlockChecked(const CBlock&, const CValidationState&);
     void NewPoWValidBlock(const CBlockIndex *, const std::shared_ptr<const CBlock>&);
     void ProcessPriorityRequest(const std::shared_ptr<const CBlock> &, const CBlockIndex *pindex);

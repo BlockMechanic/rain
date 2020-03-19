@@ -27,6 +27,7 @@ class RPCTimerInterface;
 class UniValue;
 class proxyType;
 struct CNodeStateStats;
+class CDeterministicMNList;
 
 namespace interfaces {
 class Handler;
@@ -258,6 +259,14 @@ public:
     using NotifyHeaderTipFn =
         std::function<void(bool initial_download, int height, int64_t block_time, double verification_progress)>;
     virtual std::unique_ptr<Handler> handleNotifyHeaderTip(NotifyHeaderTipFn fn) = 0;
+
+    //! Register handler for masternode list messages.
+    using NotifyMasternodeListChangedFn = std::function<void(const CDeterministicMNList& i)>;
+    virtual std::unique_ptr<Handler> handleNotifyMasternodeListChanged(NotifyMasternodeListChangedFn fn) = 0;
+
+    //! Register handler for data messages.
+    using NotifyAdditionalDataSyncProgressChangedFn = std::function<void(double progress)>;
+    virtual std::unique_ptr<Handler> handleNotifyAdditionalDataSyncProgressChanged(NotifyAdditionalDataSyncProgressChangedFn fn) = 0;
 };
 
 //! Return implementation of Node interface.

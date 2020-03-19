@@ -65,6 +65,9 @@ enum class ValidationInvalidReason {
      */
     TX_CONFLICT,
     TX_MEMPOOL_POLICY,        //!< violated mempool's fee/size/descendant/RBF/etc limits
+    BADCBTX,
+    BADPROTX,
+    BADQC,
 };
 
 inline bool IsTransactionReason(ValidationInvalidReason r)

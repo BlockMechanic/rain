@@ -50,6 +50,18 @@
 #include <wallet/wallet.h>
 #include <warnings.h>
 
+#include <spork.h>
+
+#include <masternode/masternode-payments.h>
+
+#include <evo/specialtx.h>
+#include <evo/providertx.h>
+#include <evo/deterministicmns.h>
+#include <evo/cbtx.h>
+
+#include <llmq/quorums_instantsend.h>
+#include <llmq/quorums_chainlocks.h>
+
 #include <future>
 #include <sstream>
 #include <string>
@@ -107,12 +119,17 @@ RecursiveMutex cs_main;
 BlockMap& mapBlockIndex = ::ChainstateActive().mapBlockIndex;
 std::set<std::pair<COutPoint, unsigned int>>& setStakeSeen = g_chainstate.setStakeSeen;
 
+PrevBlockMap mapPrevBlockIndex;
 CBlockIndex *pindexBestHeader = nullptr;
 Mutex g_best_block_mutex;
 std::condition_variable g_best_block_cv;
 uint256 g_best_block;
 int nScriptCheckThreads = 0;
 std::atomic_bool fImporting(false);
+bool fTxIndex = true;
+bool fAddressIndex = false;
+bool fTimestampIndex = false;
+bool fSpentIndex = false;
 std::atomic_bool fReindex(false);
 bool fHavePruned = false;
 bool fPruneMode = false;
@@ -122,6 +139,9 @@ bool fCheckpointsEnabled = DEFAULT_CHECKPOINTS_ENABLED;
 size_t nCoinCacheUsage = 5000 * 300;
 uint64_t nPruneTarget = 0;
 int64_t nMaxTipAge = DEFAULT_MAX_TIP_AGE;
+
+std::atomic<bool> fDIP0001ActiveAtTip{false};
+std::atomic<bool> fDIP0003ActiveAtTip{false};
 
 uint256 hashAssumeValid;
 arith_uint256 nMinimumChainWork;
@@ -319,6 +339,64 @@ bool CheckSequenceLocks(const CTxMemPool& pool, const CTransaction& tx, int flag
     return EvaluateSequenceLocks(index, lockPair);
 }
 
+bool GetUTXOCoin(const COutPoint& outpoint, Coin& coin)
+{
+    LOCK(cs_main);
+    if (!pcoinsTip->GetCoin(outpoint, coin))
+        return false;
+    if (coin.IsSpent())
+        return false;
+    return true;
+}
+
+int GetUTXOHeight(const COutPoint& outpoint)
+{
+    // -1 means UTXO is yet unknown or already spent
+    Coin coin;
+    return GetUTXOCoin(outpoint, coin) ? coin.nHeight : -1;
+}
+
+int GetUTXOConfirmations(const COutPoint& outpoint)
+{
+    // -1 means UTXO is yet unknown or already spent
+    LOCK(cs_main);
+    int nPrevoutHeight = GetUTXOHeight(outpoint);
+    return (nPrevoutHeight > -1 && ::ChainActive().Tip()) ? ::ChainActive().Height() - nPrevoutHeight + 1 : -1;
+}
+
+
+bool ContextualCheckTransaction(const CTransaction& tx, CValidationState &state, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
+{
+    int nHeight = pindexPrev == nullptr ? 0 : pindexPrev->nHeight + 1;
+    bool fDIP0001Active_context = nHeight >= consensusParams.DIP0001Height;
+    bool fDIP0003Active_context = nHeight >= consensusParams.DIP0003Height;
+
+    if (fDIP0003Active_context) {
+        // check version 3 transaction types
+        if (tx.nVersion >= 3) {
+            if (tx.nType != TRANSACTION_NORMAL &&
+                tx.nType != TRANSACTION_PROVIDER_REGISTER &&
+                tx.nType != TRANSACTION_PROVIDER_UPDATE_SERVICE &&
+                tx.nType != TRANSACTION_PROVIDER_UPDATE_REGISTRAR &&
+                tx.nType != TRANSACTION_PROVIDER_UPDATE_REVOKE &&
+                tx.nType != TRANSACTION_COINBASE &&
+                tx.nType != TRANSACTION_QUORUM_COMMITMENT) {
+                return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-txns-type");
+            }
+            if (tx.IsCoinBase() && tx.nType != TRANSACTION_COINBASE)
+                return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-txns-cb-type");
+        } else if (tx.nType != TRANSACTION_NORMAL) {
+            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-txns-type");
+        }
+    }
+
+    // Size limits
+   // if (fDIP0001Active_context && ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION) > MAX_STANDARD_TX_SIZE)
+     //   return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-txns-oversize");
+
+    return true;
+}
+
 // Returns the script flags which should be checked for a given block
 static unsigned int GetBlockScriptFlags(const CBlockIndex* pindex, const Consensus::Params& chainparams);
 
@@ -457,6 +535,14 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
     if (!CheckTransaction(tx, state))
         return false; // state filled in by CheckTransaction
 
+    if (!ContextualCheckTransaction(tx, state, chainparams.GetConsensus(), ::ChainActive().Tip()))
+        return error("%s: ContextualCheckTransaction: %s, %s", __func__, hash.ToString(), FormatStateMessage(state));
+
+    if (tx.nVersion == 6 && tx.nType == TRANSACTION_QUORUM_COMMITMENT) {
+        // quorum commitment is not allowed outside of blocks
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "qc-not-allowed");
+    }
+
     // Coinbase is only valid in a block, not as a loose transaction
     if (tx.IsCoinBase())
         return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "coinbase");
@@ -491,6 +577,18 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
     // is it already in the memory pool?
     if (pool.exists(hash)) {
         return state.Invalid(ValidationInvalidReason::TX_CONFLICT, false, REJECT_DUPLICATE, "txn-already-in-mempool");
+    }
+
+    llmq::CInstantSendLockPtr conflictLock = llmq::quorumInstantSendManager->GetConflictingLock(tx);
+    if (conflictLock) {
+        CTransactionRef txConflict;
+        uint256 hashBlock;
+        if (GetTransaction(conflictLock->txid, txConflict, chainparams.GetConsensus(), hashBlock)) {
+            GetMainSignals().NotifyInstantSendDoubleSpendAttempt(tx, *txConflict);
+        }
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, error("AcceptToMemoryPool : Transaction %s conflicts with locked TX %s",
+                                   hash.ToString(), conflictLock->txid.ToString()),
+                         REJECT_INVALID, "tx-txlock-conflict");
     }
 
     // Check for conflicts with in-memory transactions
@@ -584,6 +682,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
         if (!Consensus::CheckTxInputs(tx, state, view, GetSpendHeight(view), nFees)) {
             return error("%s: Consensus::CheckTxInputs: %s, %s", __func__, tx.GetHash().ToString(), FormatStateMessage(state));
         }
+
         // Check for non-standard pay-to-script-hash in inputs
         if (fRequireStandard && !AreInputsStandard(tx, view))
             return state.Invalid(ValidationInvalidReason::TX_NOT_STANDARD, false, REJECT_NONSTANDARD, "bad-txns-nonstandard-inputs");
@@ -771,6 +870,16 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
             }
         }
 
+        // check special TXs after all the other checks. If we'd do this before the other checks, we might end up
+        // DoS scoring a node for non-critical errors, e.g. duplicate keys because a TX is received that was already
+        // mined
+        if (!CheckSpecialTx(tx, ::ChainActive().Tip(), state))
+            return false;
+
+        if (pool.existsProviderTxConflict(tx)) {
+            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_DUPLICATE, "protx-dup");
+        }
+
         constexpr unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
 
         // Check against previous transactions
@@ -841,6 +950,16 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
         // Store transaction in memory
         pool.addUnchecked(entry, setAncestors, validForFeeEstimation);
 
+        // Add memory address index
+        if (fAddressIndex) {
+            pool.addAddressIndex(entry, view);
+        }
+
+        // Add memory spent index
+        if (fSpentIndex) {
+            pool.addSpentIndex(entry, view);
+        }
+
         // trim mempool and check if tx was trimmed
         if (!bypass_limits) {
             LimitMempoolSize(pool, gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000, gArgs.GetArg("-mempoolexpiry", DEFAULT_MEMPOOL_EXPIRY) * 60 * 60);
@@ -849,7 +968,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
         }
     }
 
-    GetMainSignals().TransactionAddedToMempool(ptx);
+    GetMainSignals().TransactionAddedToMempool(ptx, nAcceptTime);
 
     return true;
 }
@@ -882,6 +1001,55 @@ bool AcceptToMemoryPool(CTxMemPool& pool, CValidationState &state, const CTransa
 {
     const CChainParams& chainparams = Params();
     return AcceptToMemoryPoolWithTime(chainparams, pool, state, tx, pfMissingInputs, GetTime(), plTxnReplaced, bypass_limits, nAbsurdFee, test_accept);
+}
+
+bool GetTimestampIndex(const unsigned int &high, const unsigned int &low, std::vector<uint256> &hashes)
+{
+    if (!fTimestampIndex)
+        return error("Timestamp index not enabled");
+
+    if (!pblocktree->ReadTimestampIndex(high, low, hashes))
+        return error("Unable to get hashes for timestamps");
+
+    return true;
+}
+
+bool GetSpentIndex(CSpentIndexKey &key, CSpentIndexValue &value)
+{
+    if (!fSpentIndex)
+        return false;
+
+    if (mempool.getSpentIndex(key, value))
+        return true;
+
+    if (!pblocktree->ReadSpentIndex(key, value))
+        return false;
+
+    return true;
+}
+
+bool GetAddressIndex(uint160 addressHash, int type,
+                     std::vector<std::pair<CAddressIndexKey, CAmount> > &addressIndex, int start, int end)
+{
+    if (!fAddressIndex)
+        return error("address index not enabled");
+
+    if (!pblocktree->ReadAddressIndex(addressHash, type, addressIndex, start, end))
+        return error("unable to get txids for address");
+
+    return true;
+}
+
+bool GetAddressUnspent(uint160 addressHash, int type,
+                       std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > &unspentOutputs)
+{
+    if (!fAddressIndex)
+        return error("address index not enabled");
+
+    if (!pblocktree->ReadAddressUnspentIndex(addressHash, type, unspentOutputs))
+        return error("unable to get txids for address");
+
+    return true;
 }
 
 /**
@@ -1127,6 +1295,27 @@ CAmount GetBlockSubsidy(unsigned int nHeight, const Consensus::Params& consensus
     }
 
     return nSubsidy + nFees;
+}
+
+CAmount GetMasternodePayment(int nHeight, CAmount blockValue)
+{
+    CAmount ret = blockValue/5; // start at 20%
+
+    int nMNPIBlock = Params().GetConsensus().nMasternodePaymentsIncreaseBlock;
+    int nMNPIPeriod = Params().GetConsensus().nMasternodePaymentsIncreasePeriod;
+
+                                                                      // mainnet:
+    if(nHeight > nMNPIBlock)                  ret += blockValue / 20; // 158000 - 25.0% - 2014-10-24
+    if(nHeight > nMNPIBlock+(nMNPIPeriod* 1)) ret += blockValue / 20; // 175280 - 30.0% - 2014-11-25
+    if(nHeight > nMNPIBlock+(nMNPIPeriod* 2)) ret += blockValue / 20; // 192560 - 35.0% - 2014-12-26
+    if(nHeight > nMNPIBlock+(nMNPIPeriod* 3)) ret += blockValue / 40; // 209840 - 37.5% - 2015-01-26
+    if(nHeight > nMNPIBlock+(nMNPIPeriod* 4)) ret += blockValue / 40; // 227120 - 40.0% - 2015-02-27
+    if(nHeight > nMNPIBlock+(nMNPIPeriod* 5)) ret += blockValue / 40; // 244400 - 42.5% - 2015-03-30
+    if(nHeight > nMNPIBlock+(nMNPIPeriod* 6)) ret += blockValue / 40; // 261680 - 45.0% - 2015-05-01
+    if(nHeight > nMNPIBlock+(nMNPIPeriod* 7)) ret += blockValue / 40; // 278960 - 47.5% - 2015-06-01
+    if(nHeight > nMNPIBlock+(nMNPIPeriod* 9)) ret += blockValue / 40; // 313520 - 50.0% - 2015-08-03
+
+    return ret;
 }
 
 // Note that though this is marked const, we may end up modifying `m_cached_finished_ibd`, which
@@ -1546,6 +1735,15 @@ int ApplyTxInUndo(Coin&& undo, CCoinsViewCache& view, const COutPoint& out)
  *  When FAILED is returned, view is left in an indeterminate state. */
 DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockIndex* pindex, CCoinsViewCache& view)
 {
+    bool fDIP0003Active = pindex->nHeight >= Params().GetConsensus().DIP0003Height;
+    bool fHasBestBlock = evoDb->VerifyBestBlock(pindex->GetBlockHash());
+
+    if (fDIP0003Active && !fHasBestBlock) {
+        // Nodes that upgraded after DIP3 activation will have to reindex to ensure evodb consistency
+        AbortNode("Found EvoDB inconsistency, you must reindex to continue");
+        return DISCONNECT_FAILED;
+    }
+
     bool fClean = true;
 
     CBlockUndo blockUndo;
@@ -1559,12 +1757,55 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
         return DISCONNECT_FAILED;
     }
 
+    std::vector<std::pair<CAddressIndexKey, CAmount> > addressIndex;
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > addressUnspentIndex;
+    std::vector<std::pair<CSpentIndexKey, CSpentIndexValue> > spentIndex;
+
+    if (!UndoSpecialTxsInBlock(block, pindex)) {
+        return DISCONNECT_FAILED;
+    }
+
     // undo transactions in reverse order
     for (int i = block.vtx.size() - 1; i >= 0; i--) {
         const CTransaction &tx = *(block.vtx[i]);
         uint256 hash = tx.GetHash();
         bool is_coinbase = tx.IsCoinBase();
         bool is_coinstake = tx.IsCoinStake();
+
+        if (fAddressIndex) {
+
+            for (unsigned int k = tx.vout.size(); k-- > 0;) {
+                const CTxOut &out = tx.vout[k];
+
+                if (out.scriptPubKey.IsPayToScriptHash()) {
+                    std::vector<unsigned char> hashBytes(out.scriptPubKey.begin()+2, out.scriptPubKey.begin()+22);
+
+                    // undo receiving activity
+                    addressIndex.push_back(std::make_pair(CAddressIndexKey(2, uint160(hashBytes), pindex->nHeight, i, hash, k, false), out.nValue));
+
+                    // undo unspent index
+                    addressUnspentIndex.push_back(std::make_pair(CAddressUnspentKey(2, uint160(hashBytes), hash, k), CAddressUnspentValue()));
+
+                } else if (out.scriptPubKey.IsPayToPubkeyHash()) {
+                    std::vector<unsigned char> hashBytes(out.scriptPubKey.begin()+3, out.scriptPubKey.begin()+23);
+
+                    // undo receiving activity
+                    addressIndex.push_back(std::make_pair(CAddressIndexKey(1, uint160(hashBytes), pindex->nHeight, i, hash, k, false), out.nValue));
+
+                    // undo unspent index
+                    addressUnspentIndex.push_back(std::make_pair(CAddressUnspentKey(1, uint160(hashBytes), hash, k), CAddressUnspentValue()));
+
+                } else if (out.scriptPubKey.IsPayToPubkey()) {
+                    uint160 hashBytes(Hash160(out.scriptPubKey.begin()+1, out.scriptPubKey.end()-1));
+                    addressIndex.push_back(std::make_pair(CAddressIndexKey(1, hashBytes, pindex->nHeight, i, hash, k, false), out.nValue));
+                    addressUnspentIndex.push_back(std::make_pair(CAddressUnspentKey(1, hashBytes, hash, k), CAddressUnspentValue()));
+                } else {
+                    continue;
+                }
+
+            }
+
+        }
 
         // Check that all outputs are available and match the outputs in the block itself
         // exactly.
@@ -1588,9 +1829,49 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
             }
             for (unsigned int j = tx.vin.size(); j-- > 0;) {
                 const COutPoint &out = tx.vin[j].prevout;
+                int undoHeight = txundo.vprevout[j].nHeight;
                 int res = ApplyTxInUndo(std::move(txundo.vprevout[j]), view, out);
                 if (res == DISCONNECT_FAILED) return DISCONNECT_FAILED;
                 fClean = fClean && res != DISCONNECT_UNCLEAN;
+
+                const CTxIn input = tx.vin[j];
+
+                if (fSpentIndex) {
+                    // undo and delete the spent index
+                    spentIndex.push_back(std::make_pair(CSpentIndexKey(input.prevout.hash, input.prevout.n), CSpentIndexValue()));
+                }
+
+                if (fAddressIndex) {
+                    const Coin &coin = view.AccessCoin(tx.vin[j].prevout);
+                    const CTxOut &prevout = coin.out;
+                    if (prevout.scriptPubKey.IsPayToScriptHash()) {
+                        std::vector<unsigned char> hashBytes(prevout.scriptPubKey.begin()+2, prevout.scriptPubKey.begin()+22);
+
+                        // undo spending activity
+                        addressIndex.push_back(std::make_pair(CAddressIndexKey(2, uint160(hashBytes), pindex->nHeight, i, hash, j, true), prevout.nValue * -1));
+
+                        // restore unspent index
+                        addressUnspentIndex.push_back(std::make_pair(CAddressUnspentKey(2, uint160(hashBytes), input.prevout.hash, input.prevout.n), CAddressUnspentValue(prevout.nValue, prevout.scriptPubKey, undoHeight)));
+
+
+                    } else if (prevout.scriptPubKey.IsPayToPubkeyHash()) {
+                        std::vector<unsigned char> hashBytes(prevout.scriptPubKey.begin()+3, prevout.scriptPubKey.begin()+23);
+
+                        // undo spending activity
+                        addressIndex.push_back(std::make_pair(CAddressIndexKey(1, uint160(hashBytes), pindex->nHeight, i, hash, j, true), prevout.nValue * -1));
+
+                        // restore unspent index
+                        addressUnspentIndex.push_back(std::make_pair(CAddressUnspentKey(1, uint160(hashBytes), input.prevout.hash, input.prevout.n), CAddressUnspentValue(prevout.nValue, prevout.scriptPubKey, undoHeight)));
+
+                    } else if (prevout.scriptPubKey.IsPayToPubkey()) {
+                        uint160 hashBytes(Hash160(prevout.scriptPubKey.begin()+1, prevout.scriptPubKey.end()-1));
+                        addressIndex.push_back(std::make_pair(CAddressIndexKey(1, hashBytes, pindex->nHeight, i, hash, j, false), prevout.nValue));
+                        addressUnspentIndex.push_back(std::make_pair(CAddressUnspentKey(1, hashBytes, hash, j), CAddressUnspentValue()));
+                    } else {
+                        continue;
+                    }
+                }
+
             }
             // At this point, all of txundo.vprevout should have been moved out.
         }
@@ -1598,7 +1879,26 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
 
     // move best block pointer to prevout block
     view.SetBestBlock(pindex->pprev->GetBlockHash());
-    pblocktree->EraseStakeIndex(pindex->nHeight);
+
+    if (fSpentIndex) {
+        if (!pblocktree->UpdateSpentIndex(spentIndex)) {
+            AbortNode("Failed to delete spent index");
+            return DISCONNECT_FAILED;
+        }
+    }
+
+    if (fAddressIndex) {
+        if (!pblocktree->EraseAddressIndex(addressIndex)) {
+            AbortNode("Failed to delete address index");
+            return DISCONNECT_FAILED;
+        }
+        if (!pblocktree->UpdateAddressUnspentIndex(addressUnspentIndex)) {
+            AbortNode("Failed to write address unspent index");
+            return DISCONNECT_FAILED;
+        }
+    }
+
+    evoDb->WriteBestBlock(pindex->pprev->GetBlockHash());
 
     return fClean ? DISCONNECT_OK : DISCONNECT_UNCLEAN;
 }
@@ -1681,6 +1981,16 @@ int32_t ComputeBlockVersion(const CBlockIndex* pindexPrev, const Consensus::Para
     }
 
     return nVersion;
+}
+
+bool GetBlockHash(uint256& hashRet, int nBlockHeight)
+{
+    LOCK(cs_main);
+    if(::ChainActive().Tip() == nullptr) return false;
+    if(nBlockHeight < -1 || nBlockHeight > ::ChainActive().Height()) return false;
+    if(nBlockHeight == -1) nBlockHeight = ::ChainActive().Height();
+    hashRet = ::ChainActive()[nBlockHeight]->GetBlockHash();
+    return true;
 }
 
 /**
@@ -1768,6 +2078,12 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex* pindex, const Consens
 static int64_t nTimeCheck = 0;
 static int64_t nTimeForks = 0;
 static int64_t nTimeVerify = 0;
+static int64_t nTimeISFilter = 0;
+static int64_t nTimeSubsidy = 0;
+static int64_t nTimeValueValid = 0;
+static int64_t nTimePayeeValid = 0;
+static int64_t nTimeProcessSpecial = 0;
+static int64_t nTimeRainSpecific = 0;
 static int64_t nTimeConnect = 0;
 static int64_t nTimeIndex = 0;
 static int64_t nTimeCallbacks = 0;
@@ -1933,6 +2249,16 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     uint256 hashPrevBlock = pindex->pprev == nullptr ? uint256() : pindex->pprev->GetBlockHash();
     assert(hashPrevBlock == view.GetBestBlock());
 
+    if (pindex->pprev) {
+        bool fDIP0003Active = pindex->nHeight >= chainparams.GetConsensus().DIP0003Height;
+        bool fHasBestBlock = evoDb->VerifyBestBlock(pindex->pprev->GetBlockHash());
+
+        if (fDIP0003Active && !fHasBestBlock) {
+            // Nodes that upgraded after DIP3 activation will have to reindex to ensure evodb consistency
+            return AbortNode(state, "Found EvoDB inconsistency, you must reindex to continue");
+        }
+    }
+
     // Special case for the genesis block, skipping connection of its transactions
     // (its coinbase is unspendable)
     if (block.GetHash() == chainparams.GetConsensus().hashGenesisBlock) {
@@ -1970,7 +2296,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     }
 
     int64_t nTime1 = GetTimeMicros(); nTimeCheck += nTime1 - nTimeStart;
-    LogPrint(BCLog::BENCH, "    - Sanity checks: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime1 - nTimeStart), nTimeCheck * MICRO, nTimeCheck * MILLI / nBlocksTotal);
+    LogPrint(BCLog::BENCHMARK, "    - Sanity checks: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime1 - nTimeStart), nTimeCheck * MICRO, nTimeCheck * MILLI / nBlocksTotal);
 
     // Do not allow blocks that contain transactions which 'overwrite' older transactions,
     // unless those are already completely spent.
@@ -2062,6 +2388,17 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         }
     }
 
+    /// RAIN: Check superblock start
+
+    // make sure old budget is the real one
+    if (pindex->nHeight == chainparams.GetConsensus().nSuperblockStartBlock &&
+        chainparams.GetConsensus().nSuperblockStartHash != uint256() &&
+        block.GetHash() != chainparams.GetConsensus().nSuperblockStartHash)
+            return state.Invalid(ValidationInvalidReason::CONSENSUS, error("ConnectBlock(): invalid superblock start"),
+                             REJECT_INVALID, "bad-sb-start");
+
+    /// END RAIN
+
     // Start enforcing BIP68 (sequence locks) and BIP112 (CHECKSEQUENCEVERIFY) using versionbits logic.
     int nLockTimeFlags = 0;
     if (VersionBitsState(pindex->pprev, chainparams.GetConsensus(), Consensus::DEPLOYMENT_CSV, versionbitscache) == ThresholdState::ACTIVE) {
@@ -2072,7 +2409,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     unsigned int flags = GetBlockScriptFlags(pindex, chainparams.GetConsensus());
 
     int64_t nTime2 = GetTimeMicros(); nTimeForks += nTime2 - nTime1;
-    LogPrint(BCLog::BENCH, "    - Fork checks: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime2 - nTime1), nTimeForks * MICRO, nTimeForks * MILLI / nBlocksTotal);
+    LogPrint(BCLog::BENCHMARK, "    - Fork checks: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime2 - nTime1), nTimeForks * MICRO, nTimeForks * MILLI / nBlocksTotal);
 
     CBlockUndo blockundo;
 
@@ -2084,15 +2421,22 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     int nInputs = 0;
     int64_t nSigOpsCost = 0;
     blockundo.vtxundo.reserve(block.vtx.size() - 1);
-    std::map<uint160, std::pair<CHeightTxIndexKey, std::vector<uint256>>> heightIndexes;
+    std::vector<std::pair<CAddressIndexKey, CAmount> > addressIndex;
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > addressUnspentIndex;
+    std::vector<std::pair<CSpentIndexKey, CSpentIndexValue> > spentIndex;
+
     std::vector<PrecomputedTransactionData> txdata;
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
+
+    bool fDIP0001Active_context = pindex->nHeight >= Params().GetConsensus().DIP0001Height;
+
     uint64_t nValueOut=0;
     uint64_t nValueIn=0;
 
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         const CTransaction &tx = *(block.vtx[i]);
+        const uint256 txhash = tx.GetHash();
 
         nInputs += tx.vin.size();
 
@@ -2128,6 +2472,47 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
                 return state.Invalid(ValidationInvalidReason::CONSENSUS, error("%s: contains a non-BIP68-final transaction", __func__),
                                  REJECT_INVALID, "bad-txns-nonfinal");
             }
+
+            if (fAddressIndex || fSpentIndex)
+            {
+                for (size_t j = 0; j < tx.vin.size(); j++) {
+                    const CTxIn input = tx.vin[j];
+                    const Coin& coin = view.AccessCoin(tx.vin[j].prevout);
+                    const CTxOut &prevout = coin.out;
+                    uint160 hashBytes;
+                    int addressType;
+
+                    if (prevout.scriptPubKey.IsPayToScriptHash()) {
+                        hashBytes = uint160(std::vector<unsigned char>(prevout.scriptPubKey.begin()+2, prevout.scriptPubKey.begin()+22));
+                        addressType = 2;
+                    } else if (prevout.scriptPubKey.IsPayToPubkeyHash()) {
+                        hashBytes = uint160(std::vector<unsigned char>(prevout.scriptPubKey.begin()+3, prevout.scriptPubKey.begin()+23));
+                        addressType = 1;
+                    } else if (prevout.scriptPubKey.IsPayToPubkey()) {
+                        hashBytes = Hash160(prevout.scriptPubKey.begin()+1, prevout.scriptPubKey.end()-1);
+                        addressType = 1;
+                    } else {
+                        hashBytes.SetNull();
+                        addressType = 0;
+                    }
+
+                    if (fAddressIndex && addressType > 0) {
+                        // record spending activity
+                        addressIndex.push_back(std::make_pair(CAddressIndexKey(addressType, hashBytes, pindex->nHeight, i, txhash, j, true), prevout.nValue * -1));
+
+                        // remove address from unspent index
+                        addressUnspentIndex.push_back(std::make_pair(CAddressUnspentKey(addressType, hashBytes, input.prevout.hash, input.prevout.n), CAddressUnspentValue()));
+                    }
+
+                    if (fSpentIndex) {
+                        // add the spent index to determine the txid and input that spent an output
+                        // and to find the amount and address from an input
+                        spentIndex.push_back(std::make_pair(CSpentIndexKey(input.prevout.hash, input.prevout.n), CSpentIndexValue(txhash, j, pindex->nHeight, prevout.nValue, addressType, hashBytes)));
+                    }
+                }
+
+            }
+
         }
 
         // GetTransactionSigOpCost counts 3 types of sigops:
@@ -2161,6 +2546,40 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             control.Add(vChecks);
         }
 
+        if (fAddressIndex) {
+            for (unsigned int k = 0; k < tx.vout.size(); k++) {
+                const CTxOut &out = tx.vout[k];
+
+                if (out.scriptPubKey.IsPayToScriptHash()) {
+                    std::vector<unsigned char> hashBytes(out.scriptPubKey.begin()+2, out.scriptPubKey.begin()+22);
+
+                    // record receiving activity
+                    addressIndex.push_back(std::make_pair(CAddressIndexKey(2, uint160(hashBytes), pindex->nHeight, i, txhash, k, false), out.nValue));
+
+                    // record unspent output
+                    addressUnspentIndex.push_back(std::make_pair(CAddressUnspentKey(2, uint160(hashBytes), txhash, k), CAddressUnspentValue(out.nValue, out.scriptPubKey, pindex->nHeight)));
+
+                } else if (out.scriptPubKey.IsPayToPubkeyHash()) {
+                    std::vector<unsigned char> hashBytes(out.scriptPubKey.begin()+3, out.scriptPubKey.begin()+23);
+
+                    // record receiving activity
+                    addressIndex.push_back(std::make_pair(CAddressIndexKey(1, uint160(hashBytes), pindex->nHeight, i, txhash, k, false), out.nValue));
+
+                    // record unspent output
+                    addressUnspentIndex.push_back(std::make_pair(CAddressUnspentKey(1, uint160(hashBytes), txhash, k), CAddressUnspentValue(out.nValue, out.scriptPubKey, pindex->nHeight)));
+
+                } else if (out.scriptPubKey.IsPayToPubkey()) {
+                    uint160 hashBytes(Hash160(out.scriptPubKey.begin()+1, out.scriptPubKey.end()-1));
+                    addressIndex.push_back(std::make_pair(CAddressIndexKey(1, hashBytes, pindex->nHeight, i, txhash, k, false), out.nValue));
+                    addressUnspentIndex.push_back(std::make_pair(CAddressUnspentKey(1, hashBytes, txhash, k), CAddressUnspentValue(out.nValue, out.scriptPubKey, pindex->nHeight)));
+                } else {
+                    continue;
+                }
+
+            }
+        }
+
+
         if(tx.IsCoinBase()){
             nValueOut += tx.GetValueOut();
         }else{
@@ -2178,13 +2597,16 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         UpdateCoins(tx, view, i == 0 ? undoDummy : blockundo.vtxundo.back(), pindex->nHeight);
     }
     int64_t nTime3 = GetTimeMicros(); nTimeConnect += nTime3 - nTime2;
-    LogPrint(BCLog::BENCH, "      - Connect %u transactions: %.2fms (%.3fms/tx, %.3fms/txin) [%.2fs (%.2fms/blk)]\n", (unsigned)block.vtx.size(), MILLI * (nTime3 - nTime2), MILLI * (nTime3 - nTime2) / block.vtx.size(), nInputs <= 1 ? 0 : MILLI * (nTime3 - nTime2) / (nInputs-1), nTimeConnect * MICRO, nTimeConnect * MILLI / nBlocksTotal);
+    LogPrint(BCLog::BENCHMARK, "      - Connect %u transactions: %.2fms (%.3fms/tx, %.3fms/txin) [%.2fs (%.2fms/blk)]\n", (unsigned)block.vtx.size(), MILLI * (nTime3 - nTime2), MILLI * (nTime3 - nTime2) / block.vtx.size(), nInputs <= 1 ? 0 : MILLI * (nTime3 - nTime2) / (nInputs-1), nTimeConnect * MICRO, nTimeConnect * MILLI / nBlocksTotal);
 
+    CAmount blockReward = 0;
     if(block.IsProofOfWork()){
+		
+		blockReward = GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus(), pindex->pprev->GetBlockHash())+ nFees;
 
-        if(pindex->nHeight > 1 && block.vtx[0]->GetValueOut() > GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus(), pindex->pprev->GetBlockHash())+ nFees)
+        if(pindex->nHeight > 1 && block.vtx[0]->GetValueOut() > blockReward)
             return state.Invalid(ValidationInvalidReason::CONSENSUS, error("ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d , at height =%d)",
-                               block.vtx[0]->GetValueOut(), GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus(), pindex->pprev->GetBlockHash()), pindex->nHeight), REJECT_INVALID, "bad-cb-amount");
+                               block.vtx[0]->GetValueOut(), blockReward), REJECT_INVALID, "bad-cb-amount");
     }
 
     if (block.IsProofOfStake()) {
@@ -2195,7 +2617,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         if (!GetCoinAge(*block.vtx[1], view, nCoinAge))
             return error("ConnectBlock() : %s unable to get coin age for coinstake", block.vtx[1]->GetHash().ToString());
 
-        CAmount blockReward = GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus(), pindex->pprev->GetBlockHash(), true, nCoinAge, nFees, pindex->pprev->nMoneySupply);
+        blockReward = GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus(), pindex->pprev->GetBlockHash(), true, nCoinAge, nFees, pindex->pprev->nMoneySupply);
 
         if (nActualStakeReward > blockReward)
             return state.Invalid(ValidationInvalidReason::CONSENSUS, error("ConnectBlock(): coinstake pays too much (actual=%d vs limit=%d)", nActualStakeReward, blockReward), REJECT_INVALID, "bad-cs-amount");
@@ -2204,7 +2626,80 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     if (!control.Wait())
         return state.Invalid(ValidationInvalidReason::CONSENSUS, error("%s: CheckQueue failed", __func__), REJECT_INVALID, "block-validation-failed");
     int64_t nTime4 = GetTimeMicros(); nTimeVerify += nTime4 - nTime2;
-    LogPrint(BCLog::BENCH, "    - Verify %u txins: %.2fms (%.3fms/txin) [%.2fs (%.2fms/blk)]\n", nInputs - 1, MILLI * (nTime4 - nTime2), nInputs <= 1 ? 0 : MILLI * (nTime4 - nTime2) / (nInputs-1), nTimeVerify * MICRO, nTimeVerify * MILLI / nBlocksTotal);
+    LogPrint(BCLog::BENCHMARK, "    - Verify %u txins: %.2fms (%.3fms/txin) [%.2fs (%.2fms/blk)]\n", nInputs - 1, MILLI * (nTime4 - nTime2), nInputs <= 1 ? 0 : MILLI * (nTime4 - nTime2) / (nInputs-1), nTimeVerify * MICRO, nTimeVerify * MILLI / nBlocksTotal);
+
+    // RAIN
+
+    // It's possible that we simply don't have enough data and this could fail
+    // (i.e. block itself could be a correct one and we need to store it),
+    // that's why this is in ConnectBlock. Could be the other way around however -
+    // the peer who sent us this block is missing some data and wasn't able
+    // to recognize that block is actually invalid.
+
+    // RAIN : CHECK TRANSACTIONS FOR INSTANTSEND
+
+    if (sporkManager.IsSporkActive(SPORK_3_INSTANTSEND_BLOCK_FILTERING)) {
+        // Require other nodes to comply, send them some data in case they are missing it.
+        for (const auto& tx : block.vtx) {
+            // skip txes that have no inputs
+            if (tx->vin.empty()) continue;
+            llmq::CInstantSendLockPtr conflictLock = llmq::quorumInstantSendManager->GetConflictingLock(*tx);
+            if (!conflictLock) {
+                continue;
+            }
+            if (llmq::chainLocksHandler->HasChainLock(pindex->nHeight, pindex->GetBlockHash())) {
+                llmq::quorumInstantSendManager->RemoveChainLockConflictingLock(::SerializeHash(*conflictLock), *conflictLock);
+                assert(llmq::quorumInstantSendManager->GetConflictingLock(*tx) == nullptr);
+            } else {
+                // The node which relayed this should switch to correct chain.
+                // TODO: relay instantsend data/proof.
+                LOCK(cs_main);
+                return state.Invalid(ValidationInvalidReason::CONSENSUS, error("ConnectBlock(RAIN): transaction %s conflicts with transaction lock %s", tx->GetHash().ToString(), conflictLock->txid.ToString()),
+                                 REJECT_INVALID, "conflict-tx-lock");
+            }
+        }
+    } else {
+        LogPrintf("ConnectBlock(RAIN): spork is off, skipping transaction locking checks\n");
+    }
+
+    int64_t nTime5_1 = GetTimeMicros(); nTimeISFilter += nTime5_1 - nTime4;
+    LogPrint(BCLog::BENCHMARK, "      - IS filter: %.2fms [%.2fs]\n", 0.001 * (nTime5_1 - nTime4), nTimeISFilter * 0.000001);
+
+    // RAIN : MODIFIED TO CHECK MASTERNODE PAYMENTS AND SUPERBLOCKS
+
+    // TODO: resync data (both ways?) and try to reprocess this block later.
+    std::string strError = "";
+
+    int64_t nTime5_2 = GetTimeMicros(); nTimeSubsidy += nTime5_2 - nTime5_1;
+    LogPrint(BCLog::BENCHMARK, "      - GetBlockSubsidy: %.2fms [%.2fs]\n", 0.001 * (nTime5_2 - nTime5_1), nTimeSubsidy * 0.000001);
+
+    if (!IsBlockValueValid(block, pindex->nHeight, blockReward, strError)) {
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, error("ConnectBlock(RAIN): %s", strError), REJECT_INVALID, "bad-cb-amount");
+    }
+
+    int64_t nTime5_3 = GetTimeMicros(); nTimeValueValid += nTime5_3 - nTime5_2;
+    LogPrint(BCLog::BENCHMARK, "      - IsBlockValueValid: %.2fms [%.2fs]\n", 0.001 * (nTime5_3 - nTime5_2), nTimeValueValid * 0.000001);
+
+    if (!IsBlockPayeeValid(*block.vtx[0], pindex->nHeight, blockReward)) {
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, error("ConnectBlock(RAIN): couldn't find masternode or superblock payments"),
+                                REJECT_INVALID, "bad-cb-payee");
+    }
+
+    int64_t nTime5_4 = GetTimeMicros(); nTimePayeeValid += nTime5_4 - nTime5_3;
+    LogPrint(BCLog::BENCHMARK, "      - IsBlockPayeeValid: %.2fms [%.2fs]\n", 0.001 * (nTime5_4 - nTime5_3), nTimePayeeValid * 0.000001);
+
+    if (!ProcessSpecialTxsInBlock(block, pindex, state, fJustCheck, fScriptChecks)) {
+        return error("ConnectBlock(RAIN): ProcessSpecialTxsInBlock for block %s failed with %s",
+                     pindex->GetBlockHash().ToString(), FormatStateMessage(state));
+    }
+
+    int64_t nTime5_5 = GetTimeMicros(); nTimeProcessSpecial += nTime5_5 - nTime5_4;
+    LogPrint(BCLog::BENCHMARK, "      - ProcessSpecialTxsInBlock: %.2fms [%.2fs]\n", 0.001 * (nTime5_5 - nTime5_4), nTimeProcessSpecial * 0.000001);
+
+    int64_t nTime5 = GetTimeMicros(); nTimeRainSpecific += nTime5 - nTime4;
+    LogPrint(BCLog::BENCHMARK, "    - Rain specific: %.2fms [%.2fs]\n", 0.001 * (nTime5 - nTime4), nTimeRainSpecific * 0.000001);
+
+    // END RAIN
 
     if (fJustCheck)
         return true;
@@ -2222,15 +2717,35 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     if (!WriteTxIndexDataForBlock(block, state, pindex))
         return false;
 
+    if (fAddressIndex) {
+        if (!pblocktree->WriteAddressIndex(addressIndex)) {
+            return AbortNode(state, "Failed to write address index");
+        }
+
+        if (!pblocktree->UpdateAddressUnspentIndex(addressUnspentIndex)) {
+            return AbortNode(state, "Failed to write address unspent index");
+        }
+    }
+
+    if (fSpentIndex)
+        if (!pblocktree->UpdateSpentIndex(spentIndex))
+            return AbortNode(state, "Failed to write transaction index");
+
+    if (fTimestampIndex)
+        if (!pblocktree->WriteTimestampIndex(CTimestampIndexKey(pindex->nTime, pindex->GetBlockHash())))
+            return AbortNode(state, "Failed to write timestamp index");
+
+
     assert(pindex->phashBlock);
     // add this block to the view's block chain
     view.SetBestBlock(pindex->GetBlockHash());
 
-    int64_t nTime5 = GetTimeMicros(); nTimeIndex += nTime5 - nTime4;
-    LogPrint(BCLog::BENCH, "    - Index writing: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime5 - nTime4), nTimeIndex * MICRO, nTimeIndex * MILLI / nBlocksTotal);
+    LogPrint(BCLog::BENCHMARK, "    - Index writing: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime5 - nTime4), nTimeIndex * MICRO, nTimeIndex * MILLI / nBlocksTotal);
+
+    evoDb->WriteBestBlock(pindex->GetBlockHash());
 
     int64_t nTime6 = GetTimeMicros(); nTimeCallbacks += nTime6 - nTime5;
-    LogPrint(BCLog::BENCH, "    - Callbacks: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime6 - nTime5), nTimeCallbacks * MICRO, nTimeCallbacks * MILLI / nBlocksTotal);
+    LogPrint(BCLog::BENCHMARK, "    - Callbacks: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime6 - nTime5), nTimeCallbacks * MICRO, nTimeCallbacks * MILLI / nBlocksTotal);
 
     return true;
 }
@@ -2277,6 +2792,7 @@ bool CChainState::FlushStateToDisk(
         }
         int64_t nMempoolSizeMax = gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000;
         int64_t cacheSize = pcoinsTip->DynamicMemoryUsage();
+        cacheSize += evoDb->GetMemoryUsage();
         int64_t nTotalSpace = nCoinCacheUsage + std::max<int64_t>(nMempoolSizeMax - nMempoolUsage, 0);
         // The cache is large and we're within 10% and 10 MiB of the limit, but we have time now (not in the middle of a block processing).
         bool fCacheLarge = mode == FlushStateMode::PERIODIC && cacheSize > std::max((9 * nTotalSpace) / 10, nTotalSpace - MAX_BLOCK_COINSDB_USAGE * 1024 * 1024);
@@ -2332,6 +2848,9 @@ bool CChainState::FlushStateToDisk(
             // Flush the chainstate (which may refer to block index entries).
             if (!pcoinsTip->Flush())
                 return AbortNode(state, "Failed to write to coin database");
+        if (!evoDb->CommitRootTransaction()) {
+            return AbortNode(state, "Failed to commit EvoDB");
+        }
             nLastFlush = nNow;
             full_flush_completed = true;
         }
@@ -2422,11 +2941,18 @@ void static UpdateTip(const CBlockIndex* pindexNew, const CChainParams& chainPar
         //if (nUpgraded > 0)
         //    AppendWarning(warningMessages, strprintf(_("%d of last 100 blocks have unexpected version").translated, nUpgraded));
     }
+    std::string strMessage = strprintf("%s: new best=%s height=%d version=0x%08x log2_work=%.8f tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)", __func__,
+      ::ChainActive().Tip()->GetBlockHash().ToString(), ::ChainActive().Height(), ::ChainActive().Tip()->nVersion,
+      log(::ChainActive().Tip()->nChainWork.getdouble())/log(2.0), (unsigned long)::ChainActive().Tip()->nChainTx,
+      DateTimeStrFormat("%Y-%m-%d %H:%M:%S", ::ChainActive().Tip()->GetBlockTime()),
+      GuessVerificationProgress(chainParams.TxData(), ::ChainActive().Tip()), pcoinsTip->DynamicMemoryUsage() * (1.0 / (1<<20)), pcoinsTip->GetCacheSize());
+
     LogPrintf("%s: new best=%s height=%d version=0x%08x log2_work=%.8g tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)", __func__, /* Continued */
       pindexNew->GetBlockHash().ToString(), pindexNew->nHeight, pindexNew->nVersion,
       log(pindexNew->nChainWork.getdouble())/log(2.0), (unsigned long)pindexNew->nChainTx,
       FormatISO8601DateTime(pindexNew->GetBlockTime()),
       GuessVerificationProgress(chainParams.TxData(), pindexNew), pcoinsTip->DynamicMemoryUsage() * (1.0 / (1<<20)), pcoinsTip->GetCacheSize());
+
     if (!warningMessages.empty())
         LogPrintf(" warning='%s'", warningMessages); /* Continued */
     LogPrintf("\n");
@@ -2455,14 +2981,17 @@ bool CChainState::DisconnectTip(CValidationState& state, const CChainParams& cha
     // Apply the block atomically to the chain state.
     int64_t nStart = GetTimeMicros();
     {
+        auto dbTx = evoDb->BeginTransaction();
+
         CCoinsViewCache view(pcoinsTip.get());
         assert(view.GetBestBlock() == pindexDelete->GetBlockHash());
         if (DisconnectBlock(block, pindexDelete, view) != DISCONNECT_OK)
             return error("DisconnectTip(): DisconnectBlock %s failed", pindexDelete->GetBlockHash().ToString());
         bool flushed = view.Flush();
         assert(flushed);
+        dbTx->Commit();
     }
-    LogPrint(BCLog::BENCH, "- Disconnect block: %.2fms\n", (GetTimeMicros() - nStart) * MILLI);
+    LogPrint(BCLog::BENCHMARK, "- Disconnect block: %.2fms\n", (GetTimeMicros() - nStart) * MILLI);
     // Write the chain state to disk, if necessary.
     if (!FlushStateToDisk(chainparams, state, FlushStateMode::IF_NEEDED))
         return false;
@@ -2485,7 +3014,7 @@ bool CChainState::DisconnectTip(CValidationState& state, const CChainParams& cha
     UpdateTip(pindexDelete->pprev, chainparams);
     // Let wallets know transactions went from 1-confirmed to
     // 0-confirmed or conflicted:
-    GetMainSignals().BlockDisconnected(pblock);
+    GetMainSignals().BlockDisconnected(pblock, pindexDelete);
     return true;
 }
 
@@ -2581,8 +3110,10 @@ bool CChainState::ConnectTip(CValidationState& state, const CChainParams& chainp
     // Apply the block atomically to the chain state.
     int64_t nTime2 = GetTimeMicros(); nTimeReadFromDisk += nTime2 - nTime1;
     int64_t nTime3;
-    LogPrint(BCLog::BENCH, "  - Load block from disk: %.2fms [%.2fs]\n", (nTime2 - nTime1) * MILLI, nTimeReadFromDisk * MICRO);
+    LogPrint(BCLog::BENCHMARK, "  - Load block from disk: %.2fms [%.2fs]\n", (nTime2 - nTime1) * MILLI, nTimeReadFromDisk * MICRO);
     {
+        auto dbTx = evoDb->BeginTransaction();
+
         CCoinsViewCache view(pcoinsTip.get());
         bool rv = ConnectBlock(blockConnecting, state, pindexNew, view, chainparams);
         GetMainSignals().BlockChecked(blockConnecting, state);
@@ -2592,17 +3123,18 @@ bool CChainState::ConnectTip(CValidationState& state, const CChainParams& chainp
             return error("%s: ConnectBlock %s failed, %s", __func__, pindexNew->GetBlockHash().ToString(), FormatStateMessage(state));
         }
         nTime3 = GetTimeMicros(); nTimeConnectTotal += nTime3 - nTime2;
-        LogPrint(BCLog::BENCH, "  - Connect total: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime3 - nTime2) * MILLI, nTimeConnectTotal * MICRO, nTimeConnectTotal * MILLI / nBlocksTotal);
+        LogPrint(BCLog::BENCHMARK, "  - Connect total: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime3 - nTime2) * MILLI, nTimeConnectTotal * MICRO, nTimeConnectTotal * MILLI / nBlocksTotal);
         bool flushed = view.Flush();
         assert(flushed);
+        dbTx->Commit();
     }
     int64_t nTime4 = GetTimeMicros(); nTimeFlush += nTime4 - nTime3;
-    LogPrint(BCLog::BENCH, "  - Flush: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime4 - nTime3) * MILLI, nTimeFlush * MICRO, nTimeFlush * MILLI / nBlocksTotal);
+    LogPrint(BCLog::BENCHMARK, "  - Flush: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime4 - nTime3) * MILLI, nTimeFlush * MICRO, nTimeFlush * MILLI / nBlocksTotal);
     // Write the chain state to disk, if necessary.
     if (!FlushStateToDisk(chainparams, state, FlushStateMode::IF_NEEDED))
         return false;
     int64_t nTime5 = GetTimeMicros(); nTimeChainState += nTime5 - nTime4;
-    LogPrint(BCLog::BENCH, "  - Writing chainstate: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime5 - nTime4) * MILLI, nTimeChainState * MICRO, nTimeChainState * MILLI / nBlocksTotal);
+    LogPrint(BCLog::BENCHMARK, "  - Writing chainstate: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime5 - nTime4) * MILLI, nTimeChainState * MICRO, nTimeChainState * MILLI / nBlocksTotal);
     // Remove conflicting transactions from the mempool.;
     mempool.removeForBlock(blockConnecting.vtx, pindexNew->nHeight);
     disconnectpool.removeForBlock(blockConnecting.vtx);
@@ -2611,8 +3143,8 @@ bool CChainState::ConnectTip(CValidationState& state, const CChainParams& chainp
     UpdateTip(pindexNew, chainparams);
 
     int64_t nTime6 = GetTimeMicros(); nTimePostConnect += nTime6 - nTime5; nTimeTotal += nTime6 - nTime1;
-    LogPrint(BCLog::BENCH, "  - Connect postprocess: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime6 - nTime5) * MILLI, nTimePostConnect * MICRO, nTimePostConnect * MILLI / nBlocksTotal);
-    LogPrint(BCLog::BENCH, "- Connect block: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime6 - nTime1) * MILLI, nTimeTotal * MICRO, nTimeTotal * MILLI / nBlocksTotal);
+    LogPrint(BCLog::BENCHMARK, "  - Connect postprocess: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime6 - nTime5) * MILLI, nTimePostConnect * MICRO, nTimePostConnect * MILLI / nBlocksTotal);
+    LogPrint(BCLog::BENCHMARK, "- Connect block: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime6 - nTime1) * MILLI, nTimeTotal * MICRO, nTimeTotal * MILLI / nBlocksTotal);
 
     connectTrace.BlockConnected(pindexNew, std::move(pthisBlock));
     return true;
@@ -3505,6 +4037,9 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
                               ? pindexPrev->GetMedianTimePast()
                               : block.GetBlockTime();
 
+    bool fDIP0001Active_context = nHeight >= consensusParams.DIP0001Height;
+    bool fDIP0003Active_context = nHeight >= consensusParams.DIP0003Height;
+
     // Check that all transactions are finalized
     for (const auto& tx : block.vtx) {
         if (!IsFinalTx(*tx, nHeight, nLockTimeCutoff)) {
@@ -3519,6 +4054,12 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
         if (block.vtx[0]->vin[0].scriptSig.size() < expect.size() ||
             !std::equal(expect.begin(), expect.end(), block.vtx[0]->vin[0].scriptSig.begin())) {
             return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-cb-height", "block height mismatch in coinbase");
+        }
+    }
+
+    if (fDIP0003Active_context) {
+        if (block.vtx[0]->nType != TRANSACTION_COINBASE) {
+            return state.Invalid(ValidationInvalidReason::CONSENSUS, false, REJECT_INVALID, "bad-cb-type", "coinbase is not a CbTx");
         }
     }
 
@@ -3608,6 +4149,11 @@ bool CChainState::AcceptBlockHeader(const CBlockHeader& block, bool fProofOfStak
         pindexPrev = (*mi).second;
         if (pindexPrev->nStatus & BLOCK_FAILED_MASK)
             return state.Invalid(ValidationInvalidReason::BLOCK_INVALID_PREV, error("%s: prev block invalid", __func__), REJECT_INVALID, "bad-prevblk");
+
+        if (pindexPrev->nStatus & BLOCK_CONFLICT_CHAINLOCK)
+            // it's ok-ish, the other node is probably missing the latest chainlock
+            return state.Invalid(ValidationInvalidReason::CONSENSUS, error("%s: prev block %s conflicts with chainlock", __func__, block.hashPrevBlock.ToString()), REJECT_INVALID, "bad-prevblk-chainlock");
+
         if (!ContextualCheckBlockHeader(block, fSetAsPos, state, chainparams, pindexPrev, GetAdjustedTime()))
             return error("%s: Consensus::ContextualCheckBlockHeader: %s, %s", __func__, hash.ToString(), FormatStateMessage(state));
 
@@ -3647,6 +4193,13 @@ bool CChainState::AcceptBlockHeader(const CBlockHeader& block, bool fProofOfStak
                     return state.Invalid(ValidationInvalidReason::BLOCK_INVALID_PREV, error("%s: prev block invalid", __func__), REJECT_INVALID, "bad-prevblk");
                 }
             }
+        }
+
+        if (llmq::chainLocksHandler->HasConflictingChainLock(pindexPrev->nHeight + 1, hash)) {
+            if (pindex == nullptr) {
+                AddToBlockIndex(block, BLOCK_CONFLICT_CHAINLOCK);
+            }
+            return state.Invalid(ValidationInvalidReason::CONSENSUS, error("%s: header %s conflicts with chainlock", __func__, hash.ToString()), REJECT_INVALID, "bad-chainlock");
         }
     }
     if (pindex == nullptr)
@@ -3877,12 +4430,21 @@ bool TestBlockValidity(CValidationState& state, const CChainParams& chainparams,
 {
     AssertLockHeld(cs_main);
     assert(pindexPrev && pindexPrev == ::ChainActive().Tip());
+
+    uint256 hash = block.GetHash();
+    if (llmq::chainLocksHandler->HasConflictingChainLock(pindexPrev->nHeight + 1, hash)) {
+        return state.Invalid(ValidationInvalidReason::CONSENSUS, error("%s: conflicting with chainlock", __func__), REJECT_INVALID, "bad-chainlock");
+    }
+
     CCoinsViewCache viewNew(pcoinsTip.get());
     uint256 block_hash(block.GetHash());
     CBlockIndex indexDummy(block);
     indexDummy.pprev = pindexPrev;
     indexDummy.nHeight = pindexPrev->nHeight + 1;
     indexDummy.phashBlock = &block_hash;
+
+    // begin tx and let it rollback
+    auto dbTx = evoDb->BeginTransaction();
 
     // NOTE: CheckBlockHeader is called by CheckBlock
     if (!ContextualCheckBlockHeader(block, block.IsProofOfStake(), state, chainparams, pindexPrev, GetAdjustedTime()))
@@ -4208,6 +4770,22 @@ bool static LoadBlockIndexDB(const CChainParams& chainparams) EXCLUSIVE_LOCKS_RE
     pblocktree->ReadReindexing(fReindexing);
     if(fReindexing) fReindex = true;
 
+    // Check whether we have a transaction index
+    pblocktree->ReadFlag("txindex", fTxIndex);
+    LogPrintf("%s: transaction index %s\n", __func__, fTxIndex ? "enabled" : "disabled");
+
+    // Check whether we have an address index
+    pblocktree->ReadFlag("addressindex", fAddressIndex);
+    LogPrintf("%s: address index %s\n", __func__, fAddressIndex ? "enabled" : "disabled");
+
+    // Check whether we have a timestamp index
+    pblocktree->ReadFlag("timestampindex", fTimestampIndex);
+    LogPrintf("%s: timestamp index %s\n", __func__, fTimestampIndex ? "enabled" : "disabled");
+
+    // Check whether we have a spent index
+    pblocktree->ReadFlag("spentindex", fSpentIndex);
+    LogPrintf("%s: spent index %s\n", __func__, fSpentIndex ? "enabled" : "disabled");
+
     return true;
 }
 
@@ -4249,6 +4827,9 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
     LOCK(cs_main);
     if (::ChainActive().Tip() == nullptr || ::ChainActive().Tip()->pprev == nullptr)
         return true;
+
+    // begin tx and let it rollback
+    auto dbTx = evoDb->BeginTransaction();
 
     // Verify blocks in the best chain
     if (nCheckDepth <= 0 || nCheckDepth > ::ChainActive().Height())
@@ -4637,6 +5218,21 @@ bool LoadBlockIndex(const CChainParams& chainparams)
         // needs_init.
 
         LogPrintf("Initializing databases...\n");
+        // Use the provided setting for -txindex in the new database
+        fTxIndex = gArgs.GetBoolArg("-txindex", DEFAULT_TXINDEX);
+        pblocktree->WriteFlag("txindex", fTxIndex);
+
+        // Use the provided setting for -addressindex in the new database
+        fAddressIndex = gArgs.GetBoolArg("-addressindex", DEFAULT_ADDRESSINDEX);
+        pblocktree->WriteFlag("addressindex", fAddressIndex);
+
+        // Use the provided setting for -timestampindex in the new database
+        fTimestampIndex = gArgs.GetBoolArg("-timestampindex", DEFAULT_TIMESTAMPINDEX);
+        pblocktree->WriteFlag("timestampindex", fTimestampIndex);
+
+        // Use the provided setting for -spentindex in the new database
+        fSpentIndex = gArgs.GetBoolArg("-spentindex", DEFAULT_SPENTINDEX);
+        pblocktree->WriteFlag("spentindex", fSpentIndex);
     }
     return true;
 }

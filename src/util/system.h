@@ -31,11 +31,17 @@
 #include <set>
 #include <stdint.h>
 #include <string>
-#include <unordered_set>
+//#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include <boost/thread/condition_variable.hpp> // for boost::thread_interrupted
+
+//Rain only features
+
+extern bool fMasternodeMode;
+extern bool fLiteMode;
+extern int nWalletBackups;
 
 // Application startup time (used for uptime calculation)
 int64_t GetStartupTime();
@@ -73,6 +79,7 @@ fs::path GetDefaultDataDir();
 // The blocks directory is always net specific.
 const fs::path &GetBlocksDir();
 const fs::path &GetDataDir(bool fNetSpecific = true);
+fs::path GetBackupsDir();
 // Return true if -datadir option points to a valid directory or is not specified.
 bool CheckDataDirOption();
 /** Tests only */
@@ -118,6 +125,7 @@ enum class OptionsCategory {
     GUI,
     COMMANDS,
     REGISTER_COMMANDS,
+    MASTERNODE,
 
     HIDDEN // Always the last option to avoid printing these in the help
 };
@@ -335,6 +343,12 @@ std::string HelpMessageOpt(const std::string& option, const std::string& message
  * @note This does count virtual cores, such as those provided by HyperThreading.
  */
 int GetNumCores();
+std::string GetThreadName();
+
+namespace ctpl {
+    class thread_pool;
+}
+void RenameThreadPool(ctpl::thread_pool& tp, const char* baseName);
 
 /**
  * .. and a wrapper that just calls func once

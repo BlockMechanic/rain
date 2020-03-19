@@ -14,6 +14,8 @@
 #include <consensus/tx_verify.h>
 #include <consensus/validation.h>
 #include <interfaces/chain.h>
+#include <masternode/masternode-payments.h>
+#include <masternode/masternode-sync.h>
 #include <net.h>
 #include <policy/feerate.h>
 #include <policy/policy.h>
@@ -30,6 +32,15 @@
 
 #include <boost/thread.hpp>
 #include <boost/algorithm/string.hpp>
+
+#include "evo/specialtx.h"
+#include "evo/cbtx.h"
+#include "evo/simplifiedmns.h"
+#include "evo/deterministicmns.h"
+
+#include "llmq/quorums_blockprocessor.h"
+#include "llmq/quorums_chainlocks.h"
+
 #include <algorithm>
 #include <queue>
 #include <utility>
@@ -166,7 +177,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     }
     LOCK2(cs_main, mempool.cs);
 
-    pblock->nVersion = 0x00000006;
     // -regtest only: allow overriding block.nVersion with
     // -blockversion=N to test forking scenarios
     if (chainparams.MineBlocksOnDemand())
@@ -200,6 +210,41 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     m_last_block_weight = nBlockWeight;
 
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
+
+    if (nHeight < 2000000) {
+        coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
+        pblock->nVersion = 0x00000006;
+        coinbaseTx.nVersion = 3;
+        CCbTx cbTx;
+        cbTx.nVersion = 1;
+        
+    } else {
+        coinbaseTx.vin[0].scriptSig = CScript() << OP_RETURN;
+        pblock->nVersion = 0x00000007;
+        coinbaseTx.nVersion = 3;
+        coinbaseTx.nType = TRANSACTION_COINBASE;
+
+        CCbTx cbTx;
+        cbTx.nVersion = 2;
+        cbTx.nHeight = nHeight;
+
+        CValidationState state;
+        if (!CalcCbTxMerkleRootMNList(*pblock, pindexPrev, cbTx.merkleRootMNList, state)) {
+            throw std::runtime_error(strprintf("%s: CalcCbTxMerkleRootMNList failed: %s", __func__, FormatStateMessage(state)));
+        }
+        if (!CalcCbTxMerkleRootQuorums(*pblock, pindexPrev, cbTx.merkleRootQuorums, state)) {
+            throw std::runtime_error(strprintf("%s: CalcCbTxMerkleRootQuorums failed: %s", __func__, FormatStateMessage(state)));
+        }
+        SetTxPayload(coinbaseTx, cbTx);
+    }
+
+    // Update coinbase transaction with additional info about masternode and governance payments,
+    // get some info back to pass to getblocktemplate
+    CAmount blockReward = GetBlockSubsidy(nHeight, chainparams.GetConsensus(), pindexPrev->GetBlockHash());
+    
+    FillBlockPayments(coinbaseTx, nHeight, blockReward, pblocktemplate->voutMasternodePayments, pblocktemplate->voutSuperblockPayments);
+
+
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
     if (fIncludeWitness)
         pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus(), fProofOfStake);
@@ -224,7 +269,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     }
     int64_t nTime2 = GetTimeMicros();
 
-    LogPrint(BCLog::BENCH, "CreateNewBlock() packages: %.2fms (%d packages, %d updated descendants), validity: %.2fms (total %.2fms)\n", 0.001 * (nTime1 - nTimeStart), nPackagesSelected, nDescendantsUpdated, 0.001 * (nTime2 - nTime1), 0.001 * (nTime2 - nTimeStart));
+    LogPrint(BCLog::BENCHMARK, "CreateNewBlock() packages: %.2fms (%d packages, %d updated descendants), validity: %.2fms (total %.2fms)\n", 0.001 * (nTime1 - nTimeStart), nPackagesSelected, nDescendantsUpdated, 0.001 * (nTime2 - nTime1), 0.001 * (nTime2 - nTimeStart));
 
     return std::move(pblocktemplate);
 }

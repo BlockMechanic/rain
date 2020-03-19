@@ -7,6 +7,7 @@
 
 #include <amount.h>
 #include <uint256.h>
+#include <key_io.h>
 
 #include <QList>
 #include <QString>
@@ -45,7 +46,13 @@ public:
     /// Transaction counts towards available balance
     bool countsForBalance;
     /// Sorting key based on status
+    bool lockedByInstantSend;
+    /// Transaction was locked via ChainLocks
+    bool lockedByChainLocks;
+    /// Sorting key based on status
     std::string sortKey;
+    /// Label
+    QString label;
 
     /** @name Generated (mined) transactions
        @{*/
@@ -63,6 +70,9 @@ public:
 
     /** Current number of blocks (to know whether cached status is still valid) */
     int cur_num_blocks;
+
+    //** Know when to update transaction for chainlocks **/
+    int cachedChainLockHeight;
 
     /** Current number of blocks based on the headers chain */
     int cur_num_blocks_headers_chain;
@@ -88,7 +98,13 @@ public:
         SendToOther,
         RecvWithAddress,
         RecvFromOther,
-        SendToSelf
+        SendToSelf,
+        RecvWithPrivateSend,
+        PrivateSendDenominate,
+        PrivateSendCollateralPayment,
+        PrivateSendMakeCollaterals,
+        PrivateSendCreateDenominations,
+        PrivateSend
     };
 
     /** Number of confirmation recommended for accepting a transaction */
@@ -97,12 +113,14 @@ public:
     TransactionRecord():
             hash(), time(0), type(Other), address(""), debit(0), credit(0), idx(0)
     {
+        txDest = DecodeDestination(address);
     }
 
     TransactionRecord(uint256 _hash, qint64 _time):
             hash(_hash), time(_time), type(Other), address(""), debit(0),
             credit(0), idx(0)
     {
+        txDest = DecodeDestination(address);
     }
 
     TransactionRecord(uint256 _hash, qint64 _time,
@@ -111,6 +129,7 @@ public:
             hash(_hash), time(_time), type(_type), address(_address), debit(_debit), credit(_credit),
             idx(0)
     {
+        txDest = DecodeDestination(address);
     }
 
     /** Decompose CWallet transaction to model transaction records.
@@ -124,6 +143,7 @@ public:
     qint64 time;
     Type type;
     std::string address;
+    CTxDestination txDest;
     CAmount debit;
     CAmount credit;
     /**@}*/

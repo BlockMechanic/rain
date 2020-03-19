@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2018 The Bitcoinrain Core developers
+// Copyright (c) 2009-2018 The Rainrain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,6 +14,13 @@
 #include <univalue.h>
 #include <util/system.h>
 #include <util/strencodings.h>
+
+#include "spentindex.h"
+
+#include "evo/cbtx.h"
+#include "evo/providertx.h"
+#include "evo/specialtx.h"
+#include "llmq/quorums_commitment.h"
 
 UniValue ValueFromAmount(const CAmount& amount)
 {
@@ -178,9 +185,10 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey,
     out.pushKV("addresses", a);
 }
 
-void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry, bool include_hex, int serialize_flags)
+void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry, const CSpentIndexTxInfo* ptxSpentInfo, bool include_hex, int serialize_flags)
 {
-    entry.pushKV("txid", tx.GetHash().GetHex());
+    uint256 txid = tx.GetHash();
+    entry.pushKV("txid", txid.GetHex());
     entry.pushKV("hash", tx.GetWitnessHash().GetHex());
     entry.pushKV("version", tx.nVersion);
     entry.pushKV("time", (int64_t)tx.nTime);
@@ -202,6 +210,22 @@ void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry,
             o.pushKV("asm", ScriptToAsmStr(txin.scriptSig, true));
             o.pushKV("hex", HexStr(txin.scriptSig.begin(), txin.scriptSig.end()));
             in.pushKV("scriptSig", o);
+
+            // Add address and value info if spentindex enabled
+            if (ptxSpentInfo != nullptr) {
+                CSpentIndexKey spentKey(txin.prevout.hash, txin.prevout.n);
+                auto it = ptxSpentInfo->mSpentInfo.find(spentKey);
+                if (it != ptxSpentInfo->mSpentInfo.end()) {
+                    auto spentInfo = it->second;
+                    in.pushKV("value", ValueFromAmount(spentInfo.satoshis));
+                    in.pushKV("valueSat", spentInfo.satoshis);
+                    if (spentInfo.addressType == 1) {
+                        in.pushKV("address", EncodeDestination(PKHash(CKeyID(spentInfo.addressHash))));
+                    } else if (spentInfo.addressType == 2) {
+                        in.pushKV("address", EncodeDestination(ScriptHash(CScriptID(spentInfo.addressHash))));
+                    }
+                }
+            }
             if (!tx.vin[i].scriptWitness.IsNull()) {
                 UniValue txinwitness(UniValue::VARR);
                 for (const auto& item : tx.vin[i].scriptWitness.stack) {
@@ -222,14 +246,76 @@ void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry,
         UniValue out(UniValue::VOBJ);
 
         out.pushKV("value", ValueFromAmount(txout.nValue));
+        out.pushKV("valueSat", txout.nValue);
         out.pushKV("n", (int64_t)i);
 
         UniValue o(UniValue::VOBJ);
         ScriptPubKeyToUniv(txout.scriptPubKey, o, true);
         out.pushKV("scriptPubKey", o);
+
+        // Add spent information if spentindex is enabled
+        if (ptxSpentInfo != nullptr) {
+            CSpentIndexKey spentKey(txid, i);
+            auto it = ptxSpentInfo->mSpentInfo.find(spentKey);
+            if (it != ptxSpentInfo->mSpentInfo.end()) {
+                auto spentInfo = it->second;
+                out.pushKV("spentTxId", spentInfo.txid.GetHex());
+                out.pushKV("spentIndex", (int)spentInfo.inputIndex);
+                out.pushKV("spentHeight", spentInfo.blockHeight);
+            }
+        }
         vout.push_back(out);
     }
     entry.pushKV("vout", vout);
+
+    if (!tx.vExtraPayload.empty()) {
+        entry.pushKV("extraPayloadSize", (int)tx.vExtraPayload.size());
+        entry.pushKV("extraPayload", HexStr(tx.vExtraPayload));
+    }
+
+    if (tx.nType == TRANSACTION_PROVIDER_REGISTER) {
+        CProRegTx proTx;
+        if (GetTxPayload(tx, proTx)) {
+            UniValue obj;
+            proTx.ToJson(obj);
+            entry.pushKV("proRegTx", obj);
+        }
+    } else if (tx.nType == TRANSACTION_PROVIDER_UPDATE_SERVICE) {
+        CProUpServTx proTx;
+        if (GetTxPayload(tx, proTx)) {
+            UniValue obj;
+            proTx.ToJson(obj);
+            entry.pushKV("proUpServTx", obj);
+        }
+    } else if (tx.nType == TRANSACTION_PROVIDER_UPDATE_REGISTRAR) {
+        CProUpRegTx proTx;
+        if (GetTxPayload(tx, proTx)) {
+            UniValue obj;
+            proTx.ToJson(obj);
+            entry.pushKV("proUpRegTx", obj);
+        }
+    } else if (tx.nType == TRANSACTION_PROVIDER_UPDATE_REVOKE) {
+        CProUpRevTx proTx;
+        if (GetTxPayload(tx, proTx)) {
+            UniValue obj;
+            proTx.ToJson(obj);
+            entry.pushKV("proUpRevTx", obj);
+        }
+    } else if (tx.nType == TRANSACTION_COINBASE) {
+        CCbTx cbTx;
+        if (GetTxPayload(tx, cbTx)) {
+            UniValue obj;
+            cbTx.ToJson(obj);
+            entry.pushKV("cbTx", obj);
+        }
+    } else if (tx.nType == TRANSACTION_QUORUM_COMMITMENT) {
+        llmq::CFinalCommitmentTxPayload qcTx;
+        if (GetTxPayload(tx, qcTx)) {
+            UniValue obj;
+            qcTx.ToJson(obj);
+            entry.pushKV("qcTx", obj);
+        }
+    }
 
     if (!hashBlock.IsNull())
         entry.pushKV("blockhash", hashBlock.GetHex());

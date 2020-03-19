@@ -22,7 +22,7 @@
 #include <qt/transactiontablemodel.h>
 #include <qt/transactionview.h>
 #include <qt/walletmodel.h>
-
+#include <qt/transactionrecord.h>
 
 #include <interfaces/node.h>
 #include <ui_interface.h>
@@ -33,6 +33,7 @@
 #include <QHBoxLayout>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QSettings>
 #include <QVBoxLayout>
 
 WalletView::WalletView(const PlatformStyle *_platformStyle, QWidget *parent):
@@ -55,6 +56,19 @@ WalletView::WalletView(const PlatformStyle *_platformStyle, QWidget *parent):
         exportButton->setIcon(platformStyle->SingleColorIcon(":/icons/export"));
     }
     hbox_buttons->addStretch();
+
+    // Sum of selected transactions
+    QLabel *transactionSumLabel = new QLabel(); // Label
+    transactionSumLabel->setObjectName("transactionSumLabel"); // Label ID as CSS-reference
+    transactionSumLabel->setText(tr("Selected amount:"));
+    hbox_buttons->addWidget(transactionSumLabel);
+
+    transactionSum = new QLabel(); // Amount
+    transactionSum->setObjectName("transactionSum"); // Label ID as CSS-reference
+    transactionSum->setMinimumSize(200, 8);
+    transactionSum->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    hbox_buttons->addWidget(transactionSum);
+
     hbox_buttons->addWidget(exportButton);
     vbox->addLayout(hbox_buttons);
     transactionsPage->setLayout(vbox);
@@ -80,7 +94,13 @@ WalletView::WalletView(const PlatformStyle *_platformStyle, QWidget *parent):
     addWidget(messagePage);
 #endif
     addWidget(rpcConsole);
-    
+ 
+    QSettings settings;
+    if (!fLiteMode && settings.value("fShowMasternodesTab").toBool()) {
+        masternodeListPage = new MasternodeList(platformStyle);
+        addWidget(masternodeListPage);
+    }
+
     // Clicking on a transaction on the overview pre-selects the transaction on the transaction history page
     connect(overviewPage, &OverviewPage::transactionClicked, transactionView, static_cast<void (TransactionView::*)(const QModelIndex&)>(&TransactionView::focusTransaction));
 
@@ -141,6 +161,11 @@ void WalletView::setClientModel(ClientModel *_clientModel)
     overviewPage->setClientModel(_clientModel);
     sendCoinsPage->setClientModel(_clientModel);
     rpcConsole->setClientModel(_clientModel);
+
+    QSettings settings;
+    if (!fLiteMode && settings.value("fShowMasternodesTab").toBool()) {
+        masternodeListPage->setClientModel(_clientModel);
+    }
 }
 
 void WalletView::setWalletModel(WalletModel *_walletModel)
@@ -150,6 +175,10 @@ void WalletView::setWalletModel(WalletModel *_walletModel)
     // Put transaction list in tabs
     transactionView->setModel(_walletModel);
     overviewPage->setWalletModel(_walletModel);
+    QSettings settings;
+    if (!fLiteMode && settings.value("fShowMasternodesTab").toBool()) {
+        masternodeListPage->setWalletModel(_walletModel);
+    }
     receiveCoinsPage->setModel(_walletModel);
     sendCoinsPage->setModel(_walletModel);
 #ifdef ENABLE_SECURE_MESSAGING
@@ -211,10 +240,19 @@ void WalletView::processNewTransaction(const QModelIndex& parent, int start, int
     if (!ttm || ttm->processingQueuedTransactions())
         return;
 
+    QModelIndex index = ttm->index(start, 0, parent);
+    QSettings settings;
+    if (!settings.value("fShowPrivateSendPopups").toBool()) {
+        QVariant nType = ttm->data(index, TransactionTableModel::TypeRole);
+        if (nType == TransactionRecord::PrivateSendDenominate ||
+            nType == TransactionRecord::PrivateSendCollateralPayment ||
+            nType == TransactionRecord::PrivateSendMakeCollaterals ||
+            nType == TransactionRecord::PrivateSendCreateDenominations) return;
+    }
+
     QString date = ttm->index(start, TransactionTableModel::Date, parent).data().toString();
     qint64 amount = ttm->index(start, TransactionTableModel::Amount, parent).data(Qt::EditRole).toULongLong();
     QString type = ttm->index(start, TransactionTableModel::Type, parent).data().toString();
-    QModelIndex index = ttm->index(start, 0, parent);
     QString address = ttm->data(index, TransactionTableModel::AddressRole).toString();
     QString label = ttm->data(index, TransactionTableModel::LabelRole).toString();
 
@@ -259,6 +297,14 @@ void WalletView::gotoMessagesPage()
 void WalletView::gotoHistoryPage()
 {
     setCurrentWidget(transactionsPage);
+}
+
+void WalletView::gotoMasternodePage()
+{
+    QSettings settings;
+    if (!fLiteMode && settings.value("fShowMasternodesTab").toBool()) {
+        setCurrentWidget(masternodeListPage);
+    }
 }
 
 void WalletView::gotoRpcPage()
@@ -355,7 +401,7 @@ void WalletView::changePassphrase()
     dlg.exec();
 }
 
-void WalletView::unlockWallet(/*bool fromMenu*/)
+void WalletView::unlockWallet(bool fForMixingOnly)
 {
     if(!walletModel)
         return;

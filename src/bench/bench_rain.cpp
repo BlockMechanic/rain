@@ -9,6 +9,12 @@
 
 #include <memory>
 
+#include <bls/bls.h>
+
+void InitBLSTests();
+void CleanupBLSTests();
+void CleanupBLSDkgTests();
+
 static const int64_t DEFAULT_BENCH_EVALUATIONS = 5;
 static const char* DEFAULT_BENCH_FILTER = ".*";
 static const char* DEFAULT_BENCH_SCALING = "1.0";
@@ -65,6 +71,7 @@ int main(int argc, char** argv)
             gArgs.GetArg("-plot-width", DEFAULT_PLOT_WIDTH),
             gArgs.GetArg("-plot-height", DEFAULT_PLOT_HEIGHT)));
     }
+
 
     benchmark::BenchRunner::RunAll(*printer, evaluations, scaling_factor, regex_filter, is_list_only);
 

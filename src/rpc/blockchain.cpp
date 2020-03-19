@@ -38,6 +38,12 @@
 #include <pos.h>
 #include <pow.h>
 
+#include <evo/specialtx.h>
+#include <evo/cbtx.h>
+
+#include <llmq/quorums_chainlocks.h>
+#include <llmq/quorums_instantsend.h>
+
 #include <assert.h>
 #include <stdint.h>
 
@@ -207,19 +213,31 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* tip, const CBlockIn
     result.pushKV("version", block.nVersion);
     result.pushKV("versionHex", strprintf("%08x", block.nVersion));
     result.pushKV("merkleroot", block.hashMerkleRoot.GetHex());
+    bool chainLock = llmq::chainLocksHandler->HasChainLock(blockindex->nHeight, blockindex->GetBlockHash());
     UniValue txs(UniValue::VARR);
     for(const auto& tx : block.vtx)
     {
         if(txDetails)
         {
             UniValue objTx(UniValue::VOBJ);
-            TxToUniv(*tx, uint256(), objTx, true, RPCSerializationFlags());
+            TxToUniv(*tx, uint256(), objTx, nullptr, true, RPCSerializationFlags());
+            bool fLocked = llmq::quorumInstantSendManager->IsLocked(tx->GetHash());
+            objTx.pushKV("instantlock", fLocked || chainLock);
+            objTx.pushKV("instantlock_internal", fLocked);
             txs.push_back(objTx);
         }
         else
             txs.push_back(tx->GetHash().GetHex());
     }
     result.pushKV("tx", txs);
+    if (!block.vtx[0]->vExtraPayload.empty()) {
+        CCbTx cbTx;
+        if (GetTxPayload(block.vtx[0]->vExtraPayload, cbTx)) {
+            UniValue cbTxObj;
+            cbTx.ToJson(cbTxObj);
+            result.pushKV("cbTx", cbTxObj);
+        }
+    }
     result.pushKV("time", block.GetBlockTime());
     result.pushKV("mediantime", (int64_t)blockindex->GetMedianTimePast());
     result.pushKV("nonce", (uint64_t)block.nNonce);
@@ -232,6 +250,8 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* tip, const CBlockIn
         result.pushKV("previousblockhash", blockindex->pprev->GetBlockHash().GetHex());
     if (pnext)
         result.pushKV("nextblockhash", pnext->GetBlockHash().GetHex());
+
+    result.pushKV("chainlock", chainLock);
 
     result.pushKV("flags", strprintf("%s", blockindex->IsProofOfStake()? "proof-of-stake" : "proof-of-work"));
     result.pushKV("proofhash", blockindex->hashProof.GetHex());
@@ -279,6 +299,35 @@ static UniValue getbestblockhash(const JSONRPCRequest& request)
     LOCK(cs_main);
     return ::ChainActive().Tip()->GetBlockHash().GetHex();
 }
+
+UniValue getbestchainlock(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 0)
+        throw std::runtime_error(
+            "getbestchainlock\n"
+            "\nReturns the block hash of the best chainlock. Throws an error if there is no known chainlock yet.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"blockhash\" : \"hash\",      (string) The block hash hex encoded\n"
+            "  \"height\" : n,              (numeric) The block height or index\n"
+            "  \"known_block\" : true|false (boolean) True if the block is known by our node\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getbestchainlock", "")
+            + HelpExampleRpc("getbestchainlock", "")
+        );
+    UniValue result(UniValue::VOBJ);
+    llmq::CChainLockSig clsig = llmq::chainLocksHandler->GetBestChainLock();
+    if (clsig.IsNull()) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Unable to find any chainlock");
+    }
+    result.pushKV("blockhash", clsig.blockHash.GetHex());
+    result.pushKV("height", clsig.nHeight);
+    LOCK(cs_main);
+    result.pushKV("known_block", mapBlockIndex.count(clsig.blockHash) > 0);
+    return result;
+}
+
 
 void RPCNotifyBlockChange(bool ibd, const CBlockIndex * pindex)
 {
@@ -773,6 +822,40 @@ static UniValue getmempoolentry(const JSONRPCRequest& request)
     return info;
 }
 
+UniValue getblockhashes(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 2)
+        throw std::runtime_error(
+            "getblockhashes timestamp\n"
+            "\nReturns array of hashes of blocks within the timestamp range provided.\n"
+            "\nArguments:\n"
+            "1. high         (numeric, required) The newer block timestamp\n"
+            "2. low          (numeric, required) The older block timestamp\n"
+            "\nResult:\n"
+            "[\n"
+            "  \"hash\"         (string) The block hash\n"
+            "]\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getblockhashes", "1231614698 1231024505")
+            + HelpExampleRpc("getblockhashes", "1231614698, 1231024505")
+        );
+
+    unsigned int high = request.params[0].get_int();
+    unsigned int low = request.params[1].get_int();
+    std::vector<uint256> blockHashes;
+
+    if (!GetTimestampIndex(high, low, blockHashes)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for block hashes");
+    }
+
+    UniValue result(UniValue::VARR);
+    for (std::vector<uint256>::const_iterator it=blockHashes.begin(); it!=blockHashes.end(); it++) {
+        result.push_back(it->GetHex());
+    }
+
+    return result;
+}
+
 static UniValue getblockhash(const JSONRPCRequest& request)
 {
             RPCHelpMan{"getblockhash",
@@ -930,6 +1013,12 @@ static UniValue getblock(const JSONRPCRequest& request)
             "     \"transactionid\"     (string) The transaction id\n"
             "     ,...\n"
             "  ],\n"
+            "  \"cbTx\" : {             (json object) The coinbase special transaction \n"
+            "     \"version\"           (numeric) The coinbase special transaction version\n"
+            "     \"height\"            (numeric) The block height\n"
+            "     \"merkleRootMNList\" : \"xxxx\", (string) The merkle root of the masternode list\n"
+            "     \"merkleRootQuorums\" : \"xxxx\", (string) The merkle root of the quorum list\n"
+            "  },\n"
             "  \"time\" : ttt,          (numeric) The block time in seconds since epoch (Jan 1 1970 GMT)\n"
             "  \"mediantime\" : ttt,    (numeric) The median block time in seconds since epoch (Jan 1 1970 GMT)\n"
             "  \"nonce\" : n,           (numeric) The nonce\n"
@@ -1016,7 +1105,7 @@ static void ApplyStats(CCoinsStats &stats, CHashWriter& ss, const uint256& hash,
     for (const auto& output : outputs) {
         ss << VARINT(output.first + 1);
         ss << output.second.out.scriptPubKey;
-        ss << VARINT(output.second.out.nValue, VarIntMode::NONNEGATIVE_SIGNED);
+        ss << VARINT(output.second.out.nValue);
         stats.nTransactionOutputs++;
         stats.nTotalAmount += output.second.out.nValue;
         stats.nBogoSize += 32 /* txid */ + 4 /* vout index */ + 4 /* height + coinbase */ + 8 /* amount */ +

@@ -54,6 +54,13 @@ public:
         PruneSize,              // int
         DatabaseCache,          // int
         SpendZeroConfChange,    // bool
+        ShowMasternodesTab,     // bool
+        ShowAdvancedPSUI,       // bool
+        ShowPrivateSendPopups,  // bool
+        LowKeysWarning,         // bool
+        PrivateSendRounds,      // int
+        PrivateSendAmount,      // int
+        PrivateSendMultiSession,// bool
         Listen,                 // bool
 		EnableMessageSendConf, // bool
         NotUseChangeAddress,    // bool
@@ -78,6 +85,7 @@ public:
     QString getThirdPartyTxUrls() const { return strThirdPartyTxUrls; }
     bool getProxySettings(QNetworkProxy& proxy) const;
     bool getCoinControlFeatures() const { return fCoinControlFeatures; }
+    bool getShowAdvancedPSUI() { return fShowAdvancedPSUI; }
     const QString& getOverriddenByCommandLine() { return strOverriddenByCommandLine; }
 
     /* Explicit setters */
@@ -102,6 +110,7 @@ private:
     int nDisplayUnit;
     QString strThirdPartyTxUrls;
     bool fCoinControlFeatures;
+    bool fShowAdvancedPSUI;
     /* settings that were overridden by command-line */
     QString strOverriddenByCommandLine;
 #ifdef ENABLE_SECURE_MESSAGING
@@ -114,6 +123,9 @@ private:
     void checkAndMigrate();
 Q_SIGNALS:
     void displayUnitChanged(int unit);
+    void privateSendRoundsChanged();
+    void privateSentAmountChanged();
+    void advancedPSUIChanged(bool);
     void coinControlFeaturesChanged(bool);
     void hideTrayIconChanged(bool);
     void enableMessageSendConfChanged(bool);

@@ -5,6 +5,9 @@
 #ifndef RAIN_QT_CLIENTMODEL_H
 #define RAIN_QT_CLIENTMODEL_H
 
+#include <evo/deterministicmns.h>
+#include <sync.h>
+
 #include <QObject>
 #include <QDateTime>
 
@@ -56,8 +59,15 @@ public:
 
     //! Return number of connections, default is in- and outbound (total)
     int getNumConnections(unsigned int flags = CONNECTIONS_ALL) const;
+    int getNumBlocks() const;
     int getHeaderTipHeight() const;
     int64_t getHeaderTipTime() const;
+    //! Return number of ISLOCKs
+    size_t getInstantSentLockCount() const;
+
+    void setMasternodeList(const CDeterministicMNList& mnList);
+    CDeterministicMNList getMasternodeList() const;
+    void refreshMasternodeList();
 
     //! Returns enum BlockSource of the current importing/syncing state
     enum BlockSource getBlockSource() const;
@@ -88,6 +98,8 @@ private:
     std::unique_ptr<interfaces::Handler> m_handler_banned_list_changed;
     std::unique_ptr<interfaces::Handler> m_handler_notify_block_tip;
     std::unique_ptr<interfaces::Handler> m_handler_notify_header_tip;
+    std::unique_ptr<interfaces::Handler> m_handler_notify_masternode_list_changed;
+    std::unique_ptr<interfaces::Handler> m_handler_notify_additional_data_sync_progress_changed;
 //    std::unique_ptr<interfaces::Handler> m_handler_auxiliary_block_request_progress;
     OptionsModel *optionsModel;
     PeerTableModel *peerTableModel;
@@ -95,13 +107,22 @@ private:
 
     QTimer *pollTimer;
 
+    // The cache for mn list is not technically needed because CDeterministicMNManager
+    // caches it internally for recent blocks but it's not enough to get consistent
+    // representation of the list in UI during initial sync/reindex, so we cache it here too.
+    mutable CCriticalSection cs_mnlinst; // protects mnListCached
+    CDeterministicMNList mnListCached;
+
     void subscribeToCoreSignals();
     void unsubscribeFromCoreSignals();
 
 Q_SIGNALS:
     void numConnectionsChanged(int count);
+    void masternodeListChanged() const;
     void numBlocksChanged(int count, const QDateTime& blockDate, double nVerificationProgress, bool header);
+    void additionalDataSyncProgressChanged(double nSyncProgress);
     void mempoolSizeChanged(long count, size_t mempoolSizeInBytes);
+    void islockCountChanged(size_t count);
     void networkActiveChanged(bool networkActive);
     void alertsChanged(const QString &warnings);
     void bytesChanged(quint64 totalBytesIn, quint64 totalBytesOut);

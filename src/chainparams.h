@@ -66,15 +66,21 @@ public:
     bool DefaultConsistencyChecks() const { return fDefaultConsistencyChecks; }
     /** Policy: Filter transactions that do not match well-defined patterns */
     bool RequireStandard() const { return fRequireStandard; }
+    /** Require addresses specified with "-externalip" parameter to be routable */
+    bool RequireRoutableExternalIP() const { return fRequireRoutableExternalIP; }
     /** If this chain is exclusively used for testing */
     bool IsTestChain() const { return m_is_test_chain; }
     uint64_t PruneAfterHeight() const { return nPruneAfterHeight; }
+    /** Allow multiple addresses to be selected from the same network group (e.g. 192.168.x.x) */
+    bool AllowMultipleAddressesFromGroup() const { return fAllowMultipleAddressesFromGroup; }
     /** Minimum free space (in GB) needed for data directory */
     uint64_t AssumedBlockchainSize() const { return m_assumed_blockchain_size; }
     /** Minimum free space (in GB) needed for data directory when pruned; Does not include prune target*/
     uint64_t AssumedChainStateSize() const { return m_assumed_chain_state_size; }
     /** Make miner stop after a block is found. In RPC, don't return until nGenProcLimit blocks are generated */
     bool MineBlocksOnDemand() const { return consensus.fPowNoRetargeting; }
+    /** Allow nodes with the same address and multiple ports */
+    bool AllowMultiplePorts() const { return fAllowMultiplePorts; }
     /** Return the BIP70 network string (main, test or regtest) */
     std::string NetworkIDString() const { return strNetworkID; }
     /** Return true if the fallback fee is by default enabled for this network */
@@ -86,6 +92,12 @@ public:
     const std::vector<SeedSpec6>& FixedSeeds() const { return vFixedSeeds; }
     const CCheckpointData& Checkpoints() const { return checkpointData; }
     const ChainTxData& TxData() const { return chainTxData; }
+
+    int PoolMinParticipants() const { return nPoolMinParticipants; }
+    int PoolMaxParticipants() const { return nPoolMaxParticipants; }
+    int FulfilledRequestExpireTime() const { return nFulfilledRequestExpireTime; }
+    const std::vector<std::string>& SporkAddresses() const { return vSporkAddresses; }
+    int MinSporkKeys() const { return nMinSporkKeys; }
 protected:
     CChainParams() {}
 
@@ -97,16 +109,25 @@ protected:
     uint64_t m_assumed_chain_state_size;
     std::vector<std::string> vSeeds;
     std::vector<unsigned char> base58Prefixes[MAX_BASE58_TYPES];
+    int nExtCoinType;
     std::string bech32_hrp;
     std::string strNetworkID;
     CBlock genesis;
     std::vector<SeedSpec6> vFixedSeeds;
     bool fDefaultConsistencyChecks;
     bool fRequireStandard;
+    bool fRequireRoutableExternalIP;
+    bool fAllowMultipleAddressesFromGroup;
     bool m_is_test_chain;
+    bool fAllowMultiplePorts;
     CCheckpointData checkpointData;
     ChainTxData chainTxData;
     bool m_fallback_fee_enabled;
+    int nPoolMinParticipants;
+    int nPoolMaxParticipants;
+    int nFulfilledRequestExpireTime;
+    std::vector<std::string> vSporkAddresses;
+    int nMinSporkKeys;
 };
 
 /**

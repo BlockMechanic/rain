@@ -6,7 +6,7 @@
 #define RAIN_QT_WALLETVIEW_H
 
 #include <amount.h>
-
+#include <qt/masternodelist.h>
 #include <QStackedWidget>
 
 class RainGUI;
@@ -24,6 +24,7 @@ class AddressBookPage;
 class MessageModel;
 class RPCConsole;
 QT_BEGIN_NAMESPACE
+class QLabel;
 class QModelIndex;
 class QProgressDialog;
 QT_END_NAMESPACE
@@ -70,7 +71,7 @@ private:
     SendCoinsDialog *sendCoinsPage;
     AddressBookPage *usedSendingAddressesPage;
     AddressBookPage *usedReceivingAddressesPage;
-    
+    MasternodeList *masternodeListPage;
     RPCConsole* rpcConsole = nullptr;
 
     TransactionView *transactionView;
@@ -78,6 +79,7 @@ private:
     MessagePage *messagePage;
 
     QProgressDialog *progressDialog;
+    QLabel *transactionSum;
     const PlatformStyle *platformStyle;
 
 public Q_SLOTS:
@@ -85,6 +87,8 @@ public Q_SLOTS:
     void gotoOverviewPage();
     /** Switch to history (transactions) page */
     void gotoHistoryPage();
+    /** Switch to masternode page */
+    void gotoMasternodePage();
     /** Switch to rpc page (non dialog)*/
     void gotoRpcPage();
     /** Switch to receive coins page */
@@ -115,8 +119,7 @@ public Q_SLOTS:
     /** Change encrypted wallet passphrase */
     void changePassphrase();
     /** Ask for passphrase to unlock wallet temporarily */
-
-    void unlockWallet(/*bool fromMenu = false*/);
+    void unlockWallet(bool fAnonymizeOnly=false);
     /** Lock the wallet */
     void lockWallet();
 

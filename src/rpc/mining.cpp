@@ -23,6 +23,7 @@
 #include <rpc/util.h>
 #include <script/script.h>
 #include <shutdown.h>
+#include <spork.h>
 #include <txmempool.h>
 #include <univalue.h>
 #include <util/fees.h>
@@ -39,6 +40,15 @@
 #include <wallet/walletdb.h>
 #include <wallet/rpcwallet.h>
 #endif
+
+#include "governance/governance-classes.h"
+#include "masternode/masternode-payments.h"
+#include "masternode/masternode-sync.h"
+
+#include "evo/deterministicmns.h"
+#include "evo/specialtx.h"
+#include "evo/cbtx.h"
+
 #include <memory>
 #include <stdint.h>
 
@@ -727,6 +737,26 @@ static UniValue getblocktemplate(const JSONRPCRequest& request)
             "  \"curtime\" : ttt,                  (numeric) current timestamp in seconds since epoch (Jan 1 1970 GMT)\n"
             "  \"bits\" : \"xxxxxxxx\",              (string) compressed target of next block\n"
             "  \"height\" : n                      (numeric) The height of the next block\n"
+            "  \"masternode\" : [                  (array) required masternode payments that must be included in the next block\n"
+            "      {\n"
+            "         \"payee\" : \"xxxx\",          (string) payee address\n"
+            "         \"script\" : \"xxxx\",         (string) payee scriptPubKey\n"
+            "         \"amount\": n                (numeric) required amount to pay\n"
+            "      }\n"
+            "  },\n"
+            "  \"masternode_payments_started\" :  true|false, (boolean) true, if masternode payments started\n"
+            "  \"masternode_payments_enforced\" : true|false, (boolean) true, if masternode payments are enforced\n"
+            "  \"superblock\" : [                  (array) required superblock payees that must be included in the next block\n"
+            "      {\n"
+            "         \"payee\" : \"xxxx\",          (string) payee address\n"
+            "         \"script\" : \"xxxx\",         (string) payee scriptPubKey\n"
+            "         \"amount\": n                (numeric) required amount to pay\n"
+            "      }\n"
+            "      ,...\n"
+            "  ],\n"
+            "  \"superblocks_started\" : true|false, (boolean) true, if superblock payments started\n"
+            "  \"superblocks_enabled\" : true|false, (boolean) true, if superblock payments are enabled\n"
+            "  \"coinbase_payload\" : \"xxxxxxxx\"    (string) coinbase transaction payload data encoded in hexadecimal\n"
             "}\n"
                 },
                 RPCExamples{
@@ -810,6 +840,17 @@ static UniValue getblocktemplate(const JSONRPCRequest& request)
 
     if (::ChainstateActive().IsInitialBlockDownload())
         throw JSONRPCError(RPC_CLIENT_IN_INITIAL_DOWNLOAD, "Rain is in initial sync and waiting for blocks...");
+
+    // Get expected MN/superblock payees. The call to GetBlockTxOuts might fail on regtest/devnet or when
+    // testnet is reset. This is fine and we ignore failure (blocks will be accepted)
+    std::vector<CTxOut> voutMasternodePayments;
+    mnpayments.GetBlockTxOuts(::ChainActive().Height() + 1, 0, voutMasternodePayments);
+
+    // next bock is a superblock and we need governance info to correctly construct it
+    if (sporkManager.IsSporkActive(SPORK_9_SUPERBLOCKS_ENABLED)
+        && !masternodeSync.IsSynced()
+        && CSuperblock::IsValidBlockHeight(::ChainActive().Height() + 1))
+            throw JSONRPCError(RPC_CLIENT_IN_INITIAL_DOWNLOAD, "Rain Core is syncing with network...");
 
     static unsigned int nTransactionsUpdatedLast;
 
@@ -1019,6 +1060,43 @@ static UniValue getblocktemplate(const JSONRPCRequest& request)
     result.pushKV("noncerange", "00000000ffffffff");
     int64_t nSigOpLimit = MAX_BLOCK_SIGOPS_COST;
     int64_t nSizeLimit = MAX_BLOCK_SERIALIZED_SIZE;
+    result.pushKV("curtime", pblock->GetBlockTime());
+    result.pushKV("bits", strprintf("%08x", pblock->nBits));
+    result.pushKV("height", (int64_t)(pindexPrev->nHeight+1));
+
+    UniValue masternodeObj(UniValue::VARR);
+    for (const auto& txout : pblocktemplate->voutMasternodePayments) {
+        CTxDestination address1;
+        ExtractDestination(txout.scriptPubKey, address1);
+        
+
+        UniValue obj(UniValue::VOBJ);
+        obj.pushKV("payee", EncodeDestination(address1).c_str());
+        obj.pushKV("script", HexStr(txout.scriptPubKey));
+        obj.pushKV("amount", txout.nValue);
+        masternodeObj.push_back(obj);
+    }
+
+    result.pushKV("masternode", masternodeObj);
+    result.pushKV("masternode_payments_started", pindexPrev->nHeight + 1 > consensusParams.nMasternodePaymentsStartBlock);
+    result.pushKV("masternode_payments_enforced", true);
+
+    UniValue superblockObjArray(UniValue::VARR);
+    if(pblocktemplate->voutSuperblockPayments.size()) {
+        for (const auto& txout : pblocktemplate->voutSuperblockPayments) {
+            UniValue entry(UniValue::VOBJ);
+            CTxDestination address1;
+            ExtractDestination(txout.scriptPubKey, address1);
+            entry.pushKV("payee", EncodeDestination(address1).c_str());
+            entry.pushKV("script", HexStr(txout.scriptPubKey));
+            entry.pushKV("amount", txout.nValue);
+            superblockObjArray.push_back(entry);
+        }
+    }
+    result.pushKV("superblock", superblockObjArray);
+    result.pushKV("superblocks_started", pindexPrev->nHeight + 1 > consensusParams.nSuperblockStartBlock);
+    result.pushKV("superblocks_enabled", sporkManager.IsSporkActive(SPORK_9_SUPERBLOCKS_ENABLED));
+
     if (fPreSegWit) {
         assert(nSigOpLimit % WITNESS_SCALE_FACTOR == 0);
         nSigOpLimit /= WITNESS_SCALE_FACTOR;
@@ -1030,9 +1108,6 @@ static UniValue getblocktemplate(const JSONRPCRequest& request)
     if (!fPreSegWit) {
         result.pushKV("weightlimit", (int64_t)MAX_BLOCK_WEIGHT);
     }
-    result.pushKV("curtime", pblock->GetBlockTime());
-    result.pushKV("bits", strprintf("%08x", pblock->nBits));
-    result.pushKV("height", (int64_t)(pindexPrev->nHeight+1));
 
     if (!pblocktemplate->vchCoinbaseCommitment.empty()) {
         result.pushKV("default_witness_commitment", HexStr(pblocktemplate->vchCoinbaseCommitment.begin(), pblocktemplate->vchCoinbaseCommitment.end()));

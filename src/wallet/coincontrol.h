@@ -15,6 +15,15 @@
 const int DEFAULT_MIN_DEPTH = 0;
 const int DEFAULT_MAX_DEPTH = 9999999;
 
+enum class CoinType
+{
+    ALL_COINS,
+    ONLY_DENOMINATED,
+    ONLY_NONDENOMINATED,
+    ONLY_1000, // find masternode outputs including locked ones (use with caution)
+    ONLY_PRIVATESEND_COLLATERAL,
+};
+
 /** Coin Control Features. */
 class CCoinControl
 {
@@ -25,6 +34,8 @@ public:
     boost::optional<OutputType> m_change_type;
     //! If false, allows unselected inputs, but requires all selected inputs be used
     bool fAllowOtherInputs;
+    //! If false, only include as many inputs as necessary to fulfill a coin selection request. Only usable together with fAllowOtherInputs
+    bool fRequireAllInputs;
     //! Includes watch only addresses which are solvable
     bool fAllowWatchOnly;
     //! Override automatic min/max checks on fee, m_feerate must be set if true
@@ -41,6 +52,8 @@ public:
     bool m_avoid_address_reuse;
     //! Fee estimation mode to control arguments to estimateSmartFee
     FeeEstimateMode m_fee_mode;
+    //! Controls which types of coins are allowed to be used (default: ALL_COINS)
+    CoinType nCoinType;
     //! Minimum chain depth value for coin availability
     int m_min_depth = DEFAULT_MIN_DEPTH;
     //! Maximum chain depth value for coin availability
@@ -81,6 +94,18 @@ public:
     void ListSelected(std::vector<COutPoint>& vOutpoints) const
     {
         vOutpoints.assign(setSelected.begin(), setSelected.end());
+    }
+
+    // Rain-specific helpers
+
+    void UsePrivateSend(bool fUsePrivateSend)
+    {
+        nCoinType = fUsePrivateSend ? CoinType::ONLY_DENOMINATED : CoinType::ALL_COINS;
+    }
+
+    bool IsUsingPrivateSend() const
+    {
+        return nCoinType == CoinType::ONLY_DENOMINATED;
     }
 
 private:

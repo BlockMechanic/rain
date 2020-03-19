@@ -25,6 +25,10 @@
 #include <wallet/walletutil.h>
 #include <pos.h>
 
+#include <privatesend/privatesend.h>
+
+#include <saltedhasher.h>
+
 #include <algorithm>
 #include <atomic>
 #include <map>
@@ -103,6 +107,8 @@ static constexpr size_t DUMMY_NESTED_P2WPKH_INPUT_SIZE = 91;
 //! if set, the wallet does a full-block spv sync before continue validating the chain
 static const bool DEFAULT_USE_SPV = false;
 
+bool AutoBackupWallet (CWallet* wallet, const std::string& strWalletFile_, std::string& strBackupWarningRet, std::string& strBackupErrorRet);
+
 class CBlockIndex;
 class CCoinControl;
 class COutput;
@@ -129,6 +135,17 @@ enum WalletFeature
     FEATURE_PRE_SPLIT_KEYPOOL = 169900, // Upgraded to HD SPLIT and can have a pre-split keypool
 
     FEATURE_LATEST = FEATURE_PRE_SPLIT_KEYPOOL
+};
+
+struct CompactTallyItem
+{
+    CTxDestination txdest;
+    CAmount nAmount;
+    std::vector<COutPoint> vecOutPoints;
+    CompactTallyItem()
+    {
+        nAmount = 0;
+    }
 };
 
 //! Default for -addresstype
@@ -405,13 +422,12 @@ int CalculateMaximumSignedInputSize(const CTxOut& txout, const CWallet* pwallet,
  */
 class CWalletTx : public CMerkleTx
 {
-private:
-    const CWallet* pwallet;
-
   /** Constant used in hashBlock to indicate tx has been abandoned */
     static const uint256 ABANDON_HASH;
 
 public:
+
+    const CWallet* pwallet;
     bool fValidated;
     /**
      * Key/value map with information about the transaction.
@@ -575,6 +591,9 @@ public:
     CAmount GetImmatureWatchOnlyCredit(interfaces::Chain::Lock& locked_chain, const bool fUseCache=true) const;
     CAmount GetChange() const;
 
+    CAmount GetAnonymizedCredit(bool fUseCache=true) const;
+    CAmount GetDenominatedCredit(bool unconfirmed, bool fUseCache=true) const;
+
     // Get the marginal bytes if spending the specified output from this transaction
     int GetSpendSize(unsigned int out, bool use_max_sig = false) const
     {
@@ -625,6 +644,9 @@ public:
      * >0 : is a coinbase transaction which matures in this many blocks
      */
     int GetBlocksToMaturity(interfaces::Chain::Lock& locked_chain) const;
+
+    bool IsLockedByInstantSend() const;
+    bool IsChainLocked() const;
     bool hashUnset() const { return (hashBlock.IsNull() || hashBlock == ABANDON_HASH); }
     bool isAbandoned() const { return (hashBlock == ABANDON_HASH); }
     void setAbandoned() { hashBlock = ABANDON_HASH; }
@@ -632,6 +654,15 @@ public:
     const uint256& GetHash() const { return tx->GetHash(); }
     bool IsCoinBase() const { return tx->IsCoinBase(); }
     bool IsImmatureCoinBase(interfaces::Chain::Lock& locked_chain) const;
+};
+
+struct WalletTxHasher
+{
+    StaticSaltedHasher h;
+    size_t operator()(const CWalletTx* a) const
+    {
+        return h(a->GetHash());
+    }
 };
 
 class COutput
@@ -669,6 +700,9 @@ public:
             nInputBytes = tx->GetSpendSize(i, use_max_sig);
         }
     }
+
+    //Used with Darksend. Will return largest nondenom, then denominations, then very small inputs
+    int Priority() const;
 
     std::string ToString() const;
 
@@ -745,6 +779,11 @@ private:
     // Local time that the tip block was received. Used to schedule wallet rebroadcasts.
     std::atomic<int64_t> m_best_block_time {0};
 
+    mutable bool fAnonymizableTallyCached;
+    mutable std::vector<CompactTallyItem> vecAnonymizableTallyCached;
+    mutable bool fAnonymizableTallyCachedNonDenom;
+    mutable std::vector<CompactTallyItem> vecAnonymizableTallyCachedNonDenom;
+
     /**
      * Used to keep track of spent outpoints, and
      * detect and report conflicts (double-spends or
@@ -771,6 +810,8 @@ private:
      * posInBlock signals or by checking mempool presence when necessary.
      */
     bool AddToWalletIfInvolvingMe(const CTransactionRef& tx, const uint256& block_hash, int posInBlock, bool fUpdate, bool fValidated) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+
+    std::set<COutPoint> setWalletUTXO;
 
     /* Mark a transaction (and its in-wallet descendants) as conflicting with a particular block. */
     void MarkConflicted(const uint256& hashBlock, const uint256& hashTx);
@@ -856,6 +897,10 @@ private:
     boost::thread_group* stakeThread = nullptr;
     void Stake(bool fStake);
     std::atomic<bool> spvEnabled;
+
+    // A helper function which loops through wallet UTXOs
+    std::unordered_set<const CWalletTx*, WalletTxHasher> GetSpendableTXs() const;
+
 
 public:
     /*
@@ -947,6 +992,8 @@ public:
     //! wallet did non-validation scan up to this block
     CBlockIndex *pNVSBestBlock;
 
+    int64_t nKeysLeftSinceAutoBackup;
+
     const CWalletTx* GetWalletTx(const uint256& hash) const;
 
     //! check whether we are allowed to upgrade (or already support) to the named feature
@@ -982,6 +1029,28 @@ public:
     bool SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<OutputGroup> groups,
         std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CoinSelectionParams& coin_selection_params, bool& bnb_used) const;
 
+    // Coin selection
+    bool SelectPSInOutPairsByDenominations(int nDenom, CAmount nValueMin, CAmount nValueMax, std::vector< std::pair<CTxDSIn, CTxOut> >& vecPSInOutPairsRet);
+    bool GetCollateralTxDSIn(CTxDSIn& txdsinRet, CAmount& nValueRet) const;
+    bool SelectPrivateCoins(CAmount nValueMin, CAmount nValueMax, std::vector<CTxIn>& vecTxInRet, CAmount& nValueRet, int nPrivateSendRoundsMin, int nPrivateSendRoundsMax) const;
+
+    bool SelectCoinsGroupedByAddresses(std::vector<CompactTallyItem>& vecTallyRet, bool fSkipDenominated = true, bool fAnonymizable = true, bool fSkipUnconfirmed = true, int nMaxOupointsPerAddress = -1) const;
+
+    /// Get 1000RAIN output and keys which can be used for the Masternode
+    bool GetMasternodeOutpointAndKeys(COutPoint& outpointRet, CPubKey& pubKeyRet, CKey& keyRet, const std::string& strTxHash = "", const std::string& strOutputIndex = "");
+    /// Extract txin information and keys from output
+    bool GetOutpointAndKeysFromOutput(const COutput& out, COutPoint& outpointRet, CPubKey& pubKeyRet, CKey& keyRet);
+
+    bool HasCollateralInputs(bool fOnlyConfirmed = true) const;
+    int  CountInputsWithAmount(CAmount nInputAmount) const;
+
+    // get the PrivateSend chain depth for a given input
+    int GetRealOutpointPrivateSendRounds(const COutPoint& outpoint, int nRounds = 0) const;
+    // respect current settings
+    int GetCappedOutpointPrivateSendRounds(const COutPoint& outpoint) const;
+
+    bool IsDenominated(const COutPoint& outpoint) const;
+
     bool IsSpent(interfaces::Chain::Lock& locked_chain, const uint256& hash, unsigned int n) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     // Whether this or any UTXO with the same CTxDestination has been spent.
@@ -996,7 +1065,7 @@ public:
     void UnlockCoin(const COutPoint& output) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     void UnlockAllCoins() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     void ListLockedCoins(std::vector<COutPoint>& vOutpts) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-
+    void ListProTxCoins(std::vector<COutPoint>& vOutpts);
     /*
      * Rescan abort properties
      */
@@ -1078,12 +1147,21 @@ public:
     void MarkDirty();
     bool AddToWallet(const CWalletTx& wtxIn, bool fFlushOnClose=true);
 
+    CAmount GetAnonymizableBalance(bool fSkipDenominated = false, bool fSkipUnconfirmed = true) const;
+    CAmount GetAnonymizedBalance() const;
+    float GetAverageAnonymizedRounds() const;
+    CAmount GetNormalizedAnonymizedBalance() const;
+    CAmount GetDenominatedBalance(bool unconfirmed=false) const;
+
+    bool GetBudgetSystemCollateralTX(CWalletTx& tx, uint256 hash, CAmount amount, const COutPoint& outpoint=COutPoint()/*defaults null*/);
+
+
     void UpdatedBlockHeaderTip(bool fInitialDownload, const CBlockIndex *pindexNew);
     void GetNonMempoolTransaction(const uint256 &hash, CTransactionRef &txsp);
     void LoadToWallet(const CWalletTx& wtxIn) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-    void TransactionAddedToMempool(const CTransactionRef& tx) override;
+    void TransactionAddedToMempool(const CTransactionRef& tx, int64_t nAcceptTime) override;
     void BlockConnected(const CBlock& block, const std::vector<CTransactionRef>& vtxConflicted) override;
-    void BlockDisconnected(const CBlock& block) override;
+    void BlockDisconnected(const CBlock& block, const CBlockIndex* pindexDisconnected) override;
     void UpdatedBlockTip() override;
     int64_t RescanFromTime(int64_t startTime, const WalletRescanReserver& reserver, bool update);
 
@@ -1113,7 +1191,11 @@ public:
         CAmount m_watchonly_trusted{0};
         CAmount m_watchonly_untrusted_pending{0};
         CAmount m_watchonly_immature{0};
-        CAmount m_mine_stake{0};      
+        CAmount m_mine_stake{0};
+        CAmount m_anonymized{0};
+        CAmount m_anonymizable{0};
+        CAmount m_denominated{0};
+        CAmount m_normalized_anonymized{0};
     };
     Balance GetBalance(int min_depth = 0, bool avoid_reuse = true) const;
     CAmount GetAvailableBalance(const CCoinControl* coinControl = nullptr) const;
@@ -1133,9 +1215,11 @@ public:
      * @note passing nChangePosInOut as -1 will result in setting a random position
      */
     bool CreateTransaction(interfaces::Chain::Lock& locked_chain, const std::vector<CRecipient>& vecSend, CTransactionRef& tx, CAmount& nFeeRet, int& nChangePosInOut,
-                           std::string& strFailReason, const CCoinControl& coin_control, bool sign = true);
+                           std::string& strFailReason, const CCoinControl& coin_control, bool sign = true, int nExtraPayloadSize = 0);
     bool CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::vector<std::pair<std::string, std::string>> orderForm, CValidationState& state);
 
+    bool CreateCollateralTransaction(CMutableTransaction& txCollateral, std::string& strReason);
+    bool ConvertList(std::vector<CTxIn> vecTxIn, std::vector<CAmount>& vecAmounts);
     CAmount GetStake() const;
     CAmount GetWatchOnlyStake() const;
 
@@ -1180,7 +1264,7 @@ public:
     int64_t m_last_coin_stake_search_time{0};
     int64_t m_last_coin_stake_search_interval{0};
 
- 
+
    /** Absolute maximum transaction fee (in satoshis) used by default for the wallet */
     CAmount m_default_max_tx_fee{DEFAULT_TRANSACTION_MAXFEE};
 
@@ -1242,6 +1326,7 @@ public:
     void ChainStateFlushed(const CBlockLocator& loc) override;
 
     DBErrors LoadWallet(bool& fFirstRunRet);
+    void AutoLockMasternodeCollaterals();
     DBErrors ZapWalletTx(std::vector<CWalletTx>& vWtx);
     DBErrors ZapSelectTx(std::vector<uint256>& vHashIn, std::vector<uint256>& vHashOut) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
@@ -1269,7 +1354,7 @@ public:
     int GetVersion() { LOCK(cs_wallet); return nWalletVersion; }
 
     //! disable transaction for coinstake
-    void DisableTransaction(const CTransaction &tx);   
+    void DisableTransaction(const CTransaction &tx);
     //! Get wallet transactions that conflict with given transaction (spend same outputs)
     std::set<uint256> GetConflicts(const uint256& txid) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
@@ -1315,6 +1400,12 @@ public:
      * Note: Called without locks held.
      */
     boost::signals2::signal<void (CWallet* wallet)> NotifyStatusChanged;
+
+    /** IS-lock received */
+    boost::signals2::signal<void ()> NotifyISLockReceived;
+
+    /** ChainLock received */
+    boost::signals2::signal<void (int height)> NotifyChainLockReceived;
 
     /** Inquire whether this wallet broadcasts transactions. */
     bool GetBroadcastTransactions() const { return fBroadcastTransactions; }
@@ -1429,6 +1520,10 @@ public:
     void StartStake() { Stake(true); }
 
     void StopStake() { Stake(false); }
+
+    void NotifyTransactionLock(const CTransaction &tx, const llmq::CInstantSendLock& islock) override;
+    void NotifyChainLock(const CBlockIndex* pindexChainLock, const llmq::CChainLockSig& clsig) override;
+
 };
 
 /**

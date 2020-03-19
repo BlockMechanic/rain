@@ -48,6 +48,16 @@ class Wallet
 {
 public:
     virtual ~Wallet() {}
+    
+    virtual CWallet* getWallet() =0;
+
+    virtual CAmount DenominatedUnconfirmedBalance () =0;
+
+    virtual float AverageAnonymizedRounds () =0;
+    
+    virtual int KeysLeftSinceAutoBackup () =0;
+    
+    virtual bool autoBackupWallet (CWallet* wallet, const std::string& strWalletFile_, std::string& strBackupWarningRet, std::string& strBackupErrorRet) =0;
 
     //! Encrypt wallet.
     virtual bool encryptWallet(const SecureString& wallet_passphrase) = 0;
@@ -334,6 +344,10 @@ struct WalletBalances
     CAmount unconfirmed_balance = 0;
     CAmount immature_balance = 0;
     CAmount stake = 0;
+    CAmount anonymized = 0;
+    CAmount anonymizable = 0;
+    CAmount denominated = 0;
+    CAmount normalized_anonymized = 0;
     CAmount watch_only_stake = 0;
 
     bool have_watch_only = false;
@@ -383,6 +397,8 @@ struct WalletTxStatus
     bool is_coinstake;
     bool is_in_main_chain;
     bool fValidated;
+    bool isChainLocked;
+    bool isLockedByInstantSend;
 };
 
 //! Wallet transaction output.

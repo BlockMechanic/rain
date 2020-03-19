@@ -6,7 +6,6 @@
 #include <boost/assign/list_of.hpp>
 #include <index/txindex.h>
 
-#include <bignum.h>
 #include <pos.h>
 #include <key_io.h>
 #include <logging.h>

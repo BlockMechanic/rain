@@ -63,6 +63,7 @@ static struct CRPCSignals
 {
     boost::signals2::signal<void ()> Started;
     boost::signals2::signal<void ()> Stopped;
+    boost::signals2::signal<void (const CRPCCommand&)> PreCommand;
 } g_rpcSignals;
 
 void RPCServer::OnStarted(std::function<void ()> slot)
@@ -73,6 +74,11 @@ void RPCServer::OnStarted(std::function<void ()> slot)
 void RPCServer::OnStopped(std::function<void ()> slot)
 {
     g_rpcSignals.Stopped.connect(slot);
+}
+
+void RPCServer::OnPreCommand(std::function<void (const CRPCCommand&)> slot)
+{
+    g_rpcSignals.PreCommand.connect(boost::bind(slot, _1));
 }
 
 std::string CRPCTable::help(const std::string& strCommand, const JSONRPCRequest& helpreq) const

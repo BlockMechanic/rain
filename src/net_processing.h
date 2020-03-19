@@ -130,4 +130,5 @@ bool ProcessNetBlock(const CChainParams& chainparams, const std::shared_ptr<cons
 void RelayTransaction(const uint256&, const CConnman& connman);
 /** Increase a node's misbehavior score. */
 void Misbehaving(NodeId nodeid, int howmuch, const std::string& message="") EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+bool IsBanned(NodeId nodeid);
 #endif // RAIN_NET_PROCESSING_H
