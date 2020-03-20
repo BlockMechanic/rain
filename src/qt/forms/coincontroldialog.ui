@@ -265,7 +265,7 @@
           </sizepolicy>
          </property>
          <property name="text">
-          <string>Tree mode</string>
+          <string>&amp;Tree mode</string>
          </property>
         </widget>
        </item>
@@ -278,7 +278,7 @@
           </sizepolicy>
          </property>
          <property name="text">
-          <string>List mode</string>
+          <string>&amp;List mode</string>
          </property>
          <property name="checked">
           <bool>true</bool>
@@ -381,6 +381,13 @@
      </item>
      <item>
       <layout class="QHBoxLayout" name="horizontalLayout_2">
+       <item>
+        <widget class="QPushButton" name="pushButtonToggleLock">
+         <property name="text">
+          <string>toggle lock state</string>
+         </property>
+        </widget>
+       </item>
        <item>
         <spacer name="horizontalSpacer_2">
          <property name="orientation">

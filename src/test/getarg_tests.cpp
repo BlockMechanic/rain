@@ -144,7 +144,7 @@ BOOST_AUTO_TEST_CASE(intarg)
     BOOST_CHECK_EQUAL(gArgs.GetArg("-bar", 11), 0);
 }
 
-BOOST_AUTO_TEST_CASE(doubledash)
+BOOST_AUTO_TEST_CASE(doublerain)
 {
     const auto foo = std::make_pair("-foo", ArgsManager::ALLOW_ANY);
     const auto bar = std::make_pair("-bar", ArgsManager::ALLOW_ANY);

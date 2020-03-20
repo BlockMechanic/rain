@@ -8,12 +8,14 @@
 
 #include <qt/addressbookpage.h>
 #include <qt/forms/ui_addressbookpage.h>
-
+#include <interfaces/node.h>
 #include <qt/addresstablemodel.h>
 #include <qt/csvmodelwriter.h>
 #include <qt/editaddressdialog.h>
 #include <qt/guiutil.h>
 #include <qt/platformstyle.h>
+#include <qt/qrdialog.h>
+#include <qt/optionsmodel.h>
 
 #include <QIcon>
 #include <QMenu>
@@ -75,6 +77,7 @@ AddressBookPage::AddressBookPage(const PlatformStyle *platformStyle, Mode _mode,
         ui->deleteAddress->setIcon(platformStyle->SingleColorIcon(":/icons/remove"));
         ui->exportButton->setIcon(platformStyle->SingleColorIcon(":/icons/export"));
     }
+    ui->showAddressQRCode->setIcon(QIcon());
 
     switch(mode)
     {
@@ -116,6 +119,7 @@ AddressBookPage::AddressBookPage(const PlatformStyle *platformStyle, Mode _mode,
     QAction *copyAddressAction = new QAction(tr("&Copy Address"), this);
     QAction *copyLabelAction = new QAction(tr("Copy &Label"), this);
     QAction *editAction = new QAction(tr("&Edit"), this);
+    QAction *showAddressQRCodeAction = new QAction(tr("&Show address QR code"), this);
     deleteAction = new QAction(ui->deleteAddress->text(), this);
 
     // Build context menu
@@ -126,12 +130,14 @@ AddressBookPage::AddressBookPage(const PlatformStyle *platformStyle, Mode _mode,
     if(tab == SendingTab)
         contextMenu->addAction(deleteAction);
     contextMenu->addSeparator();
+    contextMenu->addAction(showAddressQRCodeAction);
 
     // Connect signals for context menu actions
     connect(copyAddressAction, &QAction::triggered, this, &AddressBookPage::on_copyAddress_clicked);
     connect(copyLabelAction, &QAction::triggered, this, &AddressBookPage::onCopyLabelAction);
     connect(editAction, &QAction::triggered, this, &AddressBookPage::onEditAction);
     connect(deleteAction, &QAction::triggered, this, &AddressBookPage::on_deleteAddress_clicked);
+    connect(showAddressQRCodeAction, SIGNAL(triggered()), this, SLOT(on_showAddressQRCode_clicked()));
 
     connect(ui->tableView, &QWidget::customContextMenuRequested, this, &AddressBookPage::contextualMenu);
 
@@ -232,6 +238,23 @@ void AddressBookPage::on_deleteAddress_clicked()
     }
 }
 
+void AddressBookPage::on_showAddressQRCode_clicked()
+{
+    QList<QModelIndex> entries = GUIUtil::getEntryData(ui->tableView, AddressTableModel::Address);
+    if (entries.empty()) {
+        return;
+    }
+
+    QString strAddress = entries.at(0).data(Qt::EditRole).toString();
+    QRDialog* dialog = new QRDialog(this);
+//    OptionsModel *model = new OptionsModel(m_node, nullptr, false);
+
+//    dialog->setModel(model);
+//    dialog->setAttribute(Qt::WA_DeleteOnClose);
+//    dialog->setInfo(tr("QR code"), "rain:"+strAddress, "", strAddress);
+//    dialog->show();
+}
+
 void AddressBookPage::selectionChanged()
 {
     // Set button states based on selected tab and selection
@@ -257,11 +280,13 @@ void AddressBookPage::selectionChanged()
             break;
         }
         ui->copyAddress->setEnabled(true);
+        ui->showAddressQRCode->setEnabled(true);
     }
     else
     {
         ui->deleteAddress->setEnabled(false);
         ui->copyAddress->setEnabled(false);
+        ui->showAddressQRCode->setEnabled(false);
     }
 }
 

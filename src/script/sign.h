@@ -98,6 +98,7 @@ void UnserializeFromVector(Stream& s, X&... args)
     }
 }
 
+SignatureData CombineSignatures(const CScript& scriptPubKey, const BaseSignatureChecker& checker, const SignatureData& scriptSig1, const SignatureData& scriptSig2);
 // Deserialize HD keypaths into a map
 template<typename Stream>
 void DeserializeHDKeypaths(Stream& s, const std::vector<unsigned char>& key, std::map<CPubKey, KeyOriginInfo>& hd_keypaths)
@@ -170,5 +171,6 @@ bool IsSolvable(const SigningProvider& provider, const CScript& script);
 
 /** Check whether a scriptPubKey is known to be segwit. */
 bool IsSegWitOutput(const SigningProvider& provider, const CScript& script);
+void UpdateTransaction(CMutableTransaction& tx, unsigned int nIn, const SignatureData& data);
 
 #endif // RAIN_SCRIPT_SIGN_H

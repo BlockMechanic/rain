@@ -24,6 +24,10 @@
 #include <wallet/coincontrol.h>
 #include <wallet/wallet.h>
 
+#include <spork.h>
+#include <privatesend/privatesend-client.h>
+#include <llmq/quorums_instantsend.h>
+
 #include <stdint.h>
 
 #include <QDebug>
@@ -59,6 +63,12 @@ WalletModel::WalletModel(std::unique_ptr<interfaces::Wallet> wallet, interfaces:
 WalletModel::~WalletModel()
 {
     unsubscribeFromCoreSignals();
+}
+
+CAmount WalletModel::getAnonymizedBalance() const
+{
+    //return m_wallet->GetAnonymizedBalance();
+    return 0;
 }
 
 void WalletModel::updateStatus()
@@ -113,6 +123,24 @@ void WalletModel::updateTransaction()
 {
     // Balance and number of transactions might have changed
     fForceCheckBalanceChanged = true;
+}
+
+void WalletModel::updateNumISLocks()
+{
+    cachedNumISLocks++;
+}
+
+void WalletModel::updateChainLockHeight(int chainLockHeight)
+{
+    if (transactionTableModel)
+        transactionTableModel->updateChainLockHeight(chainLockHeight);
+    // Number and status of confirmations might have changed (WalletModel::pollBalanceChanged handles this as well)
+    fForceCheckBalanceChanged = true;
+}
+
+int WalletModel::getNumISLocks() const
+{
+    return cachedNumISLocks;
 }
 
 void WalletModel::updateAddressBook(const QString &address, const QString &label,
@@ -299,6 +327,10 @@ WalletModel::EncryptionStatus WalletModel::getEncryptionStatus() const
     {
         return Locked;
     }
+    else if (m_wallet->isLocked())
+    {
+        return UnlockedForMixingOnly;
+    }
     else
     {
         return Unlocked;
@@ -385,6 +417,17 @@ static void NotifyTransactionChanged(WalletModel *walletmodel, const uint256 &ha
     assert(invoked);
 }
 
+static void NotifyISLockReceived(WalletModel *walletmodel)
+{
+    QMetaObject::invokeMethod(walletmodel, "updateNumISLocks", Qt::QueuedConnection);
+}
+
+static void NotifyChainLockReceived(WalletModel *walletmodel, int chainLockHeight)
+{
+    QMetaObject::invokeMethod(walletmodel, "updateChainLockHeight", Qt::QueuedConnection,
+                              Q_ARG(int, chainLockHeight));
+}
+
 static void ShowProgress(WalletModel *walletmodel, const std::string &title, int nProgress)
 {
     // emits signal "showProgress"
@@ -421,9 +464,15 @@ void WalletModel::subscribeToCoreSignals()
     m_handler_address_book_changed = m_wallet->handleAddressBookChanged(std::bind(NotifyAddressBookChanged, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
     m_handler_transaction_changed = m_wallet->handleTransactionChanged(std::bind(NotifyTransactionChanged, this, std::placeholders::_1, std::placeholders::_2));
     m_handler_show_progress = m_wallet->handleShowProgress(std::bind(ShowProgress, this, std::placeholders::_1, std::placeholders::_2));
+//    m_handler_address_book_changed = m_wallet->handleNotifyAddressBookChanged(std::bind(NotifyAddressBookChanged, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
+
     m_handler_watch_only_changed = m_wallet->handleWatchOnlyChanged(std::bind(NotifyWatchonlyChanged, this, std::placeholders::_1));
     m_handler_can_get_addrs_changed = m_wallet->handleCanGetAddressesChanged(boost::bind(NotifyCanGetAddressesChanged, this));
     m_handler_spv_mode_changed = m_wallet->handleSPVModeChanged(std::bind(NotifySPVModeChanged, this, std::placeholders::_1));
+    
+//    m_handler_notify_islock_received = m_wallet->handleNotifyISLockReceived(std::bind(NotifyISLockReceived, this));
+//    m_handler_notify_chainlock_received = m_wallet->handleNotifyChainLockReceived(std::bind(NotifyChainLockReceived, this, std::placeholders::_1));
+
 }
 
 void WalletModel::unsubscribeFromCoreSignals()
@@ -437,12 +486,24 @@ void WalletModel::unsubscribeFromCoreSignals()
     m_handler_watch_only_changed->disconnect();
     m_handler_can_get_addrs_changed->disconnect();
     m_handler_spv_mode_changed->disconnect();
+
+//    wallet->NotifyISLockReceived.disconnect(boost::bind(NotifyISLockReceived, this));
+//    wallet->NotifyChainLockReceived.disconnect(boost::bind(NotifyChainLockReceived, this, _1));
+
 }
 
 // WalletModel::UnlockContext implementation
-WalletModel::UnlockContext WalletModel::requestUnlock()
+WalletModel::UnlockContext WalletModel::requestUnlock(bool fForMixingOnly)
 {
     bool was_locked = getEncryptionStatus() == Locked;
+
+    EncryptionStatus encStatusOld = getEncryptionStatus();
+
+    // Wallet was unlocked for mixing
+    bool was_mixing = (encStatusOld == UnlockedForMixingOnly);
+    // Wallet was unlocked for mixing and now user requested to fully unlock it
+    bool fMixingToFullRequested = !fForMixingOnly && was_mixing;
+
 /*
 #ifdef ENABLE_PROOF_OF_STAKE
     if ((!was_locked) && getWalletUnlockStakingOnly())
@@ -460,7 +521,16 @@ WalletModel::UnlockContext WalletModel::requestUnlock()
     // If wallet is still locked, unlock was failed or cancelled, mark context as invalid
     bool valid = getEncryptionStatus() != Locked;
 
+    EncryptionStatus encStatusNew = getEncryptionStatus();
 //#ifdef ENABLE_PROOF_OF_STAKE
+    // Wallet was locked, user requested to unlock it for mixing and failed to do so
+    bool fMixingUnlockFailed = fForMixingOnly && !(encStatusNew == UnlockedForMixingOnly);
+    // Wallet was unlocked for mixing, user requested to fully unlock it and failed
+    bool fMixingToFullFailed = fMixingToFullRequested && !(encStatusNew == Unlocked);
+    // If wallet is still locked, unlock failed or was cancelled, mark context as invalid
+    bool fInvalid = (encStatusNew == Locked) || fMixingUnlockFailed || fMixingToFullFailed;
+    // Wallet was not locked in any way or user tried to unlock it for mixing only and succeeded, keep it unlocked
+    bool fKeepUnlocked = !was_locked || (fForMixingOnly && !fMixingUnlockFailed);
 //    return UnlockContext(this, valid, was_locked && !getWalletUnlockStakingOnly());
 //#else
     return UnlockContext(this, valid, was_locked);
@@ -514,6 +584,16 @@ bool WalletModel::getPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const
     return m_wallet->getPubKey(address, vchPubKeyOut);
 }
 #endif
+
+bool WalletModel::IsSpendable(const CTxDestination& dest) const
+{
+    return IsMine(*m_wallet->getWallet(), dest) & ISMINE_SPENDABLE;
+}
+
+bool WalletModel::IsSpendable(const CScript& script) const
+{
+    return IsMine(*m_wallet->getWallet(), script) & ISMINE_SPENDABLE;
+}
 
 void WalletModel::loadReceiveRequests(std::vector<std::string>& vReceiveRequests)
 {
@@ -592,6 +672,26 @@ bool WalletModel::bumpFee(uint256 hash, uint256& new_hash)
          return false;
     }
     return true;
+}
+
+bool WalletModel::isLockedCoin(uint256 hash, unsigned int n) const
+{
+    return m_wallet->getWallet()->IsLockedCoin(hash, n);
+}
+
+void WalletModel::lockCoin(COutPoint& output)
+{
+    return m_wallet->getWallet()->LockCoin(output);
+}
+
+void WalletModel::unlockCoin(COutPoint& output)
+{
+    return m_wallet->getWallet()->UnlockCoin(output);
+}
+
+void WalletModel::listProTxCoins(std::vector<COutPoint>& vOutpts)
+{
+    return m_wallet->getWallet()->ListProTxCoins(vOutpts);
 }
 
 bool WalletModel::isWalletEnabled()

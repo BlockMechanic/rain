@@ -45,7 +45,7 @@ struct TestSubscriber : public CValidationInterface {
         m_expected_tip = block->GetHash();
     }
 
-    void BlockDisconnected(const std::shared_ptr<const CBlock>& block) override
+    void BlockDisconnected(const std::shared_ptr<const CBlock>& block, const CBlockIndex *pindexDisconnected) override
     {
         BOOST_CHECK_EQUAL(m_expected_tip, block->GetHash());
 

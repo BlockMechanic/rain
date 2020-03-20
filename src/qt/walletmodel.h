@@ -134,6 +134,7 @@ public:
     {
         Unencrypted,  // !wallet->IsCrypted()
         Locked,       // wallet->IsCrypted() && wallet->IsLocked()
+        UnlockedForMixingOnly,  // wallet->IsCrypted() && !wallet->IsLocked(true) && wallet->IsLocked()
         Unlocked      // wallet->IsCrypted() && !wallet->IsLocked()
     };
 
@@ -141,6 +142,8 @@ public:
     AddressTableModel *getAddressTableModel();
     TransactionTableModel *getTransactionTableModel();
     RecentRequestsTableModel *getRecentRequestsTableModel();
+
+    CAmount getAnonymizedBalance() const;
 
     EncryptionStatus getEncryptionStatus() const;
     void getScriptForMining(std::shared_ptr<CTxDestination> &script);
@@ -200,10 +203,22 @@ public:
         void CopyFrom(UnlockContext&& rhs);
     };
 
-    UnlockContext requestUnlock();
-#ifdef ENABLE_SECURE_MESSAGING
+    UnlockContext requestUnlock(bool fForMixingOnly=false);
+
     bool getPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const;
-#endif
+    bool IsSpendable(const CTxDestination& dest) const;
+    bool IsSpendable(const CScript& script) const;
+    bool getPrivKey(const CKeyID &address, CKey& vchPrivKeyOut) const;
+    void getOutputs(const std::vector<COutPoint>& vOutpoints, std::vector<COutput>& vOutputs);
+    bool isSpent(const COutPoint& outpoint) const;
+    void listCoins(std::map<QString, std::vector<COutput> >& mapCoins) const;
+
+    bool isLockedCoin(uint256 hash, unsigned int n) const;
+    void lockCoin(COutPoint& output);
+    void unlockCoin(COutPoint& output);
+    void listLockedCoins(std::vector<COutPoint>& vOutpts);
+
+    void listProTxCoins(std::vector<COutPoint>& vOutpts);
 
     void loadReceiveRequests(std::vector<std::string>& vReceiveRequests);
     bool saveReceiveRequest(const std::string &sAddress, const int64_t nId, const std::string &sRequest);
@@ -228,8 +243,11 @@ public:
     uint64_t getStakeWeight();
 
     AddressTableModel* getAddressTableModel() const { return addressTableModel; }
-private:
+
+    int getNumISLocks() const;
     std::unique_ptr<interfaces::Wallet> m_wallet;
+private:
+
     std::unique_ptr<interfaces::Handler> m_handler_unload;
     std::unique_ptr<interfaces::Handler> m_handler_status_changed;
     std::unique_ptr<interfaces::Handler> m_handler_address_book_changed;
@@ -256,6 +274,8 @@ private:
     EncryptionStatus cachedEncryptionStatus;
     int cachedNumBlocks;
     int cachedNumBlocksHeadersChain;
+    int cachedNumISLocks;
+    int cachedPrivateSendRounds;
 
     QTimer *pollTimer;
 
@@ -276,7 +296,7 @@ Q_SIGNALS:
     // Signal emitted when wallet needs to be unlocked
     // It is valid behaviour for listeners to keep the wallet locked after this signal;
     // this means that the unlocking failed or was cancelled.
-    void requireUnlock();
+    void requireUnlock(bool fForMixingOnly=false);
 
     // Fired when a message should be reported to the user
     void message(const QString &title, const QString &message, unsigned int style);
@@ -304,6 +324,10 @@ public Q_SLOTS:
     void updateStatus();
     /* New transaction, or transaction changed status */
     void updateTransaction();
+    /* IS-Lock received */
+    void updateNumISLocks();
+    /* ChainLock received */
+    void updateChainLockHeight(int chainLockHeight);
     /* New, updated or removed address book entry */
     void updateAddressBook(const QString &address, const QString &label, bool isMine, const QString &purpose, int status);
     /* Watch-only added */

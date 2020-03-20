@@ -12,12 +12,15 @@
 #include <assert.h>
 #include <ios>
 #include <limits>
+#include <list>
 #include <map>
 #include <memory>
 #include <set>
 #include <stdint.h>
 #include <string>
 #include <string.h>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -220,9 +223,8 @@ template<typename Stream, int N> inline void Serialize(Stream& s, const unsigned
 template<typename Stream> inline void Serialize(Stream& s, const Span<const unsigned char>& span) { s.write(CharCast(span.data()), span.size()); }
 template<typename Stream> inline void Serialize(Stream& s, const Span<unsigned char>& span) { s.write(CharCast(span.data()), span.size()); }
 
-#ifndef CHAR_EQUALS_INT8
+
 template<typename Stream> inline void Unserialize(Stream& s, char& a    ) { a = ser_readdata8(s); } // TODO Get rid of bare char
-#endif
 template<typename Stream> inline void Unserialize(Stream& s, int8_t& a  ) { a = ser_readdata8(s); }
 template<typename Stream> inline void Unserialize(Stream& s, uint8_t& a ) { a = ser_readdata8(s); }
 template<typename Stream> inline void Unserialize(Stream& s, int16_t& a ) { a = ser_readdata16(s); }
@@ -240,6 +242,8 @@ template<typename Stream> inline void Unserialize(Stream& s, Span<unsigned char>
 template<typename Stream> inline void Serialize(Stream& s, bool a)    { char f=a; ser_writedata8(s, f); }
 template<typename Stream> inline void Unserialize(Stream& s, bool& a) { char f=ser_readdata8(s); a=f; }
 
+template <typename T> size_t GetSerializeSize(const T& t, int nType, int nVersion = 0);
+template <typename S, typename T> size_t GetSerializeSize(const S& s, const T& t);
 
 
 
@@ -364,10 +368,9 @@ struct CheckVarIntMode {
     }
 };
 
-template<VarIntMode Mode, typename I>
+template<typename I>
 inline unsigned int GetSizeOfVarInt(I n)
 {
-    CheckVarIntMode<Mode, I>();
     int nRet = 0;
     while(true) {
         nRet++;
@@ -381,10 +384,9 @@ inline unsigned int GetSizeOfVarInt(I n)
 template<typename I>
 inline void WriteVarInt(CSizeComputer& os, I n);
 
-template<typename Stream, VarIntMode Mode, typename I>
+template<typename Stream, typename I>
 void WriteVarInt(Stream& os, I n)
 {
-    CheckVarIntMode<Mode, I>();
     unsigned char tmp[(sizeof(n)*8+6)/7];
     int len=0;
     while(true) {
@@ -399,10 +401,9 @@ void WriteVarInt(Stream& os, I n)
     } while(len--);
 }
 
-template<typename Stream, VarIntMode Mode, typename I>
+template<typename Stream, typename I>
 I ReadVarInt(Stream& is)
 {
-    CheckVarIntMode<Mode, I>();
     I n = 0;
     while(true) {
         unsigned char chData = ser_readdata8(is);
@@ -421,26 +422,133 @@ I ReadVarInt(Stream& is)
     }
 }
 
-#define VARINT(obj, ...) WrapVarInt<__VA_ARGS__>(REF(obj))
-#define COMPACTSIZE(obj) CCompactSize(REF(obj))
-#define LIMITED_STRING(obj,n) LimitedString< n >(REF(obj))
+#define FLATDATA(obj) REF(CFlatData((char*)&(obj), (char*)&(obj) + sizeof(obj)))
+#define FIXEDBITSET(obj, size) REF(CFixedBitSet(REF(obj), (size)))
+#define DYNBITSET(obj) REF(CDynamicBitSet(REF(obj)))
+#define FIXEDVARINTSBITSET(obj, size) REF(CFixedVarIntsBitSet(REF(obj), (size)))
+#define AUTOBITSET(obj, size) REF(CAutoBitSet(REF(obj), (size)))
+#define VARINT(obj) REF(WrapVarInt(REF(obj)))
+#define COMPACTSIZE(obj) REF(CCompactSize(REF(obj)))
+#define LIMITED_STRING(obj,n) REF(LimitedString< n >(REF(obj)))
 
-template<VarIntMode Mode, typename I>
+
+template<typename I>
 class CVarInt
 {
 protected:
     I &n;
 public:
-    explicit CVarInt(I& nIn) : n(nIn) { }
+    CVarInt(I& nIn) : n(nIn) { }
 
     template<typename Stream>
     void Serialize(Stream &s) const {
-        WriteVarInt<Stream,Mode,I>(s, n);
+        WriteVarInt<Stream,I>(s, n);
     }
 
     template<typename Stream>
     void Unserialize(Stream& s) {
-        n = ReadVarInt<Stream,Mode,I>(s);
+        n = ReadVarInt<Stream,I>(s);
+    }
+};
+
+/** 
+ * Wrapper for serializing arrays and POD.
+ */
+class CFlatData
+{
+protected:
+    char* pbegin;
+    char* pend;
+public:
+    CFlatData(void* pbeginIn, void* pendIn) : pbegin((char*)pbeginIn), pend((char*)pendIn) { }
+    template <class T, class TAl>
+    explicit CFlatData(std::vector<T,TAl> &v)
+    {
+        pbegin = (char*)v.data();
+        pend = (char*)(v.data() + v.size());
+    }
+    template <unsigned int N, typename T, typename S, typename D>
+    explicit CFlatData(prevector<N, T, S, D> &v)
+    {
+        pbegin = (char*)v.data();
+        pend = (char*)(v.data() + v.size());
+    }
+    char* begin() { return pbegin; }
+    const char* begin() const { return pbegin; }
+    char* end() { return pend; }
+    const char* end() const { return pend; }
+
+    template<typename Stream>
+    void Serialize(Stream& s) const
+    {
+        s.write(pbegin, pend - pbegin);
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream& s)
+    {
+        s.read(pbegin, pend - pbegin);
+    }
+};
+
+class CFixedBitSet
+{
+protected:
+    std::vector<bool>& vec;
+    size_t size;
+
+public:
+    CFixedBitSet(std::vector<bool>& vecIn, size_t sizeIn) : vec(vecIn), size(sizeIn) {}
+
+    template<typename Stream>
+    void Serialize(Stream& s) const
+    {
+        std::vector<unsigned char> vBytes((size + 7) / 8);
+        size_t ms = std::min(size, vec.size());
+        for (size_t p = 0; p < ms; p++)
+            vBytes[p / 8] |= vec[p] << (p % 8);
+        s.write((char*)vBytes.data(), vBytes.size());
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream& s)
+    {
+        vec.resize(size);
+
+        std::vector<unsigned char> vBytes((size + 7) / 8);
+        s.read((char*)vBytes.data(), vBytes.size());
+        for (size_t p = 0; p < size; p++)
+            vec[p] = (vBytes[p / 8] & (1 << (p % 8))) != 0;
+        if (vBytes.size() * 8 != size) {
+            size_t rem = vBytes.size() * 8 - size;
+            uint8_t m = ~(uint8_t)(0xff >> rem);
+            if (vBytes[vBytes.size() - 1] & m) {
+                throw std::ios_base::failure("Out-of-range bits set");
+            }
+        }
+    }
+};
+
+class CDynamicBitSet
+{
+protected:
+    std::vector<bool>& vec;
+
+public:
+    explicit CDynamicBitSet(std::vector<bool>& vecIn) : vec(vecIn) {}
+
+    template<typename Stream>
+    void Serialize(Stream& s) const
+    {
+        WriteCompactSize(s, vec.size());
+        CFixedBitSet(REF(vec), vec.size()).Serialize(s);
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream& s)
+    {
+        vec.resize(ReadCompactSize(s));
+        CFixedBitSet(vec, vec.size()).Unserialize(s);
     }
 };
 
@@ -478,12 +586,111 @@ public:
     }
 };
 
+/**
+ * Stores a fixed size bitset as a series of VarInts. Each VarInt is an offset from the last entry and the sum of the
+ * last entry and the offset gives an index into the bitset for a set bit. The series of VarInts ends with a 0.
+ */
+class CFixedVarIntsBitSet
+{
+protected:
+    std::vector<bool>& vec;
+    size_t size;
+
+public:
+    CFixedVarIntsBitSet(std::vector<bool>& vecIn, size_t sizeIn) : vec(vecIn), size(sizeIn) {}
+
+    template<typename Stream>
+    void Serialize(Stream& s) const
+    {
+        int32_t last = -1;
+        for (int32_t i = 0; i < (int32_t)vec.size(); i++) {
+            if (vec[i]) {
+                WriteVarInt<Stream, uint32_t>(s, (uint32_t)(i - last));
+                last = i;
+            }
+        }
+        WriteVarInt(s, 0); // stopper
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream& s)
+    {
+        vec.assign(size, false);
+
+        int32_t last = -1;
+        while(true) {
+            uint32_t offset = ReadVarInt<Stream, uint32_t>(s);
+            if (offset == 0) {
+                break;
+            }
+            int32_t idx = last + offset;
+            if (idx >= size) {
+                throw std::ios_base::failure("out of bounds index");
+            }
+            if (last != -1 && idx <= last) {
+                throw std::ios_base::failure("offset overflow");
+            }
+            vec[idx] = true;
+            last = idx;
+        }
+    }
+};
+
+/**
+ * Serializes either as a CFixedBitSet or CFixedVarIntsBitSet, depending on which would give a smaller size
+ */
+class CAutoBitSet
+{
+protected:
+    std::vector<bool>& vec;
+    size_t size;
+
+public:
+    explicit CAutoBitSet(std::vector<bool>& vecIn, size_t sizeIn) : vec(vecIn), size(sizeIn) {}
+
+    template<typename Stream>
+    void Serialize(Stream& s) const
+    {
+        assert(vec.size() == size);
+
+        size_t size1 = ::GetSerializeSize(s, CFixedBitSet(vec, size));
+        size_t size2 = ::GetSerializeSize(s, CFixedVarIntsBitSet(vec, size));
+
+        if (size1 < size2) {
+            ser_writedata8(s, 0);
+            s << FIXEDBITSET(vec, vec.size());
+        } else {
+            ser_writedata8(s, 1);
+            s << FIXEDVARINTSBITSET(vec, vec.size());
+        }
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream& s)
+    {
+        uint8_t isVarInts = ser_readdata8(s);
+        if (isVarInts != 0 && isVarInts != 1) {
+            throw std::ios_base::failure("invalid value for isVarInts byte");
+        }
+
+        if (!isVarInts) {
+            s >> FIXEDBITSET(vec, size);
+        } else {
+            s >> FIXEDVARINTSBITSET(vec, size);
+        }
+    }
+};
+
 class CCompactSize
 {
 protected:
     uint64_t &n;
 public:
-    explicit CCompactSize(uint64_t& nIn) : n(nIn) { }
+    CCompactSize(uint64_t& nIn) : n(nIn) { }
+
+    unsigned int GetSerializeSize() const {
+        return GetSizeOfCompactSize(n);
+    }
 
     template<typename Stream>
     void Serialize(Stream &s) const {
@@ -502,7 +709,7 @@ class LimitedString
 protected:
     std::string& string;
 public:
-    explicit LimitedString(std::string& _string) : string(_string) {}
+    LimitedString(std::string& _string) : string(_string) {}
 
     template<typename Stream>
     void Unserialize(Stream& s)
@@ -525,11 +732,8 @@ public:
     }
 };
 
-template<VarIntMode Mode=VarIntMode::DEFAULT, typename I>
-CVarInt<Mode, I> WrapVarInt(I& n) { return CVarInt<Mode, I>{n}; }
-
 template<typename I>
-BigEndian<I> WrapBigEndian(I& n) { return BigEndian<I>(n); }
+CVarInt<I> WrapVarInt(I& n) { return CVarInt<I>(n); }
 
 /**
  * Forward declarations
@@ -570,22 +774,32 @@ template<typename Stream, typename K, typename T> void Serialize(Stream& os, con
 template<typename Stream, typename K, typename T> void Unserialize(Stream& is, std::pair<K, T>& item);
 
 /**
+ * pair
+ */
+template<typename Stream, typename... Elements> void Serialize(Stream& os, const std::tuple<Elements...>& item);
+template<typename Stream, typename... Elements> void Unserialize(Stream& is, std::tuple<Elements...>& item);
+
+/**
  * map
  */
 template<typename Stream, typename K, typename T, typename Pred, typename A> void Serialize(Stream& os, const std::map<K, T, Pred, A>& m);
 template<typename Stream, typename K, typename T, typename Pred, typename A> void Unserialize(Stream& is, std::map<K, T, Pred, A>& m);
+template<typename Stream, typename K, typename T, typename Hash, typename Pred, typename A> void Serialize(Stream& os, const std::unordered_map<K, T, Hash, Pred, A>& m);
+template<typename Stream, typename K, typename T, typename Hash, typename Pred, typename A> void Unserialize(Stream& is, std::unordered_map<K, T, Hash, Pred, A>& m);
 
 /**
  * set
  */
 template<typename Stream, typename K, typename Pred, typename A> void Serialize(Stream& os, const std::set<K, Pred, A>& m);
 template<typename Stream, typename K, typename Pred, typename A> void Unserialize(Stream& is, std::set<K, Pred, A>& m);
+template<typename Stream, typename K, typename Hash, typename Pred, typename A> void Serialize(Stream& os, const std::unordered_set<K, Hash, Pred, A>& m);
+template<typename Stream, typename K, typename Hash, typename Pred, typename A> void Unserialize(Stream& is, std::unordered_set<K, Hash, Pred, A>& m);
 
 /**
  * shared_ptr
  */
-template<typename Stream, typename T> void Serialize(Stream& os, const std::shared_ptr<const T>& p);
-template<typename Stream, typename T> void Unserialize(Stream& os, std::shared_ptr<const T>& p);
+template<typename Stream, typename T> void Serialize(Stream& os, const std::shared_ptr<T>& p);
+template<typename Stream, typename T> void Unserialize(Stream& os, std::shared_ptr<T>& p);
 
 /**
  * unique_ptr
@@ -596,21 +810,52 @@ template<typename Stream, typename T> void Unserialize(Stream& os, std::unique_p
 
 
 /**
- * If none of the specialized versions above matched, default to calling member function.
+ * If none of the specialized versions above matched and T is a class, default to calling member function.
  */
-template<typename Stream, typename T>
+template<typename Stream, typename T, typename std::enable_if<std::is_class<T>::value>::type* = nullptr>
 inline void Serialize(Stream& os, const T& a)
 {
     a.Serialize(os);
 }
 
-template<typename Stream, typename T>
-inline void Unserialize(Stream& is, T&& a)
+template<typename Stream, typename T, typename std::enable_if<std::is_class<T>::value>::type* = nullptr>
+inline void Unserialize(Stream& is, T& a)
 {
     a.Unserialize(is);
 }
 
+/**
+ * If none of the specialized versions above matched and T is an enum, default to calling
+ * Serialize/Unserialze with the underlying type. This is only allowed when a specialized struct of is_serializable_enum<Enum>
+ * is found which derives from std::true_type. This is to ensure that enums are not serialized with the wrong type by
+ * accident.
+ */
 
+template<typename T> struct is_serializable_enum;
+template<typename T> struct is_serializable_enum : std::false_type {};
+
+template<typename Stream, typename T, typename std::enable_if<std::is_enum<T>::value>::type* = nullptr>
+inline void Serialize(Stream& s, T a )
+{
+    // If you ever get into this situation, it usaully means you forgot to declare is_serializable_enum for the desired enum type
+    static_assert(is_serializable_enum<T>::value, "Missing declararion of is_serializable_enum");
+
+    typedef typename std::underlying_type<T>::type T2;
+    T2 b = (T2)a;
+    Serialize(s, b);
+}
+
+template<typename Stream, typename T, typename std::enable_if<std::is_enum<T>::value>::type* = nullptr>
+inline void Unserialize(Stream& s, T& a )
+{
+    // If you ever get into this situation, it usaully means you forgot to declare is_serializable_enum for the desired enum type
+    static_assert(is_serializable_enum<T>::value, "Missing declararion of is_serializable_enum");
+
+    typedef typename std::underlying_type<T>::type T2;
+    T2 b;
+    Unserialize(s, b);
+    a = (T)b;
+}
 
 
 
@@ -789,57 +1034,175 @@ void Unserialize(Stream& is, std::pair<K, T>& item)
     Unserialize(is, item.second);
 }
 
+/**
+ * tuple
+ */
+template<typename Stream, int index, typename... Ts>
+struct SerializeTuple {
+    void operator() (Stream&s, std::tuple<Ts...>& t) {
+        SerializeTuple<Stream, index - 1, Ts...>{}(s, t);
+        s << std::get<index>(t);
+    }
+};
+
+template<typename Stream, typename... Ts>
+struct SerializeTuple<Stream, 0, Ts...> {
+    void operator() (Stream&s, std::tuple<Ts...>& t) {
+        s << std::get<0>(t);
+    }
+};
+
+template<typename Stream, int index, typename... Ts>
+struct DeserializeTuple {
+    void operator() (Stream&s, std::tuple<Ts...>& t) {
+        DeserializeTuple<Stream, index - 1, Ts...>{}(s, t);
+        s >> std::get<index>(t);
+    }
+};
+
+template<typename Stream, typename... Ts>
+struct DeserializeTuple<Stream, 0, Ts...> {
+    void operator() (Stream&s, std::tuple<Ts...>& t) {
+        s >> std::get<0>(t);
+    }
+};
+
+
+template<typename Stream, typename... Elements>
+void Serialize(Stream& os, const std::tuple<Elements...>& item)
+{
+    const auto size = std::tuple_size<std::tuple<Elements...>>::value;
+    SerializeTuple<Stream, size - 1, Elements...>{}(os, const_cast<std::tuple<Elements...>&>(item));
+}
+
+template<typename Stream, typename... Elements>
+void Unserialize(Stream& is, std::tuple<Elements...>& item)
+{
+    const auto size = std::tuple_size<std::tuple<Elements...>>::value;
+    DeserializeTuple<Stream, size - 1, Elements...>{}(is, item);
+}
 
 
 /**
  * map
  */
-template<typename Stream, typename K, typename T, typename Pred, typename A>
-void Serialize(Stream& os, const std::map<K, T, Pred, A>& m)
+template<typename Stream, typename Map>
+void SerializeMap(Stream& os, const Map& m)
 {
     WriteCompactSize(os, m.size());
-    for (const auto& entry : m)
-        Serialize(os, entry);
+    for (auto mi = m.begin(); mi != m.end(); ++mi)
+        Serialize(os, (*mi));
 }
 
-template<typename Stream, typename K, typename T, typename Pred, typename A>
-void Unserialize(Stream& is, std::map<K, T, Pred, A>& m)
+template<typename Stream, typename Map>
+void UnserializeMap(Stream& is, Map& m)
 {
     m.clear();
     unsigned int nSize = ReadCompactSize(is);
-    typename std::map<K, T, Pred, A>::iterator mi = m.begin();
+    auto mi = m.begin();
     for (unsigned int i = 0; i < nSize; i++)
     {
-        std::pair<K, T> item;
+        std::pair<typename std::remove_const<typename Map::key_type>::type, typename std::remove_const<typename Map::mapped_type>::type> item;
         Unserialize(is, item);
         mi = m.insert(mi, item);
     }
 }
 
+template<typename Stream, typename K, typename T, typename Pred, typename A>
+void Serialize(Stream& os, const std::map<K, T, Pred, A>& m)
+{
+    SerializeMap(os, m);
+}
 
+template<typename Stream, typename K, typename T, typename Pred, typename A>
+void Unserialize(Stream& is, std::map<K, T, Pred, A>& m)
+{
+    UnserializeMap(is, m);
+}
+
+template<typename Stream, typename K, typename T, typename Hash, typename Pred, typename A>
+void Serialize(Stream& os, const std::unordered_map<K, T, Hash, Pred, A>& m)
+{
+    SerializeMap(os, m);
+}
+
+template<typename Stream, typename K, typename T, typename Hash, typename Pred, typename A>
+void Unserialize(Stream& is, std::unordered_map<K, T, Hash, Pred, A>& m)
+{
+    UnserializeMap(is, m);
+}
 
 /**
  * set
  */
+
+template<typename Stream, typename Set>
+void SerializeSet(Stream& os, const Set& m)
+{
+    WriteCompactSize(os, m.size());
+    for (auto it = m.begin(); it != m.end(); ++it)
+        Serialize(os, (*it));
+}
+
+template<typename Stream, typename Set>
+void UnserializeSet(Stream& is, Set& m)
+{
+    m.clear();
+    unsigned int nSize = ReadCompactSize(is);
+    auto it = m.begin();
+    for (unsigned int i = 0; i < nSize; i++)
+    {
+        typename std::remove_const<typename Set::key_type>::type key;
+        Unserialize(is, key);
+        it = m.insert(it, key);
+    }
+}
+
 template<typename Stream, typename K, typename Pred, typename A>
 void Serialize(Stream& os, const std::set<K, Pred, A>& m)
 {
-    WriteCompactSize(os, m.size());
-    for (typename std::set<K, Pred, A>::const_iterator it = m.begin(); it != m.end(); ++it)
-        Serialize(os, (*it));
+    SerializeSet(os, m);
 }
 
 template<typename Stream, typename K, typename Pred, typename A>
 void Unserialize(Stream& is, std::set<K, Pred, A>& m)
 {
-    m.clear();
+    UnserializeSet(is, m);
+}
+
+template<typename Stream, typename K, typename Hash, typename Pred, typename A>
+void Serialize(Stream& os, const std::unordered_set<K, Hash, Pred, A>& m)
+{
+    SerializeSet(os, m);
+}
+
+template<typename Stream, typename K, typename Hash, typename Pred, typename A>
+void Unserialize(Stream& is, std::unordered_set<K, Hash, Pred, A>& m)
+{
+    UnserializeSet(is, m);
+}
+
+/**
+ * list
+ */
+template<typename Stream, typename T, typename A>
+void Serialize(Stream& os, const std::list<T, A>& l)
+{
+    WriteCompactSize(os, l.size());
+    for (typename std::list<T, A>::const_iterator it = l.begin(); it != l.end(); ++it)
+        Serialize(os, (*it));
+}
+
+template<typename Stream, typename T, typename A>
+void Unserialize(Stream& is, std::list<T, A>& l)
+{
+    l.clear();
     unsigned int nSize = ReadCompactSize(is);
-    typename std::set<K, Pred, A>::iterator it = m.begin();
     for (unsigned int i = 0; i < nSize; i++)
     {
-        K key;
-        Unserialize(is, key);
-        it = m.insert(it, key);
+        T val;
+        Unserialize(is, val);
+        l.push_back(val);
     }
 }
 
@@ -866,15 +1229,15 @@ void Unserialize(Stream& is, std::unique_ptr<const T>& p)
  * shared_ptr
  */
 template<typename Stream, typename T> void
-Serialize(Stream& os, const std::shared_ptr<const T>& p)
+Serialize(Stream& os, const std::shared_ptr<T>& p)
 {
     Serialize(os, *p);
 }
 
 template<typename Stream, typename T>
-void Unserialize(Stream& is, std::shared_ptr<const T>& p)
+void Unserialize(Stream& is, std::shared_ptr<T>& p)
 {
-    p = std::make_shared<const T>(deserialize, is);
+    p = std::make_shared<T>(deserialize, is);
 }
 
 
@@ -890,6 +1253,19 @@ struct CSerActionUnserialize
 {
     constexpr bool ForRead() const { return true; }
 };
+
+template<typename Stream, typename T>
+inline void SerReadWrite(Stream& s, const T& obj, CSerActionSerialize ser_action)
+{
+    ::Serialize(s, obj);
+}
+
+template<typename Stream, typename T>
+inline void SerReadWrite(Stream& s, T& obj, CSerActionUnserialize ser_action)
+{
+    ::Unserialize(s, obj);
+}
+
 
 
 
@@ -915,10 +1291,9 @@ protected:
     size_t nSize;
 
     const int nType;
-
     const int nVersion;
 public:
-    explicit CSizeComputer(int nTypeIn, int nVersionIn) : nSize(0), nType(nTypeIn), nVersion(nVersionIn) {}
+    CSizeComputer(int nTypeIn, int nVersionIn) : nSize(0), nType(nTypeIn), nVersion(nVersionIn) {}
 
     void write(const char *psz, size_t _nSize)
     {
@@ -951,11 +1326,17 @@ void SerializeMany(Stream& s)
 {
 }
 
-template<typename Stream, typename Arg, typename... Args>
-void SerializeMany(Stream& s, const Arg& arg, const Args&... args)
+template<typename Stream, typename Arg>
+void SerializeMany(Stream& s, Arg&& arg)
 {
-    ::Serialize(s, arg);
-    ::SerializeMany(s, args...);
+    ::Serialize(s, std::forward<Arg>(arg));
+}
+
+template<typename Stream, typename Arg, typename... Args>
+void SerializeMany(Stream& s, Arg&& arg, Args&&... args)
+{
+    ::Serialize(s, std::forward<Arg>(arg));
+    ::SerializeMany(s, std::forward<Args>(args)...);
 }
 
 template<typename Stream>
@@ -963,21 +1344,27 @@ inline void UnserializeMany(Stream& s)
 {
 }
 
+template<typename Stream, typename Arg>
+inline void UnserializeMany(Stream& s, Arg& arg)
+{
+    ::Unserialize(s, arg);
+}
+
 template<typename Stream, typename Arg, typename... Args>
-inline void UnserializeMany(Stream& s, Arg&& arg, Args&&... args)
+inline void UnserializeMany(Stream& s, Arg& arg, Args&... args)
 {
     ::Unserialize(s, arg);
     ::UnserializeMany(s, args...);
 }
 
 template<typename Stream, typename... Args>
-inline void SerReadWriteMany(Stream& s, CSerActionSerialize ser_action, const Args&... args)
+inline void SerReadWriteMany(Stream& s, CSerActionSerialize ser_action, Args&&... args)
 {
-    ::SerializeMany(s, args...);
+    ::SerializeMany(s, std::forward<Args>(args)...);
 }
 
 template<typename Stream, typename... Args>
-inline void SerReadWriteMany(Stream& s, CSerActionUnserialize ser_action, Args&&... args)
+inline void SerReadWriteMany(Stream& s, CSerActionUnserialize ser_action, Args&... args)
 {
     ::UnserializeMany(s, args...);
 }
@@ -994,7 +1381,7 @@ inline void WriteCompactSize(CSizeComputer &s, uint64_t nSize)
 }
 
 template <typename T>
-size_t GetSerializeSize(const T& t, int nType, int nVersion = 0)
+size_t GetSerializeSize(const T& t, int nType, int nVersion)
 {
     return (CSizeComputer(nType, nVersion) << t).size();
 }

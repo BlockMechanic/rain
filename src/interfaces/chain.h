@@ -32,6 +32,15 @@ struct CBlockLocator;
 struct FeeCalculation;
 class CWallet;
 class CBlockIndex;
+class CGovernanceVote;
+class CGovernanceObject;
+class CDeterministicMNList;
+class CDeterministicMNListDiff;
+
+namespace llmq {
+    class CChainLockSig;
+    class CInstantSendLock;
+} // namespace llmq
 
 namespace interfaces {
 
@@ -109,17 +118,26 @@ public:
         virtual CBlockIndex * currentTip() = 0;
         //! Check that the block is is available on disk and is proof of stake.
         virtual bool IsProofOfStake(int height) = 0;
-        
-        //! get the stake address
-        
-        virtual uint160 ReadStakeIndex(int height) = 0;
-        
+                
         virtual bool startStake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread) = 0;
 
         virtual bool getCoinAge(const CTransaction& tx, uint64_t& nCoinAge) =0;
         virtual int64_t getBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, uint256 prevHash, bool fProofofStake, int64_t nCoinAge, int64_t nFees, int64_t supply) = 0;
         virtual bool getPostx(const uint256 &hash, CDiskTxPos& postx, CBlockHeader& header, CTransactionRef& tx) =0;
         virtual	bool checkKernel(CValidationState& state, unsigned int nBits, uint32_t nTimeBlock, const COutPoint& prevout) =0;
+        virtual int outputpriority(CTransactionRef tx, int i) = 0;
+        virtual std::vector<CAmount> privsenddenoms () =0;
+        virtual bool isDenominatedAmount (CAmount amount) =0;
+        virtual bool isCollateralAmount (CAmount amount) =0;
+        virtual bool qourumISM_IsLocked(uint256 hash) =0;
+        virtual bool isChainLocked(uint256 hashBlock) =0;
+		virtual CAmount getSmallestDenomination () =0;
+		virtual CAmount getCollateralAmount () = 0;
+		virtual bool getDenominationsBits(int nDenom, std::vector<int>& vecBits) =0;
+		virtual int psRounds() =0;
+		virtual bool psEnabled ()=0;
+		virtual bool deterministicMNComp (CTransactionRef tx, uint256 hash, int i) =0;
+		virtual void psRemoveSkippedDenom (CAmount amount)=0;
 
 #ifdef ENABLE_SECURE_MESSAGING
         virtual bool smsgStart()=0;
@@ -266,12 +284,18 @@ public:
     {
     public:
         virtual ~Notifications() {}
-        virtual void TransactionAddedToMempool(const CTransactionRef& tx) {}
+        virtual void TransactionAddedToMempool(const CTransactionRef& tx, int64_t nAcceptTime) {}
         virtual void TransactionRemovedFromMempool(const CTransactionRef& ptx) {}
         virtual void BlockConnected(const CBlock& block, const std::vector<CTransactionRef>& tx_conflicted) {}
-        virtual void BlockDisconnected(const CBlock& block) {}
+        virtual void BlockDisconnected(const CBlock& block, const CBlockIndex* pindexDisconnected) {}
         virtual void UpdatedBlockTip() {}
-        virtual void ChainStateFlushed(const CBlockLocator& locator) {}
+        virtual void ChainStateFlushed(const CBlockLocator& locator) {} 
+		virtual void NotifyTransactionLock(const CTransaction &tx, const llmq::CInstantSendLock& islock) {}
+		virtual void NotifyChainLock(const CBlockIndex* pindex, const llmq::CChainLockSig& clsig) {}
+		virtual void NotifyGovernanceVote(const CGovernanceVote &vote) {}
+		virtual void NotifyGovernanceObject(const CGovernanceObject &object) {}
+		virtual void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) {}
+		virtual void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) {}
     };
 
     //! Register handler for notifications.

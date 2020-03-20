@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Bitcoinrain Core developers
+// Copyright (c) 2009-2018 The Rainrain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -55,6 +55,41 @@ const char *SMSGWANT = "smsgWant";
 const char *SMSGMSG = "smsgMsg";
 const char *SMSGINV = "smsgInv";
 #endif
+
+// Rain message types
+const char *LEGACYTXLOCKREQUEST="ix";
+const char *SPORK="spork";
+const char *GETSPORKS="getsporks";
+const char *DSACCEPT="dsa";
+const char *DSVIN="dsi";
+const char *DSFINALTX="dsf";
+const char *DSSIGNFINALTX="dss";
+const char *DSCOMPLETE="dsc";
+const char *DSSTATUSUPDATE="dssu";
+const char *DSTX="dstx";
+const char *DSQUEUE="dsq";
+const char *SENDDSQUEUE="senddsq";
+const char *SYNCSTATUSCOUNT="ssc";
+const char *MNGOVERNANCESYNC="govsync";
+const char *MNGOVERNANCEOBJECT="govobj";
+const char *MNGOVERNANCEOBJECTVOTE="govobjvote";
+const char *GETMNLISTDIFF="getmnlistd";
+const char *MNLISTDIFF="mnlistdiff";
+const char *QSENDRECSIGS="qsendrecsigs";
+const char *QFCOMMITMENT="qfcommit";
+const char *QCONTRIB="qcontrib";
+const char *QCOMPLAINT="qcomplaint";
+const char *QJUSTIFICATION="qjustify";
+const char *QPCOMMITMENT="qpcommit";
+const char *QWATCH="qwatch";
+const char *QSIGSESANN="qsigsesann";
+const char *QSIGSHARESINV="qsigsinv";
+const char *QGETSIGSHARES="qgetsigs";
+const char *QBSIGSHARES="qbsigs";
+const char *QSIGREC="qsigrec";
+const char *CLSIG="clsig";
+const char *ISLOCK="islock";
+const char *MNAUTH="mnauth";
 } // namespace NetMsgType
 
 /** All known message types. Keep this in the same order as the list of
@@ -100,6 +135,42 @@ const static std::string allNetMessageTypes[] = {
     NetMsgType::SMSGMSG,
     NetMsgType::SMSGINV,
 #endif
+
+    // Rain message types
+    // NOTE: do NOT include non-implmented here, we want them to be "Unknown command" in ProcessMessage()
+    NetMsgType::LEGACYTXLOCKREQUEST,
+    NetMsgType::SPORK,
+    NetMsgType::GETSPORKS,
+    NetMsgType::SENDDSQUEUE,
+    NetMsgType::DSACCEPT,
+    NetMsgType::DSVIN,
+    NetMsgType::DSFINALTX,
+    NetMsgType::DSSIGNFINALTX,
+    NetMsgType::DSCOMPLETE,
+    NetMsgType::DSSTATUSUPDATE,
+    NetMsgType::DSTX,
+    NetMsgType::DSQUEUE,
+    NetMsgType::SYNCSTATUSCOUNT,
+    NetMsgType::MNGOVERNANCESYNC,
+    NetMsgType::MNGOVERNANCEOBJECT,
+    NetMsgType::MNGOVERNANCEOBJECTVOTE,
+    NetMsgType::GETMNLISTDIFF,
+    NetMsgType::MNLISTDIFF,
+    NetMsgType::QSENDRECSIGS,
+    NetMsgType::QFCOMMITMENT,
+    NetMsgType::QCONTRIB,
+    NetMsgType::QCOMPLAINT,
+    NetMsgType::QJUSTIFICATION,
+    NetMsgType::QPCOMMITMENT,
+    NetMsgType::QWATCH,
+    NetMsgType::QSIGSESANN,
+    NetMsgType::QSIGSHARESINV,
+    NetMsgType::QGETSIGSHARES,
+    NetMsgType::QBSIGSHARES,
+    NetMsgType::QSIGREC,
+    NetMsgType::CLSIG,
+    NetMsgType::ISLOCK,
+    NetMsgType::MNAUTH,
 };
 const static std::vector<std::string> allNetMessageTypesVec(allNetMessageTypes, allNetMessageTypes+ARRAYLEN(allNetMessageTypes));
 
@@ -209,7 +280,20 @@ std::string CInv::GetCommand() const
     case MSG_TX:             return cmd.append(NetMsgType::TX);
     case MSG_BLOCK:          return cmd.append(NetMsgType::BLOCK);
     case MSG_FILTERED_BLOCK: return cmd.append(NetMsgType::MERKLEBLOCK);
+    case MSG_LEGACY_TXLOCK_REQUEST:         return NetMsgType::LEGACYTXLOCKREQUEST; 
     case MSG_CMPCT_BLOCK:    return cmd.append(NetMsgType::CMPCTBLOCK);
+        case MSG_SPORK:                         return NetMsgType::SPORK;
+        case MSG_DSTX:                          return NetMsgType::DSTX;
+        case MSG_GOVERNANCE_OBJECT:             return NetMsgType::MNGOVERNANCEOBJECT;
+        case MSG_GOVERNANCE_OBJECT_VOTE:        return NetMsgType::MNGOVERNANCEOBJECTVOTE;
+        case MSG_QUORUM_FINAL_COMMITMENT:       return NetMsgType::QFCOMMITMENT;
+        case MSG_QUORUM_CONTRIB:                return NetMsgType::QCONTRIB;
+        case MSG_QUORUM_COMPLAINT:              return NetMsgType::QCOMPLAINT;
+        case MSG_QUORUM_JUSTIFICATION:          return NetMsgType::QJUSTIFICATION;
+        case MSG_QUORUM_PREMATURE_COMMITMENT:   return NetMsgType::QPCOMMITMENT;
+        case MSG_QUORUM_RECOVERED_SIG:          return NetMsgType::QSIGREC;
+        case MSG_CLSIG:                         return NetMsgType::CLSIG;
+        case MSG_ISLOCK:                        return NetMsgType::ISLOCK;
     default:
         throw std::out_of_range(strprintf("CInv::GetCommand(): type=%d unknown type", type));
     }

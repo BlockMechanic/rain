@@ -34,10 +34,11 @@ public:
     enum ColumnIndex {
         Status = 0,
         Watchonly = 1,
-        Date = 2,
-        Type = 3,
-        ToAddress = 4,
-        Amount = 5
+        InstantSend = 2,
+        Date = 3,
+        Type = 4,
+        ToAddress = 5,
+        Amount = 6
     };
 
     /** Roles to get specific information from a transaction row.
@@ -52,6 +53,10 @@ public:
         WatchonlyRole,
         /** Watch-only icon */
         WatchonlyDecorationRole,
+        /** InstantSend boolean */
+        InstantSendRole,
+        /** InstantSend icon */
+        InstantSendDecorationRole,
         /** Long description (HTML format) */
         LongDescriptionRole,
         /** Address of transaction */
@@ -60,6 +65,8 @@ public:
         LabelRole,
         /** Net amount of transaction */
         AmountRole,
+        /** Unique identifier */
+        TxIDRole,
         /** Transaction hash */
         TxHashRole,
         /** Transaction data, hex-encoded */
@@ -102,19 +109,24 @@ public:
     QVariant headerData(int section, Qt::Orientation orientation, int role) const;
     QModelIndex index(int row, int column, const QModelIndex & parent = QModelIndex()) const;
     bool processingQueuedTransactions() const { return fProcessingQueuedTransactions; }
+    void updateChainLockHeight(int chainLockHeight);
+    int getChainLockHeight() const;
 
 private:
     WalletModel *walletModel;
     std::unique_ptr<interfaces::Handler> m_handler_transaction_changed;
     std::unique_ptr<interfaces::Handler> m_handler_show_progress;
+    std::unique_ptr<interfaces::Handler> m_handler_address_book_changed;
     QStringList columns;
     TransactionTablePriv *priv;
     bool fProcessingQueuedTransactions;
     const PlatformStyle *platformStyle;
+    int cachedChainLockHeight;
 
     void subscribeToCoreSignals();
     void unsubscribeFromCoreSignals();
 
+    QString formatAddressLabel(const std::string &address, const QString& label, bool tooltip) const;
     QString lookupAddress(const std::string &address, bool tooltip) const;
     QVariant addressColor(const TransactionRecord *wtx) const;
     QString formatTxStatus(const TransactionRecord *wtx) const;
@@ -125,12 +137,15 @@ private:
     QString formatTooltip(const TransactionRecord *rec) const;
     QVariant txStatusDecoration(const TransactionRecord *wtx) const;
     QVariant txWatchonlyDecoration(const TransactionRecord *wtx) const;
+    QVariant txInstantSendDecoration(const TransactionRecord *wtx) const;
     QVariant txAddressDecoration(const TransactionRecord *wtx) const;
     QVariant typeDecoration(const TransactionRecord *wtx) const;
 
 public Q_SLOTS:
     /* New transaction, or transaction changed status */
     void updateTransaction(const QString &hash, int status, bool showTransaction);
+    void updateAddressBook(const QString &address, const QString &label,
+                           bool isMine, const QString &purpose, int status);
     void updateConfirmations();
     void updateDisplayUnit();
     /** Updates the column title to "Amount (DisplayUnit)" and emits headerDataChanged() signal for table headers to react. */

@@ -79,6 +79,8 @@ WalletTxStatus MakeWalletTxStatus(interfaces::Chain::Lock& locked_chain, const C
     result.is_coinstake = wtx.IsCoinStake();
     result.is_in_main_chain = wtx.IsInMainChain(locked_chain);
     result.fValidated = wtx.fValidated;
+    result.isChainLocked = wtx.IsChainLocked();
+    result.isLockedByInstantSend = wtx.IsLockedByInstantSend(); 
     return result;
 }
 
@@ -101,6 +103,27 @@ class WalletImpl : public Wallet
 {
 public:
     explicit WalletImpl(const std::shared_ptr<CWallet>& wallet) : m_wallet(wallet) {}
+    
+    
+    CWallet * getWallet () override{
+		return m_wallet.get();
+	}
+    CAmount DenominatedUnconfirmedBalance () override {
+		return m_wallet->GetDenominatedBalance(true);
+	}
+
+    float AverageAnonymizedRounds () override {
+		return m_wallet->GetAverageAnonymizedRounds();
+	}
+
+    int KeysLeftSinceAutoBackup () override {
+		return m_wallet->nKeysLeftSinceAutoBackup;
+	}
+
+    bool autoBackupWallet (CWallet* wallet, const std::string& strWalletFile_, std::string& strBackupWarningRet, std::string& strBackupErrorRet) override {
+		return ::AutoBackupWallet(wallet,strWalletFile_,strBackupWarningRet,strBackupErrorRet);
+	}
+
 
     bool encryptWallet(const SecureString& wallet_passphrase) override
     {
@@ -358,6 +381,10 @@ public:
         result.unconfirmed_balance = bal.m_mine_untrusted_pending;
         result.immature_balance = bal.m_mine_immature;
         result.stake = bal.m_mine_stake;
+        result.anonymized = bal.m_anonymized;        
+        result.anonymizable = bal.m_anonymizable;
+        result.denominated = bal.m_denominated;
+        result.normalized_anonymized = bal.m_normalized_anonymized;
         result.have_watch_only = m_wallet->HaveWatchOnly();
         if (result.have_watch_only) {
             result.watch_only_balance = bal.m_watchonly_trusted;
@@ -382,7 +409,7 @@ public:
     CAmount getBalance() override { return m_wallet->GetBalance().m_mine_trusted; }
     CAmount getAvailableBalance(const CCoinControl& coin_control) override
     {
-        return m_wallet->GetAvailableBalance(&coin_control);
+        return m_wallet->GetAvailableBalance(coin_control);
     }
     isminetype txinIsMine(const CTxIn& txin) override
     {

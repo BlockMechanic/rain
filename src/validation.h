@@ -21,6 +21,7 @@
 #include <txmempool.h> // For CTxMemPool::cs
 #include <txdb.h>
 #include <versionbits.h>
+#include <spentindex.h>
 
 #include <algorithm>
 #include <atomic>
@@ -48,7 +49,6 @@ class CScriptCheck;
 class CBlockPolicyEstimator;
 class CTxMemPool;
 class CValidationState;
-class CKeyStore;
 class CWallet;
 struct ChainTxData;
 
@@ -114,11 +114,16 @@ static const int64_t DEFAULT_MAX_TIP_AGE = 12 * 60;
 static const int64_t MAX_FEE_ESTIMATION_TIP_AGE = 3 * 60 * 60;
 
 static const bool DEFAULT_CHECKPOINTS_ENABLED = true;
-static const bool DEFAULT_TXINDEX = false;
+static const bool DEFAULT_TXINDEX = true;
+static const bool DEFAULT_ADDRESSINDEX = false;
+static const bool DEFAULT_TIMESTAMPINDEX = false;
+static const bool DEFAULT_SPENTINDEX = false;
 static const char* const DEFAULT_BLOCKFILTERINDEX = "0";
 static const unsigned int DEFAULT_BANSCORE_THRESHOLD = 100;
 /** Default for -persistmempool */
 static const bool DEFAULT_PERSIST_MEMPOOL = true;
+/** Default for -syncmempool */
+static const bool DEFAULT_SYNC_MEMPOOL = true;
 /** Default for using fee filter */
 static const bool DEFAULT_FEEFILTER = true;
 
@@ -144,6 +149,8 @@ extern CCriticalSection cs_main;
 extern CBlockPolicyEstimator feeEstimator;
 extern CTxMemPool mempool;
 typedef std::unordered_map<uint256, CBlockIndex*, BlockHasher> BlockMap;
+typedef std::unordered_multimap<uint256, CBlockIndex*, BlockHasher> PrevBlockMap;
+extern PrevBlockMap mapPrevBlockIndex;
 extern BlockMap& mapBlockIndex GUARDED_BY(cs_main);
 extern std::set<std::pair<COutPoint, unsigned int>>& setStakeSeen;
 extern Mutex g_best_block_mutex;
@@ -152,6 +159,10 @@ extern uint256 g_best_block;
 extern std::atomic_bool fImporting;
 extern std::atomic_bool fReindex;
 extern int nScriptCheckThreads;
+extern bool fTxIndex;
+extern bool fAddressIndex;
+extern bool fTimestampIndex;
+extern bool fSpentIndex;
 extern bool fRequireStandard;
 extern bool fCheckBlockIndex;
 extern bool fCheckpointsEnabled;
@@ -160,6 +171,8 @@ extern size_t nCoinCacheUsage;
 extern CFeeRate minRelayTxFee;
 /** If the tip is older than this (in seconds), the node is considered to be in initial block download. */
 extern int64_t nMaxTipAge;
+
+extern std::atomic<bool> fDIP0001ActiveAtTip;
 
 /** Block hash whose ancestors we will assume to have valid scripts without checking them. */
 extern uint256 hashAssumeValid;
@@ -260,7 +273,7 @@ bool GetTransaction(const uint256& hash, CTransactionRef& tx, const Consensus::P
  */
 bool ActivateBestChain(CValidationState& state, const CChainParams& chainparams, std::shared_ptr<const CBlock> pblock = std::shared_ptr<const CBlock>());
 extern CAmount GetBlockSubsidy(unsigned int nHeight, const Consensus::Params& consensusParams, uint256 prevHash, bool fProofofStake = false, int64_t nCoinAge = 0, int64_t nFees = 0, int64_t supply = 0);
-
+CAmount GetMasternodePayment(int nHeight, CAmount blockValue);
 /** Guess verification progress (as a fraction between 0.0=genesis and 1.0=current tip). */
 double GuessVerificationProgress(const ChainTxData& data, const CBlockIndex* pindex);
 
@@ -289,68 +302,9 @@ bool AcceptToMemoryPool(CTxMemPool& pool, CValidationState &state, const CTransa
 /** Get the BIP9 state for a given deployment at the current tip. */
 ThresholdState VersionBitsTipState(const Consensus::Params& params, Consensus::DeploymentPos pos);
 
-struct CHeightTxIndexIteratorKey {
-    unsigned int height;
-
-    size_t GetSerializeSize(int nType, int nVersion) const {
-        return 4;
-    }
-    template<typename Stream>
-    void Serialize(Stream& s) const {
-        ser_writedata32be(s, height);
-    }
-    template<typename Stream>
-    void Unserialize(Stream& s) {
-        height = ser_readdata32be(s);
-    }
-
-    CHeightTxIndexIteratorKey(unsigned int _height) {
-        height = _height;
-    }
-
-    CHeightTxIndexIteratorKey() {
-        SetNull();
-    }
-
-    void SetNull() {
-        height = 0;
-    }
-};
-
-struct CHeightTxIndexKey {
-    unsigned int height;
-    uint160 address;
-
-    size_t GetSerializeSize(int nType, int nVersion) const {
-        return 24;
-    }
-    template<typename Stream>
-    void Serialize(Stream& s) const {
-        ser_writedata32be(s, height);
-        s << address;
-    }
-    template<typename Stream>
-    void Unserialize(Stream& s) {
-        height = ser_readdata32be(s);
-        valtype tmp;
-        s >> tmp;
-        address = uint160(tmp);
-    }
-
-    CHeightTxIndexKey(unsigned int _height, uint160 _address) {
-        height = _height;
-        address = _address;
-    }
-
-    CHeightTxIndexKey() {
-        SetNull();
-    }
-
-    void SetNull() {
-        height = 0;
-        address.SetNull();
-    }
-};
+bool GetUTXOCoin(const COutPoint& outpoint, Coin& coin);
+int GetUTXOHeight(const COutPoint& outpoint);
+int GetUTXOConfirmations(const COutPoint& outpoint);
 
 /** Get the numerical statistics for the BIP9 state for a given deployment at the current tip. */
 BIP9Stats VersionBitsTipStatistics(const Consensus::Params& params, Consensus::DeploymentPos pos);
@@ -426,6 +380,13 @@ public:
     ScriptError GetScriptError() const { return error; }
 };
 
+bool GetTimestampIndex(const unsigned int &high, const unsigned int &low, std::vector<uint256> &hashes);
+bool GetSpentIndex(CSpentIndexKey &key, CSpentIndexValue &value);
+bool GetAddressIndex(uint160 addressHash, int type,
+                     std::vector<std::pair<CAddressIndexKey, CAmount> > &addressIndex,
+                     int start = 0, int end = 0);
+bool GetAddressUnspent(uint160 addressHash, int type,
+                       std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > &unspentOutputs);
 /** Initializes the script-execution cache */
 void InitScriptExecutionCache();
 
@@ -705,6 +666,12 @@ extern VersionBitsCache versionbitscache;
  * Determine what nVersion a new block should use.
  */
 int32_t ComputeBlockVersion(const CBlockIndex* pindexPrev, const Consensus::Params& params);
+
+/**
+ * Return true if hash can be found in chainActive at nBlockHeight height.
+ * Fills hashRet with found hash, if no nBlockHeight is specified - chainActive.Height() is used.
+ */
+bool GetBlockHash(uint256& hashRet, int nBlockHeight = -1);
 
 /** Reject codes greater or equal to this can be returned by AcceptToMemPool
  * for transactions, to signal internal conditions. They cannot and should not

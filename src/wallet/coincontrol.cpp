@@ -11,6 +11,7 @@ void CCoinControl::SetNull()
     destChange = CNoDestination();
     m_change_type.reset();
     fAllowOtherInputs = false;
+    fRequireAllInputs = true;
     fAllowWatchOnly = false;
     m_avoid_partial_spends = gArgs.GetBoolArg("-avoidpartialspends", DEFAULT_AVOIDPARTIALSPENDS);
     m_avoid_address_reuse = false;
@@ -22,5 +23,6 @@ void CCoinControl::SetNull()
     m_fee_mode = FeeEstimateMode::UNSET;
     m_min_depth = DEFAULT_MIN_DEPTH;
     m_max_depth = DEFAULT_MAX_DEPTH;
+    nCoinType = CoinType::ALL_COINS;
 }
 

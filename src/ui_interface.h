@@ -12,6 +12,7 @@
 #include <string>
 
 class CBlockIndex;
+class CDeterministicMNList;
 namespace boost {
 namespace signals2 {
 class connection;
@@ -120,6 +121,12 @@ public:
 
     /** Best header has changed */
     ADD_SIGNALS_DECL_WRAPPER(NotifyHeaderTip, void, bool, const CBlockIndex*);
+
+    /** Masternode list has changed */
+    ADD_SIGNALS_DECL_WRAPPER(NotifyMasternodeListChanged, void, const CDeterministicMNList&);
+
+    /** Additional data sync progress changed */
+    ADD_SIGNALS_DECL_WRAPPER(NotifyAdditionalDataSyncProgressChanged, void, double nSyncProgress);
 
     /** Banlist did change. */
     ADD_SIGNALS_DECL_WRAPPER(BannedListChanged, void, void);

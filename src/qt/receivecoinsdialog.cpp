@@ -8,6 +8,7 @@
 #include <qt/forms/ui_receivecoinsdialog.h>
 
 #include <interfaces/node.h>
+#include <qt/addressbookpage.h>
 #include <qt/addresstablemodel.h>
 #include <qt/optionsmodel.h>
 #include <qt/platformstyle.h>
@@ -169,7 +170,26 @@ void ReceiveCoinsDialog::on_receiveButton_clicked()
             address_type = OutputType::P2SH_SEGWIT;
         }
     }
-    address = model->getAddressTableModel()->addRow(AddressTableModel::Receive, label, "", address_type);
+
+    if(ui->reuseAddress->isChecked())
+    {
+        /* Choose existing receiving address */
+        AddressBookPage dlg(platformStyle, AddressBookPage::ForSelection, AddressBookPage::ReceivingTab, this);
+        dlg.setModel(model->getAddressTableModel());
+        if(dlg.exec())
+        {
+            address = dlg.getReturnValue();
+            if(label.isEmpty()) /* If no label provided, use the previously used label */
+            {
+                label = model->getAddressTableModel()->labelForAddress(address);
+            }
+        } else {
+            return;
+        }
+    } else {
+        /* Generate new receiving address */
+        address = model->getAddressTableModel()->addRow(AddressTableModel::Receive, label, "", address_type);
+    }
     SendCoinsRecipient info(address, label, ui->reqAmount->value(), ui->reqMessage->text());
 #ifndef OS_ANDROID
     ReceiveRequestDialog *dialog = new ReceiveRequestDialog(this);

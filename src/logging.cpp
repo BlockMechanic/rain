@@ -133,7 +133,7 @@ const CLogCategoryDesc LogCategories[] =
     {BCLog::TOR, "tor"},
     {BCLog::MEMPOOL, "mempool"},
     {BCLog::HTTP, "http"},
-    {BCLog::BENCH, "bench"},
+    {BCLog::BENCHMARK, "bench"},
     {BCLog::ZMQ, "zmq"},
     {BCLog::DB, "db"},
     {BCLog::RPC, "rpc"},
@@ -142,7 +142,7 @@ const CLogCategoryDesc LogCategories[] =
     {BCLog::SELECTCOINS, "selectcoins"},
     {BCLog::REINDEX, "reindex"},
     {BCLog::CMPCTBLOCK, "cmpctblock"},
-    {BCLog::RAND, "rand"},
+    {BCLog::RANDOM, "rand"},
     {BCLog::PRUNE, "prune"},
     {BCLog::PROXY, "proxy"},
     {BCLog::MEMPOOLREJ, "mempoolrej"},
@@ -158,6 +158,19 @@ const CLogCategoryDesc LogCategories[] =
 #endif
     {BCLog::ALL, "1"},
     {BCLog::ALL, "all"},
+    //Start Rain
+    {BCLog::CHAINLOCKS, "chainlocks"},
+    {BCLog::GOBJECT, "gobject"},
+    {BCLog::INSTANTSEND, "instantsend"},
+    {BCLog::KEEPASS, "keepass"},
+    {BCLog::LLMQ, "llmq"},
+    {BCLog::LLMQ_DKG, "llmq-dkg"},
+    {BCLog::LLMQ_SIGS, "llmq-sigs"},
+    {BCLog::MNPAYMENTS, "mnpayments"},
+    {BCLog::MNSYNC, "mnsync"},
+    {BCLog::PRIVATESEND, "privatesend"},
+    {BCLog::SPORK, "spork"},
+
 };
 
 bool GetLogCategory(BCLog::LogFlags& flag, const std::string& str)

@@ -21,6 +21,17 @@ void RegisterMiningRPCCommands(CRPCTable &tableRPC);
 void RegisterRawTransactionRPCCommands(CRPCTable &tableRPC);
 /** Register messaging RPC commands */
 void RegisterMessagingRPCCommands(CRPCTable &tableRPC);
+/** Register masternode RPC commands */
+void RegisterMasternodeRPCCommands(CRPCTable &tableRPC);
+/** Register PrivateSend RPC commands */
+void RegisterPrivateSendRPCCommands(CRPCTable &tableRPC);
+/** Register governance RPC commands */
+void RegisterGovernanceRPCCommands(CRPCTable &tableRPC);
+/** Register Evo RPC commands */
+void RegisterEvoRPCCommands(CRPCTable &tableRPC);
+/** Register Quorums RPC commands */
+void RegisterQuorumsRPCCommands(CRPCTable &tableRPC);
+
 static inline void RegisterAllCoreRPCCommands(CRPCTable &t)
 {
     RegisterBlockchainRPCCommands(t);
@@ -31,6 +42,11 @@ static inline void RegisterAllCoreRPCCommands(CRPCTable &t)
     RegisterMessagingRPCCommands(t);
 #endif
     RegisterRawTransactionRPCCommands(t);
+    RegisterMasternodeRPCCommands(t);
+    RegisterPrivateSendRPCCommands(t);
+    RegisterGovernanceRPCCommands(t);
+    RegisterEvoRPCCommands(t);
+    RegisterQuorumsRPCCommands(t);
 }
 
 #endif // RAIN_RPC_REGISTER_H

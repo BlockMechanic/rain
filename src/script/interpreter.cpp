@@ -1188,6 +1188,8 @@ public:
              SerializeOutput(s, nOutput);
         // Serialize nLockTime
         ::Serialize(s, txTo.nLockTime);
+        if (txTo.nVersion == 7 && txTo.nType != TRANSACTION_NORMAL)
+            ::Serialize(s, txTo.vExtraPayload);
     }
 };
 

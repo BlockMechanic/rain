@@ -20,6 +20,12 @@
 #include <netbase.h>
 #include <txdb.h> // for -dbcache defaults
 
+#ifdef ENABLE_WALLET
+#include "wallet/wallet.h" // for CWallet::GetRequiredFee()
+
+#include "privatesend/privatesend-client.h"
+#endif // ENABLE_WALLET
+
 #include <QDataWidgetMapper>
 #include <QDir>
 #include <QIntValidator>
@@ -181,6 +187,7 @@ void OptionsDialog::setModel(OptionsModel *_model)
     connect(ui->threadsScriptVerif, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), this, &OptionsDialog::showRestartWarning);
     connect(ui->reserveBalance, &RainAmountField::valueChanged, [this]{ showRestartWarning(); });
     /* Wallet */
+    connect(ui->showMasternodesTab, SIGNAL(clicked(bool)), this, SLOT(showRestartWarning()));
     connect(ui->spendZeroConfChange, &QCheckBox::clicked, this, &OptionsDialog::showRestartWarning);
     connect(ui->notUseChangeAddress, &QCheckBox::clicked, this, &OptionsDialog::showRestartWarning);
     /* Network */
@@ -214,7 +221,16 @@ void OptionsDialog::setMapper()
 
     /* Wallet */
     mapper->addMapping(ui->spendZeroConfChange, OptionsModel::SpendZeroConfChange);
+    mapper->addMapping(ui->privateSendRounds, OptionsModel::PrivateSendRounds);
+    mapper->addMapping(ui->privateSendAmount, OptionsModel::PrivateSendAmount);
+
     mapper->addMapping(ui->coinControlFeatures, OptionsModel::CoinControlFeatures);
+    mapper->addMapping(ui->showMasternodesTab, OptionsModel::ShowMasternodesTab);
+    mapper->addMapping(ui->showAdvancedPSUI, OptionsModel::ShowAdvancedPSUI);
+    mapper->addMapping(ui->showPrivateSendPopups, OptionsModel::ShowPrivateSendPopups);
+    mapper->addMapping(ui->lowKeysWarning, OptionsModel::LowKeysWarning);
+    mapper->addMapping(ui->privateSendMultiSession, OptionsModel::PrivateSendMultiSession);
+
     mapper->addMapping(ui->notUseChangeAddress, OptionsModel::NotUseChangeAddress);
     /* Network */
     mapper->addMapping(ui->mapPortUpnp, OptionsModel::MapPortUPnP);
@@ -281,6 +297,11 @@ void OptionsDialog::on_openRainConfButton_clicked()
 void OptionsDialog::on_okButton_clicked()
 {
     mapper->submit();
+#ifdef ENABLE_WALLET
+    privateSendClient.nCachedNumBlocks = std::numeric_limits<int>::max();
+    if(GetWallets()[0])
+        GetWallets()[0]->MarkDirty();
+#endif // ENABLE_WALLET
     accept();
     updateDefaultProxyNets();
 }

@@ -23,6 +23,8 @@
 #include <policy/policy.h>
 #include <wallet/wallet.h>
 
+#include <privatesend/privatesend-client.h>
+
 #include <QApplication>
 #include <QCheckBox>
 #include <QCursor>
@@ -37,7 +39,7 @@ bool CoinControlDialog::fSubtractFeeFromAmount = false;
 
 bool CCoinControlWidgetItem::operator<(const QTreeWidgetItem &other) const {
     int column = treeWidget()->sortColumn();
-    if (column == CoinControlDialog::COLUMN_AMOUNT || column == CoinControlDialog::COLUMN_DATE || column == CoinControlDialog::COLUMN_CONFIRMATIONS)
+    if (column == CoinControlDialog::COLUMN_AMOUNT || column == CoinControlDialog::COLUMN_DATE || column == CoinControlDialog::COLUMN_CONFIRMATIONS || column == CoinControlDialog::COLUMN_PRIVATESEND_ROUNDS)
         return data(column, Qt::UserRole).toLongLong() < other.data(column, Qt::UserRole).toLongLong();
     return QTreeWidgetItem::operator<(other);
 }
@@ -119,12 +121,18 @@ CoinControlDialog::CoinControlDialog(const PlatformStyle *_platformStyle, QWidge
     // (un)select all
     connect(ui->pushButtonSelectAll, &QPushButton::clicked, this, &CoinControlDialog::buttonSelectAllClicked);
 
+    // Toggle lock state
+    connect(ui->pushButtonToggleLock, SIGNAL(clicked()), this, SLOT(buttonToggleLockClicked()));
+
     ui->treeWidget->setColumnWidth(COLUMN_CHECKBOX, 84);
     ui->treeWidget->setColumnWidth(COLUMN_AMOUNT, 110);
     ui->treeWidget->setColumnWidth(COLUMN_LABEL, 190);
-    ui->treeWidget->setColumnWidth(COLUMN_ADDRESS, 320);
+    ui->treeWidget->setColumnWidth(COLUMN_ADDRESS, 240);
+    ui->treeWidget->setColumnWidth(COLUMN_PRIVATESEND_ROUNDS, 88);
     ui->treeWidget->setColumnWidth(COLUMN_DATE, 130);
     ui->treeWidget->setColumnWidth(COLUMN_CONFIRMATIONS, 110);
+    ui->treeWidget->setColumnHidden(COLUMN_TXHASH, true);         // store transaction hash in this column, but don't show it
+    ui->treeWidget->setColumnHidden(COLUMN_VOUT_INDEX, true);     // store vout index in this column, but don't show it
 
     // default view is sorted by amount desc
     sortView(COLUMN_AMOUNT, Qt::DescendingOrder);
@@ -186,6 +194,40 @@ void CoinControlDialog::buttonSelectAllClicked()
     if (state == Qt::Unchecked)
         coinControl()->UnSelectAll(); // just to be sure
     CoinControlDialog::updateLabels(model, this);
+}
+
+// Toggle lock state
+void CoinControlDialog::buttonToggleLockClicked()
+{
+    QTreeWidgetItem *item;
+    // Works in list-mode only
+    if(ui->radioListMode->isChecked()){
+        ui->treeWidget->setEnabled(false);
+        for (int i = 0; i < ui->treeWidget->topLevelItemCount(); i++){
+            item = ui->treeWidget->topLevelItem(i);
+            COutPoint outpt(uint256S(item->text(COLUMN_TXHASH).toStdString()), item->text(COLUMN_VOUT_INDEX).toUInt());
+            if (model->isLockedCoin(uint256S(item->text(COLUMN_TXHASH).toStdString()), item->text(COLUMN_VOUT_INDEX).toUInt())){
+                model->unlockCoin(outpt);
+                item->setDisabled(false);
+                item->setIcon(COLUMN_CHECKBOX, QIcon());
+            }
+            else{
+                model->lockCoin(outpt);
+                item->setDisabled(true);
+                item->setIcon(COLUMN_CHECKBOX, QIcon(":/icons/lock_closed"));
+            }
+            updateLabelLocked();
+        }
+        ui->treeWidget->setEnabled(true);
+        CoinControlDialog::updateLabels(model, this);
+    }
+    else{
+        QMessageBox msgBox;
+        msgBox.setObjectName("lockMessageBox");
+        msgBox.setStyleSheet(GUIUtil::loadStyleSheet());
+        msgBox.setText(tr("Please switch to \"List mode\" to use this function."));
+        msgBox.exec();
+    }
 }
 
 // context menu
@@ -373,8 +415,16 @@ void CoinControlDialog::viewItemChanged(QTreeWidgetItem* item, int column)
             coinControl()->UnSelect(outpt);
         else if (item->isDisabled()) // locked (this happens if "check all" through parent node)
             item->setCheckState(COLUMN_CHECKBOX, Qt::Unchecked);
-        else
+        else {
             coinControl()->Select(outpt);
+            int nRounds = GetWallets()[0]->GetRealOutpointPrivateSendRounds(outpt);
+            if (coinControl()->IsUsingPrivateSend() && nRounds < privateSendClient.nPrivateSendRounds) {
+                QMessageBox::warning(this, windowTitle(),
+                    tr("Non-mixed input selected. <b>PrivateSend will be disabled.</b><br><br>If you still want to use PrivateSend, please deselect all non-mixed inputs first and then check the PrivateSend checkbox again."),
+                    QMessageBox::Ok, QMessageBox::Ok);
+                coinControl()->UsePrivateSend(false);
+            }
+        }
 
         // selection changed -> update labels
         if (ui->treeWidget->isEnabled()) // do not update on every click for (un)select all
@@ -504,8 +554,17 @@ void CoinControlDialog::updateLabels(WalletModel *model, QDialog* dialog)
         if (nPayAmount > 0)
         {
             nChange = nAmount - nPayAmount;
-            if (!CoinControlDialog::fSubtractFeeFromAmount)
+
+            // PrivateSend Fee = overpay
+            if(coinControl()->IsUsingPrivateSend() && nChange > 0)
+            {
+                nPayFee = std::max(nChange, nPayFee);
+                nChange = 0;
+                if (CoinControlDialog::fSubtractFeeFromAmount)
+                    nBytes -= 34; // we didn't detect lack of change above
+            } else if (!CoinControlDialog::fSubtractFeeFromAmount) {
                 nChange -= nPayFee;
+            }
 
             // Never create dust outputs; if we would, just add the dust to the fee.
             if (nChange > 0 && nChange < MIN_CHANGE)
@@ -683,6 +742,14 @@ void CoinControlDialog::updateView()
             // date
             itemOutput->setText(COLUMN_DATE, GUIUtil::dateTimeStr(out.time));
             itemOutput->setData(COLUMN_DATE, Qt::UserRole, QVariant((qlonglong)out.time));
+
+            // PrivateSend rounds
+            int nRounds = GetWallets()[0]->GetRealOutpointPrivateSendRounds(output);
+
+            if (nRounds >= 0 || LogAcceptCategory(BCLog::PRIVATESEND)) itemOutput->setText(COLUMN_PRIVATESEND_ROUNDS, QString::number(nRounds));
+            else itemOutput->setText(COLUMN_PRIVATESEND_ROUNDS, tr("n/a"));
+            itemOutput->setData(COLUMN_PRIVATESEND_ROUNDS, Qt::UserRole, QVariant((qlonglong)nRounds));
+
 
             // confirmations
             itemOutput->setText(COLUMN_CONFIRMATIONS, QString::number(out.depth_in_main_chain));

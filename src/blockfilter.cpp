@@ -1,4 +1,4 @@
-// Copyright (c) 2018 The Bitcoinrain Core developers
+// Copyright (c) 2018 The Rainrain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -19,7 +19,7 @@ static constexpr int GCS_SER_TYPE = SER_NETWORK;
 static constexpr int GCS_SER_VERSION = 0;
 
 static const std::map<BlockFilterType, std::string> g_filter_types = {
-    {BlockFilterType::BASIC, "basic"},
+    {BlockFilterType::BASICS, "basic"},
 };
 
 template <typename OStream>
@@ -303,7 +303,7 @@ BlockFilter::BlockFilter(BlockFilterType filter_type, const CBlock& block, const
 bool BlockFilter::BuildParams(GCSFilter::Params& params) const
 {
     switch (m_filter_type) {
-    case BlockFilterType::BASIC:
+    case BlockFilterType::BASICS:
         params.m_siphash_k0 = m_block_hash.GetUint64(0);
         params.m_siphash_k1 = m_block_hash.GetUint64(1);
         params.m_P = BASIC_FILTER_P;

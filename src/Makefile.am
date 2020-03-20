@@ -7,10 +7,28 @@ DIST_SUBDIRS = secp256k1 univalue
 AM_LDFLAGS = $(PTHREAD_CFLAGS) $(LIBTOOL_LDFLAGS) $(HARDENED_LDFLAGS) $(GPROF_LDFLAGS) $(SANITIZER_LDFLAGS)
 AM_CXXFLAGS = $(DEBUG_CXXFLAGS) $(HARDENED_CXXFLAGS) $(WARN_CXXFLAGS) $(NOWARN_CXXFLAGS) $(ERROR_CXXFLAGS) $(GPROF_CXXFLAGS) $(SANITIZER_CXXFLAGS) -fPIC
 AM_CPPFLAGS = $(DEBUG_CPPFLAGS) $(HARDENED_CPPFLAGS) -fPIC
+
 AM_CFLAGS = -fPIC
 AM_LIBTOOLFLAGS = --preserve-dup-deps
 EXTRA_LIBRARIES =
 
+if ENABLE_CRASH_HOOKS
+if CRASH_HOOKS_WRAPPED_CXX_ABI
+# Wrap internal C++ ABI's so that we can attach stacktraces to exceptions
+LDFLAGS_WRAP_EXCEPTIONS = -Wl,-wrap,__cxa_allocate_exception -Wl,-wrap,__cxa_free_exception
+if TARGET_WINDOWS
+LDFLAGS_WRAP_EXCEPTIONS += -Wl,-wrap,_assert -Wl,-wrap,_wassert
+else
+LDFLAGS_WRAP_EXCEPTIONS += -Wl,-wrap,__assert_fail
+endif
+endif
+endif
+
+if TARGET_WINDOWS
+BACKTRACE_LIB = -ldbghelp -lbacktrace
+else
+BACKTRACE_LIB = -lbacktrace
+endif
 
 if EMBEDDED_UNIVALUE
 LIBUNIVALUE = univalue/libunivalue.la
@@ -25,6 +43,8 @@ RAIN_INCLUDES=-I$(builddir) $(BDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS
 
 RAIN_INCLUDES += -I$(srcdir)/secp256k1/include
 RAIN_INCLUDES += $(UNIVALUE_CFLAGS)
+
+BLS_LIBS=-lchiabls -lgmp
 
 LIBRAIN_SERVER=librain_server.a
 LIBRAIN_COMMON=librain_common.a
@@ -103,15 +123,23 @@ endif
 # rain core #
 RAIN_CORE_H = \
   addrdb.h \
+  addressindex.h \
+  spentindex.h \
   addrman.h \
   attributes.h \
   banman.h \
   base58.h \
+  batchedlogger.h \
   bignum.h \
   bech32.h \
   bloom.h \
   blockencodings.h \
   blockfilter.h \
+  bls/bls_batchverifier.h \
+  bls/bls_ies.h \
+  bls/bls_worker.h \
+  cachemap.h \
+  cachemultimap.h \
   chain.h \
   chainparams.h \
   chainparamsbase.h \
@@ -133,6 +161,28 @@ RAIN_CORE_H = \
   core_memusage.h \
   crosschain/interblockchain.h \
   cuckoocache.h \
+  ctpl.h \
+  cxxtimer.hpp \
+  evo/cbtx.h \
+  evo/deterministicmns.h \
+  evo/evodb.h \
+  evo/mnauth.h \
+  evo/providertx.h \
+  evo/simplifiedmns.h \
+  evo/specialtx.h \
+  privatesend/privatesend.h \
+  privatesend/privatesend-client.h \
+  privatesend/privatesend-server.h \
+  privatesend/privatesend-util.h \
+  dsnotificationinterface.h \
+  governance/governance.h \
+  governance/governance-classes.h \
+  governance/governance-exceptions.h \
+  governance/governance-object.h \
+  governance/governance-validators.h \
+  governance/governance-vote.h \
+  governance/governance-votedb.h \
+  flat-database.h \
   flatfile.h \
   fs.h \
   httprpc.h \
@@ -148,23 +198,46 @@ RAIN_CORE_H = \
   interfaces/node.h \
   interfaces/wallet.h \
   key.h \
+  keepass.h \
   key_io.h \
   dbwrapper.h \
   limitedmap.h \
   logging.h \
+  llmq/quorums.h \
+  llmq/quorums_blockprocessor.h \
+  llmq/quorums_commitment.h \
+  llmq/quorums_chainlocks.h \
+  llmq/quorums_debug.h \
+  llmq/quorums_dkgsessionhandler.h \
+  llmq/quorums_dkgsessionmgr.h \
+  llmq/quorums_dkgsession.h \
+  llmq/quorums_init.h \
+  llmq/quorums_instantsend.h \
+  llmq/quorums_signing.h \
+  llmq/quorums_signing_shares.h \
+  llmq/quorums_utils.h \
+  masternode/activemasternode.h \
+  masternode/masternode-meta.h \
+  masternode/masternode-payments.h \
+  masternode/masternode-sync.h \
+  masternode/masternode-utils.h \
   memusage.h \
   merkleblock.h \
+  messagesigner.h \
   miner.h \
   net.h \
   net_permissions.h \
   net_processing.h \
   netaddress.h \
   netbase.h \
+  netfulfilledman.h \
   netmessagemaker.h \
   node/coin.h \
   node/psbt.h \
   node/transaction.h \
   noui.h \
+  obfuscation.h \
+  obfuscation-relay.h \
   optional.h \
   outputtype.h \
   policy/feerate.h \
@@ -188,6 +261,7 @@ RAIN_CORE_H = \
   rpc/request.h \
   rpc/server.h \
   rpc/util.h \
+  saltedhasher.h \
   scheduler.h \
   script/descriptor.h \
   script/keyorigin.h \
@@ -212,7 +286,11 @@ RAIN_CORE_H = \
   sphlib/sph_shavite.h \
   sphlib/sph_simd.h \
   sphlib/sph_skein.h \
+  spork.h \
+  stacktraces.h \
   streams.h \
+  support/allocators/mt_pooled_secure.h \
+  support/allocators/pooled_secure.h \
   support/allocators/secure.h \
   support/allocators/zeroafterfree.h \
   support/cleanse.h \
@@ -227,6 +305,7 @@ RAIN_CORE_H = \
   txmempool.h \
   ui_interface.h \
   undo.h \
+  unordered_lru_cache.h \
   util/bip32.h \
   util/bytevectorhash.h \
   util/error.h \
@@ -283,11 +362,22 @@ librain_server_a_SOURCES = \
   addrdb.cpp \
   addrman.cpp \
   banman.cpp \
+  batchedlogger.cpp \
   blockencodings.cpp \
   blockfilter.cpp \
+  bls/bls_ies.cpp \
+  bls/bls_worker.cpp \
   chain.cpp \
   checkpoints.cpp \
   consensus/tx_verify.cpp \
+  dsnotificationinterface.cpp \
+  evo/cbtx.cpp \
+  evo/deterministicmns.cpp \
+  evo/evodb.cpp \
+  evo/mnauth.cpp \
+  evo/providertx.cpp \
+  evo/simplifiedmns.cpp \
+  evo/specialtx.cpp \
   flatfile.cpp \
   httprpc.cpp \
   httpserver.cpp \
@@ -298,8 +388,34 @@ librain_server_a_SOURCES = \
   interfaces/node.cpp \
   init.cpp \
   dbwrapper.cpp \
+  governance/governance.cpp \
+  governance/governance-classes.cpp \
+  governance/governance-object.cpp \
+  governance/governance-validators.cpp \
+  governance/governance-vote.cpp \
+  governance/governance-votedb.cpp \
+  llmq/quorums.cpp \
+  llmq/quorums_blockprocessor.cpp \
+  llmq/quorums_commitment.cpp \
+  llmq/quorums_chainlocks.cpp \
+  llmq/quorums_debug.cpp \
+  llmq/quorums_dkgsessionhandler.cpp \
+  llmq/quorums_dkgsessionmgr.cpp \
+  llmq/quorums_dkgsession.cpp \
+  llmq/quorums_init.cpp \
+  llmq/quorums_instantsend.cpp \
+  llmq/quorums_signing.cpp \
+  llmq/quorums_signing_shares.cpp \
+  llmq/quorums_utils.cpp \
+  masternode/activemasternode.cpp \
+  masternode/masternode-meta.cpp \
+  masternode/masternode-payments.cpp \
+  masternode/masternode-sync.cpp \
+  masternode/masternode-utils.cpp \
+  messagesigner.cpp \
   miner.cpp \
   net.cpp \
+  netfulfilledman.cpp \
   net_processing.cpp \
   node/coin.cpp \
   node/psbt.cpp \
@@ -310,19 +426,29 @@ librain_server_a_SOURCES = \
   policy/settings.cpp \
   pos.cpp \
   pow.cpp \
+  privatesend/privatesend.cpp \
+  privatesend/privatesend-server.cpp \
+  privatesend/privatesend-client.cpp \
+  privatesend/privatesend-util.cpp \
   rest.cpp \
   rpc/blockchain.cpp \
+  rpc/masternode.cpp \
+  rpc/governance.cpp \
   rpc/mining.cpp \
   rpc/misc.cpp \
   rpc/net.cpp \
   rpc/rawtransaction.cpp \
+  rpc/rpcevo.cpp \
+  rpc/rpcquorums.cpp \
   rpc/server.cpp \
+  rpc/privatesend.cpp \
   rpc/smessage.cpp \
   script/sigcache.cpp \
   shutdown.cpp \
   smessage/lz4.c \
   smessage/smessage.cpp \
   smessage/xxhash.c \
+  spork.cpp \
   timedata.cpp \
   torcontrol.cpp \
   txdb.cpp \
@@ -356,6 +482,7 @@ endif
 librain_wallet_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 librain_wallet_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_wallet_a_SOURCES = \
+  keepass.cpp \
   interfaces/wallet.cpp \
   wallet/coincontrol.cpp \
   wallet/crypter.cpp \
@@ -439,6 +566,8 @@ librain_consensus_a_SOURCES = \
   amount.h \
   arith_uint256.cpp \
   arith_uint256.h \
+  bls/bls.cpp \
+  bls/bls.h \
   consensus/merkle.cpp \
   consensus/merkle.h \
   consensus/params.h \
@@ -507,11 +636,13 @@ librain_common_a_SOURCES = \
   psbt.cpp \
   rpc/rawtransaction_util.cpp \
   rpc/util.cpp \
+  saltedhasher.cpp \
   scheduler.cpp \
   script/descriptor.cpp \
   script/sign.cpp \
   script/signingprovider.cpp \
   script/standard.cpp \
+  spork.cpp \
   versionbitsinfo.cpp \
   warnings.cpp \
   $(RAIN_CORE_H)
@@ -593,7 +724,7 @@ raind_LDADD = \
   $(LIBMEMENV) \
   $(LIBSECP256K1)
 
-raind_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS)
+raind_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) $(BLS_LIBS)
 
 # rain-cli binary #
 rain_cli_SOURCES = rain-cli.cpp
@@ -610,8 +741,7 @@ rain_cli_LDADD = \
   $(LIBUNIVALUE) \
   $(LIBRAIN_UTIL) \
   $(LIBRAIN_CRYPTO)
-
-rain_cli_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS)
+rain_cli_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS) $(BLS_LIBS)
 #
 
 # rain-tx binary #
@@ -632,7 +762,7 @@ rain_tx_LDADD = \
   $(LIBRAIN_CRYPTO) \
   $(LIBSECP256K1)
 
-rain_tx_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS)
+rain_tx_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS) $(BLS_LIBS)
 #
 
 # rain-wallet binary #
@@ -659,7 +789,7 @@ rain_wallet_LDADD = \
   $(LIBSECP256K1) \
   $(LIBUNIVALUE)
 
-rain_wallet_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(CRYPTO_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(MINIUPNPC_LIBS) $(ZMQ_LIBS)
+rain_wallet_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(CRYPTO_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(MINIUPNPC_LIBS) $(ZMQ_LIBS) $(BLS_LIBS)
 #
 
 # rainconsensus library #
@@ -672,7 +802,7 @@ if GLIBC_BACK_COMPAT
 endif
 
 librainconsensus_la_LDFLAGS = $(AM_LDFLAGS) -no-undefined $(RELDFLAGS)
-librainconsensus_la_LIBADD = $(LIBSECP256K1)
+librainconsensus_la_LIBADD = $(LIBSECP256K1) $(BLS_LIBS)
 librainconsensus_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(builddir)/obj -I$(srcdir)/secp256k1/include -DBUILD_RAIN_INTERNAL
 librainconsensus_la_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 

@@ -267,6 +267,9 @@ protected:
     //! Update an entry's service bits.
     void SetServices_(const CService &addr, ServiceFlags nServices) EXCLUSIVE_LOCKS_REQUIRED(cs);
 
+    //! Get address info for address
+    CAddrInfo GetAddressInfo_(const CService& addr);
+
 public:
     /**
      * serialized format:
@@ -619,6 +622,18 @@ public:
         Check();
         SetServices_(addr, nServices);
         Check();
+    }
+
+    CAddrInfo GetAddressInfo(const CService& addr)
+    {
+        CAddrInfo addrRet;
+        {
+            LOCK(cs);
+            Check();
+            addrRet = GetAddressInfo_(addr);
+            Check();
+        }
+        return addrRet;
     }
 
 };

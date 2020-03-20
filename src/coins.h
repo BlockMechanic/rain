@@ -84,7 +84,7 @@ public:
         nHeight = code >> 2;
         fCoinBase = code & 1;
         fCoinStake = (code >> 1) & 1;
-        ::Unserialize(s, CTxOutCompressor(out));
+        ::Unserialize(s, REF(CTxOutCompressor(out)));
         // peercoin transaction timestamp
         ::Unserialize(s, VARINT(nTime));
     }

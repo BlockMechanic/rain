@@ -31,13 +31,13 @@ struct CLogCategoryActive
 };
 
 namespace BCLog {
-    enum LogFlags : uint32_t {
+    enum LogFlags : uint64_t {
         NONE        = 0,
         NET         = (1 <<  0),
         TOR         = (1 <<  1),
         MEMPOOL     = (1 <<  2),
         HTTP        = (1 <<  3),
-        BENCH       = (1 <<  4),
+        BENCHMARK   = (1 <<  4),
         ZMQ         = (1 <<  5),
         DB          = (1 <<  6),
         RPC         = (1 <<  7),
@@ -46,7 +46,7 @@ namespace BCLog {
         SELECTCOINS = (1 << 10),
         REINDEX     = (1 << 11),
         CMPCTBLOCK  = (1 << 12),
-        RAND        = (1 << 13),
+        RANDOM      = (1 << 13),
         PRUNE       = (1 << 14),
         PROXY       = (1 << 15),
         MEMPOOLREJ  = (1 << 16),
@@ -54,13 +54,23 @@ namespace BCLog {
         COINDB      = (1 << 18),
         QT          = (1 << 19),
         LEVELDB     = (1 << 20),
-#ifdef ENABLE_PROOF_OF_STAKE
         COINSTAKE   = (1 << 21),
-#endif
-#ifdef ENABLE_SECURE_MESSAGING
-        SMSG   = (1 << 22),
-#endif
-        ALL         = ~(uint32_t)0,
+        SMSG        = (1 << 22),
+
+        //Start Rain
+        CHAINLOCKS  = (1 << 23),
+        GOBJECT     = (1 << 24),
+        INSTANTSEND = (1 << 25),
+        KEEPASS     = (1 << 26),
+        LLMQ        = (1 << 27),
+        LLMQ_DKG    = (1 << 28),
+        LLMQ_SIGS   = (1 << 29),
+        MNPAYMENTS  = (1 << 30),
+        MNSYNC      = ((uint64_t)1 << 40),
+        PRIVATESEND = ((uint64_t)1 << 41),
+        SPORK       = ((uint64_t)1 << 42),
+
+        ALL         = ~(uint64_t)0,
     };
 
     class Logger
@@ -79,7 +89,7 @@ namespace BCLog {
         std::atomic_bool m_started_new_line{true};
 
         /** Log categories bitfield. */
-        std::atomic<uint32_t> m_categories{0};
+        std::atomic<uint64_t> m_categories{0};
 
         std::string LogTimestampStr(const std::string& str);
 
@@ -111,7 +121,7 @@ namespace BCLog {
 
         void ShrinkDebugFile();
 
-        uint32_t GetCategoryMask() const { return m_categories.load(); }
+        uint64_t GetCategoryMask() const { return m_categories.load(); }
 
         void EnableCategory(LogFlags flag);
         bool EnableCategory(const std::string& str);

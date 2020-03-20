@@ -10,6 +10,7 @@
 #include <dbwrapper.h>
 #include <chain.h>
 #include <primitives/block.h>
+#include <spentindex.h>
 
 #include <map>
 #include <memory>
@@ -20,7 +21,6 @@
 class CBlockIndex;
 class CCoinsViewDBCursor;
 class uint256;
-struct CHeightTxIndexKey;
 struct CDiskTxPos;
 
 //! No need to periodic flush if at least this much space still available.
@@ -100,36 +100,25 @@ public:
     bool ReadLastBlockFile(int &nFile);
     bool WriteReindexing(bool fReindexing);
     void ReadReindexing(bool &fReindexing);
+    bool HasTxIndex(const uint256 &txid);
     bool ReadTxIndex(const uint256 &txid, CDiskTxPos &pos);
     bool WriteTxIndex(const std::vector<std::pair<uint256, CDiskTxPos> > &vect);
+    bool ReadSpentIndex(CSpentIndexKey &key, CSpentIndexValue &value);
+    bool UpdateSpentIndex(const std::vector<std::pair<CSpentIndexKey, CSpentIndexValue> >&vect);
+    bool UpdateAddressUnspentIndex(const std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue > >&vect);
+    bool ReadAddressUnspentIndex(uint160 addressHash, int type,
+                                 std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > &vect);
+    bool WriteAddressIndex(const std::vector<std::pair<CAddressIndexKey, CAmount> > &vect);
+    bool EraseAddressIndex(const std::vector<std::pair<CAddressIndexKey, CAmount> > &vect);
+    bool ReadAddressIndex(uint160 addressHash, int type,
+                          std::vector<std::pair<CAddressIndexKey, CAmount> > &addressIndex,
+                          int start = 0, int end = 0);
+    bool WriteTimestampIndex(const CTimestampIndexKey &timestampIndex);
+    bool ReadTimestampIndex(const unsigned int &high, const unsigned int &low, std::vector<uint256> &vect);
     bool WriteFlag(const std::string &name, bool fValue);
     bool ReadFlag(const std::string &name, bool &fValue);
     bool LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex);
 
-    bool WriteHeightIndex(const CHeightTxIndexKey &heightIndex, const std::vector<uint256>& hash);
-
-    /**
-     * Iterates through blocks by height, starting from low.
-     *
-     * @param low start iterating from this block height
-     * @param high end iterating at this block height (ignored if <= 0)
-     * @param minconf stop iterating of the block height does not have enough confirmations (ignored if <= 0)
-     * @param blocksOfHashes transaction hashes in blocks iterated are collected into this vector.
-     * @param addresses filter out a block unless it matches one of the addresses in this set.
-     *
-     * @return the height of the latest block iterated. 0 if no block is iterated.
-     */
-    int ReadHeightIndex(int low, int high, int minconf,
-            std::vector<std::vector<uint256>> &blocksOfHashes,
-            std::set<uint160> const &addresses);
-    bool EraseHeightIndex(const unsigned int &height);
-    bool WipeHeightIndex();
-
-
-    bool WriteStakeIndex(unsigned int height, uint160 address);
-    bool ReadStakeIndex(unsigned int height, uint160& address);
-    bool ReadStakeIndex(unsigned int high, unsigned int low, std::vector<uint160> addresses);
-    bool EraseStakeIndex(unsigned int height);
 };
 
 #endif // RAIN_TXDB_H

@@ -31,6 +31,9 @@
 #include <validation.h>
 #include <warnings.h>
 
+#include <masternode/masternode-sync.h>
+
+
 #if defined(HAVE_CONFIG_H)
 #include <config/rain-config.h>
 #endif
@@ -324,6 +327,17 @@ public:
                     GuessVerificationProgress(Params().TxData(), block));
             }));
     }
+
+    std::unique_ptr<Handler> handleNotifyMasternodeListChanged(NotifyMasternodeListChangedFn fn) override
+    {
+        return MakeHandler(::uiInterface.NotifyMasternodeListChanged_connect(fn));
+    }
+    std::unique_ptr<Handler> handleNotifyAdditionalDataSyncProgressChanged(NotifyAdditionalDataSyncProgressChangedFn fn) override
+    {
+        return MakeHandler(::uiInterface.NotifyAdditionalDataSyncProgressChanged_connect(fn));
+    }
+
+
     InitInterfaces m_interfaces;
 };
 

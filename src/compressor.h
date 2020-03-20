@@ -11,7 +11,6 @@
 #include <serialize.h>
 #include <span.h>
 
-class CKeyID;
 class CPubKey;
 class CScriptID;
 
@@ -66,7 +65,7 @@ public:
         s >> VARINT(nSize);
         if (nSize < nSpecialScripts) {
             std::vector<unsigned char> vch(GetSpecialScriptSize(nSize), 0x00);
-            s >> MakeSpan(vch);
+            s >> REF(MakeSpan(vch));
             DecompressScript(script, nSize, vch);
             return;
         }
@@ -77,7 +76,7 @@ public:
             s.ignore(nSize);
         } else {
             script.resize(nSize);
-            s >> MakeSpan(script);
+            s >> REF(MakeSpan(script));
         }
     }
 };

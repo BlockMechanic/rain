@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Bitcoinrain Core developers
+// Copyright (c) 2009-2018 The Rainrain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,7 +7,6 @@
 
 #include <hash.h>
 #include <consensus/consensus.h>
-
 
 CMerkleBlock::CMerkleBlock(const CBlock& block, CBloomFilter* filter, const std::set<uint256>* txids)
 {
@@ -19,12 +18,23 @@ CMerkleBlock::CMerkleBlock(const CBlock& block, CBloomFilter* filter, const std:
     vMatch.reserve(block.vtx.size());
     vHashes.reserve(block.vtx.size());
 
+    const static std::set<int> allowedTxTypes = {
+            TRANSACTION_NORMAL,
+            TRANSACTION_PROVIDER_REGISTER,
+            TRANSACTION_PROVIDER_UPDATE_SERVICE,
+            TRANSACTION_PROVIDER_UPDATE_REGISTRAR,
+            TRANSACTION_PROVIDER_UPDATE_REVOKE,
+            TRANSACTION_COINBASE,
+    };
+
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
+        const auto& tx = *block.vtx[i];
         const uint256& hash = block.vtx[i]->GetHash();
+        bool isAllowedType = tx.nVersion != 3 || allowedTxTypes.count(tx.nType) != 0;
         if (txids && txids->count(hash)) {
             vMatch.push_back(true);
-        } else if (filter && filter->IsRelevantAndUpdate(*block.vtx[i])) {
+        } else if (isAllowedType && filter && filter->IsRelevantAndUpdate(*block.vtx[i])) {
             vMatch.push_back(true);
             vMatchedTxn.emplace_back(i, hash);
         } else {

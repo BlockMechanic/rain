@@ -14,6 +14,7 @@ class Coin;
 class COutPoint;
 class CTransaction;
 class uint256; 
+class JSONRPCRequest;
 /**
  * Sign a transaction with the given keystore and previous transactions
  *
@@ -31,5 +32,9 @@ UniValue SignTransaction(CMutableTransaction& mtx, const UniValue& prevTxs, Fill
 CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, bool rbf);
 
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
+
+extern UniValue signrawtransaction(const JSONRPCRequest& request);
+extern UniValue sendrawtransaction(const JSONRPCRequest& request);
+
 
 #endif // RAIN_RPC_RAWTRANSACTION_UTIL_H

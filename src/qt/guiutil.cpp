@@ -66,6 +66,63 @@ void ForceActivation();
 
 namespace GUIUtil {
 
+// The theme to set by default if settings are missing or incorrect
+static const QString lightTheme = "Light";
+// The prefix a theme name should have if we want to apply dark colors and styles to it
+static const QString darkThemePrefix = "Dark";
+
+static const std::map<ThemedColor, QColor> themedColors = {
+    { ThemedColor::DEFAULT, QColor(0, 0, 0) },
+    { ThemedColor::UNCONFIRMED, QColor(128, 128, 128) },
+    { ThemedColor::NEGATIVE, QColor(255, 0, 0) },
+    { ThemedColor::BAREADDRESS, QColor(140, 140, 140) },
+    { ThemedColor::TX_STATUS_OPENUNTILDATE, QColor(64, 64, 255) },
+    { ThemedColor::TX_STATUS_OFFLINE, QColor(192, 192, 192) },
+    { ThemedColor::TX_STATUS_DANGER, QColor(200, 100, 100) },
+    { ThemedColor::TX_STATUS_LOCKED, QColor(0, 128, 255) },
+};
+
+static const std::map<ThemedColor, QColor> themedDarkColors = {
+    { ThemedColor::DEFAULT, QColor(170, 170, 170) },
+    { ThemedColor::UNCONFIRMED, QColor(204, 204, 204) },
+    { ThemedColor::NEGATIVE, QColor(255, 69, 0) },
+    { ThemedColor::BAREADDRESS, QColor(140, 140, 140) },
+    { ThemedColor::TX_STATUS_OPENUNTILDATE, QColor(64, 64, 255) },
+    { ThemedColor::TX_STATUS_OFFLINE, QColor(192, 192, 192) },
+    { ThemedColor::TX_STATUS_DANGER, QColor(200, 100, 100) },
+    { ThemedColor::TX_STATUS_LOCKED, QColor(0, 128, 255) },
+};
+
+static const std::map<ThemedStyle, QString> themedStyles = {
+    { ThemedStyle::TS_INVALID, "background:#FF8080;" },
+    { ThemedStyle::TS_ERROR, "color:red;" },
+    { ThemedStyle::TS_SUCCESS, "color:green;" },
+    { ThemedStyle::TS_COMMAND, "color:#006060;" },
+    { ThemedStyle::TS_PRIMARY, "color:black;" },
+    { ThemedStyle::TS_SECONDARY, "color:#808080;" },
+};
+
+static const std::map<ThemedStyle, QString> themedDarkStyles = {
+    { ThemedStyle::TS_INVALID, "background:#ff4500;" },
+    { ThemedStyle::TS_ERROR, "color:#ff4500;" },
+    { ThemedStyle::TS_SUCCESS, "color:green;" },
+    { ThemedStyle::TS_COMMAND, "color:#0cc;" },
+    { ThemedStyle::TS_PRIMARY, "color:#ccc;" },
+    { ThemedStyle::TS_SECONDARY, "color:#aaa;" },
+};
+
+QColor getThemedQColor(ThemedColor color)
+{
+    QString theme = QSettings().value("theme", "").toString();
+    return theme.startsWith(darkThemePrefix) ? themedDarkColors.at(color) : themedColors.at(color);
+}
+
+QString getThemedStyleQString(ThemedStyle style)
+{
+    QString theme = QSettings().value("theme", "").toString();
+    return theme.startsWith(darkThemePrefix) ? themedDarkStyles.at(style) : themedStyles.at(style);
+}
+
 QString defaultTheme()
 {
     QSettings settings;
@@ -809,6 +866,27 @@ bool GetStartOnSystemStartup() { return false; }
 bool SetStartOnSystemStartup(bool fAutoStart) { return false; }
 
 #endif
+
+// Open CSS when configured
+QString loadStyleSheet()
+{
+    QSettings settings;
+    QString theme = settings.value("theme", "").toString();
+
+    QDir themes(":themes");
+    // Make sure settings are pointing to an existent theme
+    if (theme.isEmpty() || !themes.exists(theme)) {
+        theme = defaultTheme();
+        settings.setValue("theme", theme);
+    }
+
+    QFile qFile(":css/" + theme);
+    if (qFile.open(QFile::ReadOnly)) {
+        return QLatin1String(qFile.readAll());
+    }
+
+    return QString();
+}
 
 void setClipboard(const QString& str)
 {

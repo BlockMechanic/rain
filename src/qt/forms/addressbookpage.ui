@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>450</width>
-    <height>177</height>
+    <width>573</width>
+    <height>235</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -89,6 +89,13 @@
        </property>
        <property name="autoDefault">
         <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="showAddressQRCode">
+       <property name="text">
+        <string>&amp;Show QR code</string>
        </property>
       </widget>
      </item>

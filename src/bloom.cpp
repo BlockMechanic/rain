@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2018 The Bitcoinrain Core developers
+// Copyright (c) 2012-2018 The Rainrain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,6 +10,11 @@
 #include <script/standard.h>
 #include <random.h>
 #include <streams.h>
+
+#include <evo/specialtx.h>
+#include <evo/providertx.h>
+#include <evo/cbtx.h>
+#include <llmq/quorums_commitment.h>
 
 #include <math.h>
 #include <stdlib.h>
@@ -102,6 +107,12 @@ bool CBloomFilter::contains(const uint256& hash) const
     return contains(data);
 }
 
+bool CBloomFilter::contains(const uint160& hash) const
+{
+    std::vector<unsigned char> data(hash.begin(), hash.end());
+    return contains(data);
+}
+
 void CBloomFilter::clear()
 {
     vData.assign(vData.size(),0);
@@ -120,6 +131,87 @@ bool CBloomFilter::IsWithinSizeConstraints() const
     return vData.size() <= MAX_BLOOM_FILTER_SIZE && nHashFuncs <= MAX_HASH_FUNCS;
 }
 
+// Match if the filter contains any arbitrary script data element in script
+bool CBloomFilter::CheckScript(const CScript &script) const
+{
+    CScript::const_iterator pc = script.begin();
+    std::vector<unsigned char> data;
+    while (pc < script.end()) {
+        opcodetype opcode;
+        if (!script.GetOp(pc, opcode, data))
+            break;
+        if (data.size() != 0 && contains(data))
+            return true;
+    }
+    return false;
+}
+
+bool CBloomFilter::CheckSpecialTransactionMatchesAndUpdate(const CTransaction &tx)
+{
+    if(tx.nVersion != 3 || tx.nType == TRANSACTION_NORMAL) {
+        return false; // it is not a special transaction
+    }
+    switch(tx.nType) {
+    case(TRANSACTION_PROVIDER_REGISTER): {
+        CProRegTx proTx;
+        if (GetTxPayload(tx, proTx)) {
+            if(contains(proTx.collateralOutpoint) ||
+                    contains(proTx.keyIDOwner) ||
+                    contains(proTx.keyIDVoting) ||
+                    CheckScript(proTx.scriptPayout)) {
+                if ((nFlags & BLOOM_UPDATE_MASK) == BLOOM_UPDATE_ALL)
+                    insert(tx.GetHash());
+                return true;
+            }
+        }
+        return false;
+    }
+    case(TRANSACTION_PROVIDER_UPDATE_SERVICE): {
+        CProUpServTx proTx;
+        if (GetTxPayload(tx, proTx)) {
+            if(contains(proTx.proTxHash)) {
+                return true;
+            }
+            if(CheckScript(proTx.scriptOperatorPayout)) {
+                if ((nFlags & BLOOM_UPDATE_MASK) == BLOOM_UPDATE_ALL)
+                    insert(proTx.proTxHash);
+                return true;
+            }
+        }
+        return false;
+    }
+    case(TRANSACTION_PROVIDER_UPDATE_REGISTRAR): {
+        CProUpRegTx proTx;
+        if (GetTxPayload(tx, proTx)) {
+            if(contains(proTx.proTxHash))
+                return true;
+            if(contains(proTx.keyIDVoting) ||
+                    CheckScript(proTx.scriptPayout)) {
+                if ((nFlags & BLOOM_UPDATE_MASK) == BLOOM_UPDATE_ALL)
+                    insert(proTx.proTxHash);
+                return true;
+            }
+        }
+        return false;
+    }
+    case(TRANSACTION_PROVIDER_UPDATE_REVOKE): {
+        CProUpRevTx proTx;
+        if (GetTxPayload(tx, proTx)) {
+            if(contains(proTx.proTxHash))
+                return true;
+        }
+        return false;
+    }
+    case(TRANSACTION_COINBASE):
+    case(TRANSACTION_QUORUM_COMMITMENT):
+        // No aditional checks for this transaction types
+        return false;
+    }
+
+    LogPrintf("Unknown special transaction type in Bloom filter check.");
+    return false;
+}
+
 bool CBloomFilter::IsRelevantAndUpdate(const CTransaction& tx)
 {
     bool fFound = false;
@@ -132,6 +224,9 @@ bool CBloomFilter::IsRelevantAndUpdate(const CTransaction& tx)
     const uint256& hash = tx.GetHash();
     if (contains(hash))
         fFound = true;
+
+    // Check additional matches for special transactions
+    fFound = fFound || CheckSpecialTransactionMatchesAndUpdate(tx);
 
     for (unsigned int i = 0; i < tx.vout.size(); i++)
     {

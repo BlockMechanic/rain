@@ -30,10 +30,10 @@ static const int CADDR_TIME_VERSION = 31402;
 static const int BIP0031_VERSION = 60000;
 
 //! "filter*" commands are disabled without NODE_BLOOM after and including this version
-static const int NO_BLOOM_VERSION = 70011;
+static const int NO_BLOOM_VERSION = 60035;
 
 //! "sendheaders" command and announcing blocks with headers starts with this version
-static const int SENDHEADERS_VERSION = 70012;
+static const int SENDHEADERS_VERSION = 60035;
 
 //! "feefilter" tells peers to filter invs to you by fee starts with this version
 static const int FEEFILTER_VERSION = 70013;
@@ -43,5 +43,19 @@ static const int SHORT_IDS_BLOCKS_VERSION = 70014;
 
 //! not banning for invalid compact blocks starts with this version
 static const int INVALID_CB_NO_BAN_VERSION = 70015;
+
+//! introduction of DIP3/deterministic masternodes
+static const int DMN_PROTO_VERSION = 60035;
+
+//! introduction of LLMQs
+static const int LLMQS_PROTO_VERSION = 60035;
+
+//! introduction of SENDDSQUEUE
+//! TODO we can remove this in 0.15.0.0
+static const int SENDDSQUEUE_PROTO_VERSION = 70214;
+
+static const int MIN_GOVERNANCE_PEER_PROTO_VERSION = 60035;
+static const int GOVERNANCE_FILTER_PROTO_VERSION = 60035;
+static const int GOVERNANCE_POSE_BANNED_VOTES_VERSION = 60035;
 
 #endif // RAIN_VERSION_H
