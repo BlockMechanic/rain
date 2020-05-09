@@ -6,7 +6,6 @@ $(package)_file_name=qtbase-$($(package)_suffix)
 $(package)_sha256_hash=20fbc7efa54ff7db9552a7a2cdf9047b80253c1933c834f35b0bc5c1ae021195
 $(package)_dependencies=zlib
 $(package)_linux_dependencies=freetype fontconfig libxcb
-$(package)_android_dependencies=freetype fontconfig libxcb
 $(package)_build_subdir=qtbase
 $(package)_qt_libs=corelib network widgets gui plugins testlib
 $(package)_patches=fix_qt_pkgconfig.patch mac-qmake.conf fix_configure_mac.patch fix_no_printer.patch fix_s390x_powerpc_mips_mipsel_architectures.patch android-qmake.conf android-base-head.patch fix_android_jni_static.patch
@@ -130,8 +129,11 @@ $(package)_config_opts += -no-feature-vnc
 $(package)_config_opts += -no-feature-wizard
 $(package)_config_opts += -no-feature-xml
 
+$(package)_config_opts_darwin = -no-dbus
+$(package)_config_opts_darwin += -no-opengl
+
 ifneq ($(build_os),darwin)
-$(package)_config_opts_darwin = -xplatform macx-clang-linux
+$(package)_config_opts_darwin += -xplatform macx-clang-linux
 $(package)_config_opts_darwin += -device-option MAC_SDK_PATH=$(OSX_SDK)
 $(package)_config_opts_darwin += -device-option MAC_SDK_VERSION=$(OSX_SDK_VERSION)
 $(package)_config_opts_darwin += -device-option CROSS_COMPILE="$(host)-"
@@ -152,7 +154,10 @@ $(package)_config_opts_x86_64_linux = -xplatform linux-g++-64
 $(package)_config_opts_aarch64_linux = -xplatform linux-aarch64-gnu-g++
 $(package)_config_opts_riscv64_linux = -platform linux-g++ -xplatform rain-linux-g++
 
-$(package)_config_opts_mingw32 = -no-opengl -xplatform win32-g++ -device-option CROSS_COMPILE="$(host)-"
+$(package)_config_opts_mingw32 = -no-opengl
+$(package)_config_opts_mingw32 += -no-dbus
+$(package)_config_opts_mingw32 += -xplatform win32-g++
+$(package)_config_opts_mingw32 += -device-option CROSS_COMPILE="$(host)-"
 $(package)_config_opts_mingw32 += -L $(host_prefix)/lib -I $(host_prefix)/include
 
 $(package)_config_opts_android = -xplatform android-clang
@@ -163,6 +168,7 @@ $(package)_config_opts_android += -device-option CROSS_COMPILE="$(host)-"
 $(package)_config_opts_android += -egl
 $(package)_config_opts_android += -qpa xcb
 $(package)_config_opts_android += -no-eglfs
+$(package)_config_opts_android += -no-dbus
 $(package)_config_opts_android += -opengl es2
 $(package)_config_opts_android += -qt-freetype
 $(package)_config_opts_android += -no-fontconfig
@@ -302,7 +308,7 @@ define $(package)_stage_cmds
   $(MAKE) -C qttranslations INSTALL_ROOT=$($(package)_staging_dir) install_subtargets && \
   $(MAKE) -C qtcharts INSTALL_ROOT=$($(package)_staging_dir) install_subtargets && \
   $(MAKE) -C qtandroidextras INSTALL_ROOT=$($(package)_staging_dir) install_subtargets && \
-  $(MAKE) -C qtbase/src/tools/androiddeployqt INSTALL_ROOT=$($(package)_staging_dir) install_target && \
+#  $(MAKE) -C qtbase/src/tools/androiddeployqt INSTALL_ROOT=$($(package)_staging_dir) install_target && \
   $(MAKE) -C qtbase/src/tools/qlalr INSTALL_ROOT=$($(package)_staging_dir) install_target && \
   $(MAKE) -C qtdeclarative INSTALL_ROOT=$($(package)_staging_dir) install_subtargets && \
   $(MAKE) -C qtxmlpatterns INSTALL_ROOT=$($(package)_staging_dir) install_subtargets && \

@@ -626,7 +626,7 @@ void PoSMiner(CWallet *pwallet)
             }
             //don't disable PoS mining for no connections if in regtest mode
             if(!gArgs.GetBoolArg("-emergencystaking", false)) {
-                LogPrint(BCLog::COINSTAKE, "Emergeny Staking Disabled \n");
+                //LogPrint(BCLog::COINSTAKE, "Emergeny Staking Disabled \n");
                 while (g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) == 0 || ::ChainstateActive().IsInitialBlockDownload()) {
                     fTryToSync = true;
                     MilliSleep(1000);

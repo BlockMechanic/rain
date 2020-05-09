@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2014 The Bitcoinrain Core developers
+// Copyright (c) 2009-2014 The Rain Core developers
 // Copyright (c) 2014-2015 The Groestlcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.

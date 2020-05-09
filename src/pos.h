@@ -42,7 +42,7 @@ bool CheckBlockInputPubKeyMatchesOutputPubKey(const CBlock& block, CCoinsViewCac
 
 bool ComputeNextStakeModifier(const CBlockIndex* pindexPrev, uint64_t& nStakeModifier, bool& fGeneratedStakeModifier);
 
-// peercoin: entropy bit for stake modifier if chosen by modifier
+// Wrapper around CheckStakeKernelHash()
 // Also checks existence of kernel input and min age
 // Convenient for searching a kernel
 bool CheckKernel(CValidationState& state, unsigned int nBits, uint32_t nTimeBlock, const COutPoint& prevout);

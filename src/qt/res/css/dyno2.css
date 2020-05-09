@@ -70,7 +70,7 @@ background-color: #ffffff;
 
 
 
-/* bitcoinraingui sendrec 'toolbar' */
+/* raingui sendrec 'toolbar' */
 #sendrec
 {
 border: none;
@@ -106,7 +106,7 @@ background-color: QLinearGradient(x1:0, y1:0, x2:0, y2:1, stop:1 #888888, stop:0
 background-color: #36b452;
 }
 
-/* bitcoinraingui p2p lend / borrow 'toolbar' */
+/* raingui p2p lend / borrow 'toolbar' */
 #p2p
 {
 border: none;

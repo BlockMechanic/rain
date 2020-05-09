@@ -2235,7 +2235,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             return false;
         }
 
-        if (GetTime() > 1584662400 && nVersion < BRAVO_VERSION) {
+        if (GetTime() > 1684662400 && nVersion < BRAVO_VERSION) {
             // disconnect from peers older than this proto version
             LogPrint(BCLog::NET, "peer=%d using obsolete version %i; disconnecting\n", pfrom->GetId(), nVersion);
             if (enable_bip61) {

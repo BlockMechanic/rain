@@ -74,8 +74,8 @@ public:
         SentDateTime = 1, // Time Sent 
         ReceivedDateTime = 2, // Time Received 
         Label = 3,   // User specified label 
-        ToAddress = 4, // To Bitcoinrain address 
-        FromAddress = 5, // From Bitcoinrain address 
+        ToAddress = 4, // To Rain address 
+        FromAddress = 5, // From Rain address 
         Message = 6, // Plaintext 
         Read = 7, // Plaintext 
         TypeInt = 8, // Plaintext 

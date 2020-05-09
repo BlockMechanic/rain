@@ -497,7 +497,7 @@ CLEAN_QT = $(nodist_qt_librainqt_a_SOURCES) $(QT_QM) $(QT_FORMS_H) qt/*.gcda qt/
 CLEANFILES += $(CLEAN_QT)
 
 rain_qt_clean: FORCE
-	rm -f $(CLEAN_QT) $(qt_librainqt_a_OBJECTS) $(qt_rain_qt_OBJECTS) qt/rain-qt$(EXEEXT) $(LIBRAINRAINQT)
+	rm -f $(CLEAN_QT) $(qt_librainqt_a_OBJECTS) $(qt_rain_qt_OBJECTS) qt/rain-qt$(EXEEXT) $(LIBRAINQT)
 
 rain_qt : qt/rain-qt$(EXEEXT)
 

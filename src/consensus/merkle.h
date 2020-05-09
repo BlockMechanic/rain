@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 The Bitcoinrain Core developers
+// Copyright (c) 2015-2018 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -26,4 +26,4 @@ uint256 BlockMerkleRoot(const CBlock& block, bool* mutated = nullptr);
  */
 uint256 BlockWitnessMerkleRoot(const CBlock& block, bool* mutated = nullptr, bool* pfProofOfStake = nullptr);
 
-#endif // BITCOINRAIN_CONSENSUS_MERKLE_H
+#endif // RAIN_CONSENSUS_MERKLE_H
