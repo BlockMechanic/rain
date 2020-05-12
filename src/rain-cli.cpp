@@ -437,6 +437,8 @@ static int CommandLineRPC(int argc, char *argv[])
             method = args[0];
             args.erase(args.begin()); // Remove trailing method name from arguments vector
         }
+        
+        std::cout<< method.c_str() << std::endl;
 
         // Execute and handle connection failures with -rpcwait
         const bool fWait = gArgs.GetBoolArg("-rpcwait", false);
