@@ -449,6 +449,8 @@ static int CommandLineRPC(int argc, char *argv[])
                 // Parse reply
                 const UniValue& result = find_value(reply, "result");
                 const UniValue& error  = find_value(reply, "error");
+                
+                std::cout<< "result : " << result.get_str().c_str()<<std::endl;
 
                 if (!error.isNull()) {
                     // Error
