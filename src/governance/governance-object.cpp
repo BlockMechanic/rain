@@ -152,7 +152,7 @@ bool CGovernanceObject::ProcessVote(CNode* pfrom,
         exception = CGovernanceException(ostr.str(), GOVERNANCE_EXCEPTION_NONE);
         return false;
     } else if (vote.GetTimestamp() == voteInstanceRef.nCreationTime) {
-        // Someone is doing smth fishy, there can be no two votes from the same masternode
+        // Someone is doing something fishy, there can be no two votes from the same masternode
         // with the same timestamp for the same object and signal and yet different hash/outcome.
         std::ostringstream ostr;
         ostr << "CGovernanceObject::ProcessVote -- Invalid vote, same timestamp for the different outcome";
@@ -268,7 +268,7 @@ std::set<uint256> CGovernanceObject::RemoveInvalidVotes(const COutPoint& mnOutpo
         for (auto& h : removedVotes) {
             removedStr += strprintf("  %s\n", h.ToString());
         }
-        LogPrintf("CGovernanceObject::%s -- Removed %d invalid votes for %s from MN %s:\n%s", __func__, removedVotes.size(), nParentHash.ToString(), mnOutpoint.ToString(), removedStr);
+        LogPrintf("CGovernanceObject::%s -- Removed %d invalid votes for %s from MN %s:\n%s", __func__, removedVotes.size(), nParentHash.ToString(), mnOutpoint.ToString(), removedStr); /* Continued */
         fDirtyCache = true;
     }
 
@@ -542,14 +542,14 @@ bool CGovernanceObject::IsCollateralValid(std::string& strError, bool& fMissingC
 
     bool foundOpReturn = false;
     for (const auto& output : txCollateral->vout) {
-        LogPrint(BCLog::GOBJECT, "CGovernanceObject::IsCollateralValid -- txout = %s, output.nValue = %lld, output.scriptPubKey = %s\n",
-                    output.ToString(), output.nValue, ScriptToAsmStr(output.scriptPubKey, false));
+        LogPrint(BCLog::GOBJECT, "CGovernanceObject::IsCollateralValid -- txout = %s, output.nAsset = %s, output.nValue = %lld, output.scriptPubKey = %s\n",
+                    output.ToString(), output.nAsset.GetAsset().getName(), output.nValue.GetAmount(), ScriptToAsmStr(output.scriptPubKey, false));
         if (!output.scriptPubKey.IsPayToPubkeyHash() && !output.scriptPubKey.IsUnspendable()) {
             strError = strprintf("Invalid Script %s", txCollateral->ToString());
             LogPrintf("CGovernanceObject::IsCollateralValid -- %s\n", strError);
             return false;
         }
-        if (output.scriptPubKey == findScript && output.nValue >= nMinFee) {
+        if (output.scriptPubKey == findScript && output.nValue.GetAmount() >= nMinFee) {
             foundOpReturn = true;
         }
     }

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -8,9 +8,10 @@
 
 #include <coins.h>
 #include <dbwrapper.h>
-#include <chain.h>
 #include <primitives/block.h>
 #include <spentindex.h>
+#include <timestampindex.h>
+#include <chainparams.h>
 
 #include <map>
 #include <memory>
@@ -22,7 +23,7 @@ class CBlockIndex;
 class CCoinsViewDBCursor;
 class uint256;
 struct CDiskTxPos;
-
+class CBlockFileInfo;
 //! No need to periodic flush if at least this much space still available.
 static constexpr int MAX_BLOCK_COINSDB_USAGE = 10;
 //! -dbcache default (MiB)
@@ -106,15 +107,17 @@ public:
     bool ReadSpentIndex(CSpentIndexKey &key, CSpentIndexValue &value);
     bool UpdateSpentIndex(const std::vector<std::pair<CSpentIndexKey, CSpentIndexValue> >&vect);
     bool UpdateAddressUnspentIndex(const std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue > >&vect);
-    bool ReadAddressUnspentIndex(uint160 addressHash, int type,
+    bool ReadAddressUnspentIndex(uint160 addressHash, int type, std::string assetName,
                                  std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > &vect);
     bool WriteAddressIndex(const std::vector<std::pair<CAddressIndexKey, CAmount> > &vect);
     bool EraseAddressIndex(const std::vector<std::pair<CAddressIndexKey, CAmount> > &vect);
-    bool ReadAddressIndex(uint160 addressHash, int type,
+    bool ReadAddressIndex(uint160 addressHash, int type, std::string assetName,
                           std::vector<std::pair<CAddressIndexKey, CAmount> > &addressIndex,
                           int start = 0, int end = 0);
     bool WriteTimestampIndex(const CTimestampIndexKey &timestampIndex);
     bool ReadTimestampIndex(const unsigned int &high, const unsigned int &low, std::vector<uint256> &vect);
+    bool WriteTimestampBlockIndex(const CTimestampBlockIndexKey &blockhashIndex, const CTimestampBlockIndexValue &logicalts);
+    bool ReadTimestampBlockIndex(const uint256 &hash, unsigned int &logicalTS);
     bool WriteFlag(const std::string &name, bool fValue);
     bool ReadFlag(const std::string &name, bool &fValue);
     bool LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex);

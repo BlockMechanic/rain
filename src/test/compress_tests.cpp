@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2019 The Rain Core developers
+// Copyright (c) 2012-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -17,10 +17,10 @@
 #define NUM_MULTIPLES_CENT 10000
 
 // amounts 1 .. 10000
-#define NUM_MULTIPLES_1RAIN 10000
+#define NUM_MULTIPLES_1XQM 10000
 
 // amounts 50 .. 21000000
-#define NUM_MULTIPLES_50RAIN 420000
+#define NUM_MULTIPLES_50XQM 420000
 
 BOOST_FIXTURE_TEST_SUITE(compress_tests, BasicTestingSetup)
 
@@ -52,10 +52,10 @@ BOOST_AUTO_TEST_CASE(compress_amounts)
     for (uint64_t i = 1; i <= NUM_MULTIPLES_CENT; i++)
         BOOST_CHECK(TestEncode(i * CENT));
 
-    for (uint64_t i = 1; i <= NUM_MULTIPLES_1RAIN; i++)
+    for (uint64_t i = 1; i <= NUM_MULTIPLES_1XQM; i++)
         BOOST_CHECK(TestEncode(i * COIN));
 
-    for (uint64_t i = 1; i <= NUM_MULTIPLES_50RAIN; i++)
+    for (uint64_t i = 1; i <= NUM_MULTIPLES_50XQM; i++)
         BOOST_CHECK(TestEncode(i * 50 * COIN));
 
     for (uint64_t i = 0; i < 100000; i++)

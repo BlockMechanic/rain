@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #ifndef RAIN_POLICY_FEES_H
@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <array>
 
 class CAutoFile;
 class CFeeRate;
@@ -43,6 +44,7 @@ enum class FeeReason {
     PAYTXFEE,
     FALLBACK,
     REQUIRED,
+    MAXTXFEE,
 };
 
 /* Used to determine type of fee estimation requested */
@@ -169,8 +171,8 @@ private:
      * invalidates old estimates files. So leave it at 1000 unless it becomes
      * necessary to lower it, and then lower it substantially.
      */
-    static constexpr double MIN_BUCKET_FEERATE = 1000;
-    static constexpr double MAX_BUCKET_FEERATE = 1e7;
+    static constexpr double MIN_BUCKET_FEERATE = 100;
+    static constexpr double MAX_BUCKET_FEERATE = 1e6;
 
     /** Spacing of FeeRate buckets
      * We have to lump transactions into buckets based on feerate, but we want to be able
@@ -223,7 +225,7 @@ public:
     unsigned int HighestTargetTracked(FeeEstimateHorizon horizon) const;
 
 private:
-    mutable CCriticalSection m_cs_fee_estimator;
+    mutable RecursiveMutex m_cs_fee_estimator;
 
     unsigned int nBestSeenHeight GUARDED_BY(m_cs_fee_estimator);
     unsigned int firstRecordedHeight GUARDED_BY(m_cs_fee_estimator);
@@ -281,11 +283,16 @@ public:
     explicit FeeFilterRounder(const CFeeRate& minIncrementalFee);
 
     /** Quantize a minimum fee for privacy purpose before broadcast **/
-    CAmount round(CAmount currentMinFee);
+    CAmountMap round(CAmountMap currentMinFee);
 
 private:
     std::set<double> feeset;
     FastRandomContext insecure_rand;
 };
+
+
+static const std::array<int, 9> confTargets = { {2, 4, 6, 12, 24, 48, 144, 504, 1008} };
+int getConfTargetForIndex(int index);
+int getIndexForConfTarget(int target);
 
 #endif // RAIN_POLICY_FEES_H

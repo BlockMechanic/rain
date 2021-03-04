@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,12 +7,16 @@
 #include <qt/rainunits.h>
 #include <qt/guiconstants.h>
 #include <qt/qvaluecombobox.h>
+#include <qt/guiutil.h>
+#include <chainparams.h>
 
 #include <QApplication>
 #include <QAbstractSpinBox>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLineEdit>
+
+Q_DECLARE_METATYPE(CAsset)
 
 /** QSpinBox that uses fixed-point numbers internally and uses our own
  * formatting/parsing functions.
@@ -23,8 +27,12 @@ class AmountSpinBox: public QAbstractSpinBox
 
 public:
     explicit AmountSpinBox(QWidget *parent):
-        QAbstractSpinBox(parent)
+        QAbstractSpinBox(parent),
+        currentUnit(RainUnits::XQM),
+        singleStep(0)
     {
+        current_asset = Params().GetConsensus().pegged_asset;
+
         setAlignment(Qt::AlignRight);
 
         connect(lineEdit(), &QLineEdit::textEdited, this, &AmountSpinBox::valueChanged);
@@ -53,22 +61,35 @@ public:
             val = parse(input, &valid);
         }
 
-        if (valid) {
+        if(valid)
+        {
             val = qBound(m_min_amount, val, m_max_amount);
-            input = RainUnits::format(currentUnit, val, false, RainUnits::separatorAlways);
+            input = GUIUtil::formatAssetAmount(current_asset, val, currentUnit, RainUnits::separatorAlways, false);
             lineEdit()->setText(input);
         }
     }
 
-    CAmount value(bool *valid_out=nullptr) const
+    int currentPeggedUnit() const
     {
-        return parse(text(), valid_out);
+        assert(current_asset == Params().GetConsensus().pegged_asset);
+        return currentUnit;
     }
 
-    void setValue(const CAmount& value)
+    std::pair<CAsset, CAmount> value(bool *valid_out=nullptr) const
     {
-        lineEdit()->setText(RainUnits::format(currentUnit, value, false, RainUnits::separatorAlways));
+        return std::make_pair(current_asset, parse(text(), valid_out));
+    }
+
+    void setValue(const CAsset& asset, CAmount value)
+    {
+        current_asset = asset;
+        lineEdit()->setText(GUIUtil::formatAssetAmount(asset, value, currentUnit, RainUnits::separatorAlways, false));
         Q_EMIT valueChanged();
+    }
+
+    inline void setValue(const std::pair<CAsset, CAmount>& value)
+    {
+        setValue(value.first, value.second);
     }
 
     void SetAllowEmpty(bool allow)
@@ -89,23 +110,61 @@ public:
     void stepBy(int steps)
     {
         bool valid = false;
-        CAmount val = value(&valid);
-        val = val + steps * singleStep;
-        val = qBound(m_min_amount, val, m_max_amount);
+        auto val = value(&valid);
+        CAmount currentSingleStep = singleStep;
+        if (!currentSingleStep) {
+            if (current_asset == Params().GetConsensus().pegged_asset) {
+                currentSingleStep = 100000;  // satoshis
+            } else {
+                currentSingleStep = 100000000;  // a whole asset
+            }
+        }
+        val.second = val.second + steps * singleStep;
+        val.second = qMax(val.second, CAmount(0));
+        val.second = qBound(m_min_amount, val.second, m_max_amount);
+        // FIXME: Add this back in when assets can have > MAX_MONEY
+        // if (val.first == Params().GetConsensus().pegged_asset)
+        {
+            val.second = qMin(val.second, RainUnits::maxMoney());
+        }
         setValue(val);
+    }
+
+    void setDisplayUnit(const CAsset& asset)
+    {
+        if (asset == Params().GetConsensus().pegged_asset) {
+            setDisplayUnit(currentUnit);
+            return;
+        }
+
+        // Only used for rains -> other asset
+        // Leave the number alone, since the user probably intended it for this asset
+
+        current_asset = asset;
+        Q_EMIT valueChanged();
     }
 
     void setDisplayUnit(int unit)
     {
         bool valid = false;
-        CAmount val = value(&valid);
+        std::pair<CAsset, CAmount> val = value(&valid);
+        const bool was_pegged = (val.first == Params().GetConsensus().pegged_asset);
 
+        current_asset = Params().GetConsensus().pegged_asset;
         currentUnit = unit;
 
+        if (!was_pegged) {
+            // Leave the text as-is, if it's valid
+            value(&valid);
+            if (!valid) {
+                clear();
+            }
+        } else
         if(valid)
             setValue(val);
         else
             clear();
+        Q_EMIT valueChanged();
     }
 
     void setSingleStep(const CAmount& step)
@@ -121,7 +180,7 @@ public:
 
             const QFontMetrics fm(fontMetrics());
             int h = lineEdit()->minimumSizeHint().height();
-            int w = fm.width(RainUnits::format(RainUnits::RAIN, RainUnits::maxMoney(), false, RainUnits::separatorAlways));
+            int w = fm.width(RainUnits::format(RainUnits::XQM, RainUnits::maxMoney(), false, RainUnits::separatorAlways));
             w += 2; // cursor blinking space
 
             QStyleOptionSpinBox opt;
@@ -147,7 +206,8 @@ public:
     }
 
 private:
-    int currentUnit{RainUnits::RAIN};
+    CAsset current_asset;
+    int currentUnit{RainUnits::XQM};
     CAmount singleStep{CAmount(100000)}; // satoshis
     mutable QSize cachedMinimumSizeHint;
     bool m_allow_empty{true};
@@ -162,11 +222,13 @@ private:
     CAmount parse(const QString &text, bool *valid_out=nullptr) const
     {
         CAmount val = 0;
-        bool valid = RainUnits::parse(currentUnit, text, &val);
+        bool valid = GUIUtil::parseAssetAmount(current_asset, text, currentUnit, &val);
         if(valid)
         {
-            if(val < 0 || val > RainUnits::maxMoney())
+            // FIXME: Add this back in when assets can have > MAX_MONEY
+            if (val < 0 || (val > RainUnits::maxMoney() /*&& current_asset == Params().GetConsensus().pegged_asset*/)) {
                 valid = false;
+            }
         }
         if(valid_out)
             *valid_out = valid;
@@ -198,12 +260,15 @@ protected:
 
         StepEnabled rv = StepNone;
         bool valid = false;
-        CAmount val = value(&valid);
-        if (valid) {
-            if (val > m_min_amount)
+        const std::pair<CAsset, CAmount> val = value(&valid);
+        if(valid)
+        {
+            if (val.second > m_min_amount) {
                 rv |= StepDownEnabled;
-            if (val < m_max_amount)
+            }
+            if (val.second < m_max_amount || val.first != Params().GetConsensus().pegged_asset) {
                 rv |= StepUpEnabled;
+            }
         }
         return rv;
     }
@@ -214,8 +279,9 @@ Q_SIGNALS:
 
 #include <qt/rainamountfield.moc>
 
-RainAmountField::RainAmountField(QWidget *parent) :
+RainAmountField::RainAmountField(std::set<CAsset> allowed_assets, QWidget *parent) :
     QWidget(parent),
+    m_allowed_assets(allowed_assets),
     amount(nullptr)
 {
     amount = new AmountSpinBox(this);
@@ -225,8 +291,11 @@ RainAmountField::RainAmountField(QWidget *parent) :
 
     QHBoxLayout *layout = new QHBoxLayout(this);
     layout->addWidget(amount);
-    unit = new QValueComboBox(this);
-    unit->setModel(new RainUnits(this));
+    unit = new QComboBox(this);
+    m_allowed_assets = allowed_assets;
+    for (const auto& asset : allowed_assets) {
+        addAssetChoice(asset);
+    }
     layout->addWidget(unit);
 //    layout->addStretch(1);
     layout->setContentsMargins(0,0,0,0);
@@ -244,6 +313,11 @@ RainAmountField::RainAmountField(QWidget *parent) :
     unitChanged(unit->currentIndex());
 }
 
+RainAmountField::RainAmountField(QWidget *parent) :
+    RainAmountField(std::set<CAsset>({Params().GetConsensus().pegged_asset}), parent)
+{
+}
+
 void RainAmountField::clear()
 {
     amount->clear();
@@ -259,7 +333,7 @@ void RainAmountField::setEnabled(bool fEnabled)
 bool RainAmountField::validate()
 {
     bool valid = false;
-    value(&valid);
+    fullValue(&valid);
     setValid(valid);
     return valid;
 }
@@ -289,14 +363,28 @@ QWidget *RainAmountField::setupTabChain(QWidget *prev)
     return unit;
 }
 
-CAmount RainAmountField::value(bool *valid_out) const
+std::pair<CAsset, CAmount> RainAmountField::fullValue(bool *valid_out) const
 {
     return amount->value(valid_out);
 }
 
+void RainAmountField::setFullValue(const CAsset& asset, const CAmount& value)
+{
+    amount->setValue(asset, value);
+    setDisplayUnit(asset);
+}
+
+CAmount RainAmountField::value(bool *valid_out) const
+{
+    std::pair<CAsset, CAmount> val = amount->value(valid_out);
+    assert(val.first == Params().GetConsensus().pegged_asset);
+    return val.second;
+}
+
 void RainAmountField::setValue(const CAmount& value)
 {
-    amount->setValue(value);
+    amount->setValue(Params().GetConsensus().pegged_asset, value);
+    setDisplayUnit(amount->currentPeggedUnit());
 }
 
 void RainAmountField::SetAllowEmpty(bool allow)
@@ -319,20 +407,105 @@ void RainAmountField::setReadOnly(bool fReadOnly)
     amount->setReadOnly(fReadOnly);
 }
 
+bool RainAmountField::hasAssetChoice(const CAsset& asset) const
+{
+    if (asset == Params().GetConsensus().pegged_asset) {
+        return -1 != unit->findData(0, Qt::UserRole);
+    }
+    return -1 != unit->findData(QVariant::fromValue(asset), Qt::UserRole);
+}
+
+void RainAmountField::addAssetChoice(const CAsset& asset)
+{
+    if (asset == Params().GetConsensus().pegged_asset) {
+        // Special handling
+        for (const auto& pegged_unit : RainUnits::availableUnits()) {
+            unit->addItem(RainUnits::shortName(pegged_unit), int(pegged_unit));
+        }
+        return;
+    }
+    unit->addItem(QString::fromStdString(gAssetsDB.GetIdentifier(asset)), QVariant::fromValue(asset));
+}
+
+void RainAmountField::removeAssetChoice(const CAsset& asset)
+{
+    if (asset == Params().GetConsensus().pegged_asset) {
+        // Special handling
+        for (const auto& pegged_unit : RainUnits::availableUnits()) {
+            unit->removeItem(unit->findData(int(pegged_unit), Qt::UserRole));
+        }
+        return;
+    }
+    unit->removeItem(unit->findData(QVariant::fromValue(asset), Qt::UserRole));
+}
+
+void RainAmountField::setAllowedAssets(const std::set<CAsset>& allowed_assets)
+{
+    std::set<CAsset> assets_to_remove;
+    for (const auto& asset : m_allowed_assets) {
+        if (!allowed_assets.count(asset)) {
+            assets_to_remove.insert(asset);
+        }
+    }
+    m_allowed_assets = allowed_assets;
+    const QVariant& sel_userdata = unit->itemData(unit->currentIndex(), Qt::UserRole);
+    const CAsset sel_asset = (sel_userdata.type() == QVariant::UserType) ? sel_userdata.value<CAsset>() : Params().GetConsensus().pegged_asset;
+    for (const auto& asset : assets_to_remove) {
+        // Leave it in place for now if it's selected
+        if (sel_asset == asset) continue;
+
+        removeAssetChoice(asset);
+    }
+    for (const auto& asset : allowed_assets) {
+        if (!hasAssetChoice(asset)) {
+            addAssetChoice(asset);
+        }
+    }
+}
+
 void RainAmountField::unitChanged(int idx)
 {
+    const CAsset previous_asset = amount->value().first;
+
     // Use description tooltip for current unit for the combobox
-    unit->setToolTip(unit->itemData(idx, Qt::ToolTipRole).toString());
+    const QVariant& userdata = unit->itemData(idx, Qt::UserRole);
+    if (userdata.type() == QVariant::UserType) {
+        const CAsset asset = userdata.value<CAsset>();
+        unit->setToolTip(tr("Custom asset (%1)").arg(QString::fromStdString(asset.GetHex())));
 
-    // Determine new unit ID
-    int newUnit = unit->itemData(idx, RainUnits::UnitRole).toInt();
+        amount->setDisplayUnit(asset);
+    } else {
+        // Determine new unit ID
+        int newUnit = userdata.toInt();
 
-    amount->setDisplayUnit(newUnit);
+        unit->setToolTip(RainUnits::description(newUnit));
+
+        amount->setDisplayUnit(newUnit);
+    }
+
+    if (!(m_allowed_assets.count(previous_asset) || amount->value().first == previous_asset)) {
+        removeAssetChoice(previous_asset);
+    }
+}
+
+void RainAmountField::setDisplayUnit(const CAsset& asset)
+{
+    if (asset == Params().GetConsensus().pegged_asset) {
+        setDisplayUnit(amount->currentPeggedUnit());
+        return;
+    }
+    if (!hasAssetChoice(asset)) {
+        addAssetChoice(asset);
+    }
+    unit->setCurrentIndex(unit->findData(QVariant::fromValue(asset), Qt::UserRole));
 }
 
 void RainAmountField::setDisplayUnit(int newUnit)
 {
-    unit->setValue(newUnit);
+    if (!hasAssetChoice(Params().GetConsensus().pegged_asset)) {
+        addAssetChoice(Params().GetConsensus().pegged_asset);
+    }
+    unit->setCurrentIndex(unit->findData(newUnit, Qt::UserRole));
 }
 
 void RainAmountField::setSingleStep(const CAmount& step)

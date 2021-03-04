@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -35,6 +35,12 @@ public:
     };
 
     void setDateRange(const QDateTime &from, const QDateTime &to);
+    void clearDateRange() {
+        if (dateFrom != MIN_DATE || dateTo == MAX_DATE)
+            setDateRange(MIN_DATE, MAX_DATE);
+    }
+
+    void setAddressPrefix(const QString& addrPrefix);
     void setSearchString(const QString &);
     /**
       @note Type filter takes a bit field created with TYPE() or ALL_TYPES
@@ -49,6 +55,12 @@ public:
     /** Set whether to show conflicted transactions. */
     void setShowInactive(bool showInactive);
 
+    /** Only stakes txes **/
+    void setOnlyStakes(bool fOnlyStakes);
+
+    /** Shows only p2cs-p2cs && xxx-p2cs **/
+    void setOnlyColdStakes(bool fOnlyColdStakes);
+
     int rowCount(const QModelIndex &parent = QModelIndex()) const;
 
 protected:
@@ -58,11 +70,17 @@ private:
     QDateTime dateFrom;
     QDateTime dateTo;
     QString m_search_string;
+    QString addrPrefix;
     quint32 typeFilter;
     WatchOnlyFilter watchOnlyFilter;
     CAmount minAmount;
     int limitRows;
     bool showInactive;
+    bool fOnlyStakes = false;
+    bool fOnlyColdStaking = false;
+
+    bool isStakeTx(int type) const;
+    bool isColdStake(int type) const;
 };
 
 #endif // RAIN_QT_TRANSACTIONFILTERPROXY_H

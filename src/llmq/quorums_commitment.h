@@ -5,13 +5,15 @@
 #ifndef RAIN_QUORUMS_COMMITMENT_H
 #define RAIN_QUORUMS_COMMITMENT_H
 
-#include "consensus/params.h"
+#include <llmq/quorums_utils.h>
 
-#include "evo/deterministicmns.h"
+#include <consensus/params.h>
 
-#include "bls/bls.h"
+#include <evo/deterministicmns.h>
 
-#include "univalue.h"
+#include <bls/bls.h>
+
+#include <univalue.h>
 
 namespace llmq
 {

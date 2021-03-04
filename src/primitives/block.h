@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,10 +9,6 @@
 #include <primitives/transaction.h>
 #include <serialize.h>
 #include <uint256.h>
-#include <hashblock.h>
-
-
-static const int SER_WITHOUT_SIGNATURE = 1 << 3;
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
@@ -29,13 +25,11 @@ public:
     uint256 hashPrevBlock;
     uint256 hashMerkleRoot;
     uint32_t nTime;
+    uint32_t nHeight;
     uint32_t nBits;
     uint32_t nNonce;
-
-    // peercoin: A copy from CBlockIndex.nFlags from other clients. We need this information because we are using headers-first syncronization.
-    int32_t nFlags;
-    // peercoin: Used in CheckProofOfStake().
-    static const int32_t NORMAL_SERIALIZE_SIZE=80;
+    COutPoint prevoutStake;
+    std::vector<unsigned char> vchBlockSig;
 
     CBlockHeader()
     {
@@ -50,12 +44,11 @@ public:
         READWRITE(hashPrevBlock);
         READWRITE(hashMerkleRoot);
         READWRITE(nTime);
+        READWRITE(nHeight);
         READWRITE(nBits);
         READWRITE(nNonce);
-
-        // peercoin: do not serialize nFlags when computing hash
-        if (!(s.GetType() & SER_GETHASH) && s.GetType() & SER_POSMARKER)
-            READWRITE(nFlags);
+        READWRITE(prevoutStake);
+        READWRITE(vchBlockSig);
     }
 
     void SetNull()
@@ -64,9 +57,11 @@ public:
         hashPrevBlock.SetNull();
         hashMerkleRoot.SetNull();
         nTime = 0;
+        nHeight = 0;
         nBits = 0;
         nNonce = 0;
-        nFlags = 0;
+        vchBlockSig.clear();
+        prevoutStake.SetNull();
     }
 
     bool IsNull() const
@@ -75,6 +70,7 @@ public:
     }
 
     uint256 GetHash() const;
+    uint256 GetGroestlHash() const;
 
     uint256 GetHashWithoutSign() const;
 
@@ -83,7 +79,28 @@ public:
         return (int64_t)nTime;
     }
     std::string ToString() const;
+
+    // ppcoin: two types of block: proof-of-work or proof-of-stake
+    bool IsProofOfStake() const 
+    {
+        return !prevoutStake.IsNull();
+    }
+
+    bool IsProofOfWork() const
+    {
+        return !IsProofOfStake();
+    }
     
+    uint32_t StakeTime() const
+    {
+        uint32_t ret = 0;
+        if(IsProofOfStake())
+        {
+            ret = nTime;
+        }
+        return ret;
+    }
+
     CBlockHeader& operator=(const CBlockHeader& other) 
     {
         if (this != &other)
@@ -92,12 +109,14 @@ public:
             this->hashPrevBlock  = other.hashPrevBlock;
             this->hashMerkleRoot = other.hashMerkleRoot;
             this->nTime          = other.nTime;
+            this->nHeight        = other.nHeight;
             this->nBits          = other.nBits;
             this->nNonce         = other.nNonce;
+            this->vchBlockSig    = other.vchBlockSig;
+            this->prevoutStake   = other.prevoutStake;
         }
         return *this;
     }
-
 };
 
 
@@ -106,8 +125,6 @@ class CBlock : public CBlockHeader
 public:
     // network and disk
     std::vector<CTransactionRef> vtx;
-
-    std::vector<unsigned char> vchBlockSig;
 
     // memory only
     mutable bool fChecked;
@@ -129,31 +146,23 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITEAS(CBlockHeader, *this);
         READWRITE(vtx);
-        READWRITE(vchBlockSig);
     }
 
     void SetNull()
     {
         CBlockHeader::SetNull();
         vtx.clear();
-        vchBlockSig.clear();
         fChecked = false;
     }
 
-    // two types of block: proof-of-work or proof-of-stake
-    bool IsProofOfStake() const
+    bool IsNull() const
     {
-        return (vtx.size() > 1 && vtx[1]->IsCoinStake());
+        return CBlockHeader::IsNull();
     }
 
-    bool IsProofOfWork() const
+    std::pair<COutPoint, unsigned int> GetProofOfStake() const 
     {
-        return !IsProofOfStake();
-    }
-
-    std::pair<COutPoint, unsigned int> GetProofOfStake() const
-    {
-        return IsProofOfStake() ? std::make_pair(vtx[1]->vin[0].prevout, vtx[1]->nTime) : std::make_pair(COutPoint(), (unsigned int)0);
+        return IsProofOfStake()? std::make_pair(prevoutStake, nTime) : std::make_pair(COutPoint(), (unsigned int)0);
     }
 
     CBlockHeader GetBlockHeader() const
@@ -163,8 +172,11 @@ public:
         block.hashPrevBlock  = hashPrevBlock;
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
+        block.nHeight        = nHeight;
         block.nBits          = nBits;
         block.nNonce         = nNonce;
+        block.vchBlockSig    = vchBlockSig;
+        block.prevoutStake   = prevoutStake;
         return block;
     }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 The Rain Core developers
+// Copyright (c) 2017-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -6,6 +6,8 @@
 #define RAIN_RPC_RAWTRANSACTION_UTIL_H
 
 #include <map>
+#include <vector>
+#include <string>
 
 class FillableSigningProvider;
 class UniValue;
@@ -13,7 +15,8 @@ struct CMutableTransaction;
 class Coin;
 class COutPoint;
 class CTransaction;
-class uint256; 
+class uint256;
+class CPubKey;
 class JSONRPCRequest;
 /**
  * Sign a transaction with the given keystore and previous transactions
@@ -29,7 +32,7 @@ class JSONRPCRequest;
 UniValue SignTransaction(CMutableTransaction& mtx, const UniValue& prevTxs, FillableSigningProvider* keystore, std::map<COutPoint, Coin>& coins, bool tempKeystore, const UniValue& hashType);
 
 /** Create a transaction from univalue parameters */
-CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, bool rbf);
+CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, bool rbf, const UniValue& assets_in, std::vector<CPubKey>* output_pubkeys_out = nullptr, std::string strtxcomment ="");
 
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
 

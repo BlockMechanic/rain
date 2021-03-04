@@ -15,10 +15,6 @@
 #define MASTERNODELIST_UPDATE_SECONDS 3
 #define MASTERNODELIST_FILTER_COOLDOWN_SECONDS 3
 
-namespace Ui
-{
-class MasternodeList;
-}
 
 class ClientModel;
 class WalletModel;
@@ -46,12 +42,11 @@ private:
     bool fFilterUpdatedDIP3;
 
     QTimer* timer;
-    Ui::MasternodeList* ui;
     ClientModel* clientModel;
     WalletModel* walletModel;
 
     // Protects tableWidgetMasternodesDIP3
-    CCriticalSection cs_dip3list;
+    RecursiveMutex cs_dip3list;
 
     QString strCurrentFilterDIP3;
 

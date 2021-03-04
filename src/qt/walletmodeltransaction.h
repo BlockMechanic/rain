@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -13,6 +13,7 @@
 #include <QObject>
 
 class SendCoinsRecipient;
+class SendAssetsRecipient;
 
 namespace interfaces {
 class Node;
@@ -22,24 +23,26 @@ class Node;
 class WalletModelTransaction
 {
 public:
-    explicit WalletModelTransaction(const QList<SendCoinsRecipient> &recipients);
+    explicit WalletModelTransaction(const QList<SendAssetsRecipient> &recipients);
 
-    QList<SendCoinsRecipient> getRecipients() const;
+    QList<SendAssetsRecipient> getRecipients() const;
 
     CTransactionRef& getWtx();
     unsigned int getTransactionSize();
 
     void setTransactionFee(const CAmount& newFee);
     CAmount getTransactionFee() const;
+    std::string getstrTxComment();
 
-    CAmount getTotalTransactionAmount() const;
+    CAmountMap getTotalTransactionAmount() const;
 
-    void reassignAmounts(int nChangePosRet); // needed for the subtract-fee-from-amount feature
+    void reassignAmounts(const std::vector<CAmount>& out_amounts, int nChangePosRet); // needed for the subtract-fee-from-amount feature
 
 private:
-    QList<SendCoinsRecipient> recipients;
+    QList<SendAssetsRecipient> recipients;
     CTransactionRef wtx;
     CAmount fee;
+    std::string strTxComment;
 };
 
 #endif // RAIN_QT_WALLETMODELTRANSACTION_H

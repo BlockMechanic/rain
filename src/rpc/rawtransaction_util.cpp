@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -19,7 +19,7 @@
 #include <util/rbf.h>
 #include <util/strencodings.h>
 
-CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, bool rbf)
+CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, bool rbf, const UniValue& assets_in, std::vector<CPubKey>* output_pubkeys_out, std::string strtxcomment)
 {
     if (inputs_in.isNull() || outputs_in.isNull())
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments 1 and 2 must be non-null");
@@ -29,12 +29,20 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
     UniValue outputs = outputs_is_obj ? outputs_in.get_obj() : outputs_in.get_array();
 
     CMutableTransaction rawTx;
+    //strcpy( reinterpret_cast <char*>(rawTx.strTxComment), strtxcomment.c_str());
+//    std::copy(strtxcomment.begin(), strtxcomment.end(), std::back_inserter(rawTx.strTxComment));
+    //rawTx.strTxComment = strtxcomment;
 
     if (!locktime.isNull()) {
         int64_t nLockTime = locktime.get_int64();
         if (nLockTime < 0 || nLockTime > LOCKTIME_MAX)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, locktime out of range");
         rawTx.nLockTime = nLockTime;
+    }
+
+    UniValue assets;
+    if (!assets_in.isNull()) {
+        assets = assets_in.get_obj();
     }
 
     for (unsigned int idx = 0; idx < inputs.size(); idx++) {
@@ -91,11 +99,22 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
         outputs = std::move(outputs_dict);
     }
 
+    CTxOut fee_out;
+
     // Duplicate checking
     std::set<CTxDestination> destinations;
     bool has_data{false};
 
     for (const std::string& name_ : outputs.getKeys()) {
+
+        // Asset defaults to policyAsset
+        CAsset asset= getAsset("Rain");
+        if (!assets.isNull()) {
+            if (!find_value(assets, name_).isNull()) {
+                asset = CAsset(ParseHashO(assets, name_));
+            }
+        }
+
         if (name_ == "data") {
             if (has_data) {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, duplicate key: data");
@@ -103,8 +122,34 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
             has_data = true;
             std::vector<unsigned char> data = ParseHexV(outputs[name_].getValStr(), "Data");
 
-            CTxOut out(0, CScript() << OP_RETURN << data);
+            CTxOut out(asset, 0, CScript() << OP_RETURN << data);
             rawTx.vout.push_back(out);
+        } else if (name_ == "vdata") {
+            // ELEMENTS: support multi-push OP_RETURN
+            UniValue vdata = outputs[name_].get_array();
+            CScript datascript = CScript() << OP_RETURN;
+            for (size_t i = 0; i < vdata.size(); i++) {
+                std::vector<unsigned char> data = ParseHexV(vdata[i].get_str(), "Data");
+                datascript << data;
+            }
+
+            CTxOut out(asset, 0, datascript);
+            rawTx.vout.push_back(out);
+            if (output_pubkeys_out) {
+                output_pubkeys_out->push_back(CPubKey());
+            }
+        } else if (name_ == "fee") {
+            // ELEMENTS: explicit fee outputs
+            CAmount nAmount = AmountFromValue(outputs[name_]);
+            fee_out = CTxOut(asset, nAmount, CScript());
+        } else if (name_ == "burn") {
+            CScript datascript = CScript() << OP_RETURN;
+            CAmount nAmount = AmountFromValue(outputs[name_]);
+            CTxOut out(asset, nAmount, datascript);
+            rawTx.vout.push_back(out);
+            if (output_pubkeys_out) {
+                output_pubkeys_out->push_back(CPubKey());
+            }
         } else {
             CTxDestination destination = DecodeDestination(name_);
             if (!IsValidDestination(destination)) {
@@ -118,7 +163,7 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
             CScript scriptPubKey = GetScriptForDestination(destination);
             CAmount nAmount = AmountFromValue(outputs[name_]);
 
-            CTxOut out(nAmount, scriptPubKey);
+            CTxOut out(asset, nAmount, scriptPubKey);
             rawTx.vout.push_back(out);
         }
     }
@@ -131,14 +176,14 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
 }
 
 /** Pushes a JSON object for script verification or signing errors to vErrorsRet. */
-static void TxInErrorToJSON(const CTxIn& txin, UniValue& vErrorsRet, const std::string& strMessage)
+static void TxInErrorToJSON(const CTxIn& txin, const CTxInWitness& txinwit, UniValue& vErrorsRet, const std::string& strMessage)
 {
     UniValue entry(UniValue::VOBJ);
     entry.pushKV("txid", txin.prevout.hash.ToString());
     entry.pushKV("vout", (uint64_t)txin.prevout.n);
     UniValue witness(UniValue::VARR);
-    for (unsigned int i = 0; i < txin.scriptWitness.stack.size(); i++) {
-        witness.push_back(HexStr(txin.scriptWitness.stack[i].begin(), txin.scriptWitness.stack[i].end()));
+    for (unsigned int i = 0; i < txinwit.scriptWitness.stack.size(); i++) {
+        witness.push_back(HexStr(txinwit.scriptWitness.stack[i].begin(), txinwit.scriptWitness.stack[i].end()));
     }
     entry.pushKV("witness", witness);
     entry.pushKV("scriptSig", HexStr(txin.scriptSig.begin(), txin.scriptSig.end()));
@@ -188,16 +233,20 @@ UniValue SignTransaction(CMutableTransaction& mtx, const UniValue& prevTxsUnival
                 }
                 Coin newcoin;
                 newcoin.out.scriptPubKey = scriptPubKey;
-                newcoin.out.nValue = MAX_MONEY;
+                newcoin.out.nValue = CConfidentialValue(MAX_MONEY);
                 if (prevOut.exists("amount")) {
-                    newcoin.out.nValue = AmountFromValue(find_value(prevOut, "amount"));
+                    newcoin.out.nValue = CConfidentialValue(AmountFromValue(find_value(prevOut, "amount")));
+                } else if (prevOut.exists("amountcommitment")) {
+                    // Segwit sigs require the amount commitment to be sighashed
+                    uint256 asset_commit = uint256S(prevOut["amountcommitment"].get_str());
+                    newcoin.out.nValue.vchCommitment = std::vector<unsigned char>(asset_commit.begin(), asset_commit.end());
                 }
                 newcoin.nHeight = 1;
                 coins[out] = std::move(newcoin);
             }
 
             // if redeemScript and private keys were given, add redeemScript to the keystore so it can be signed
-            if (is_temp_keystore && (scriptPubKey.IsPayToScriptHash() || scriptPubKey.IsPayToWitnessScriptHash())) {
+            if (is_temp_keystore && scriptPubKey.IsPayToScriptHash()) {
                 RPCTypeCheckObj(prevOut,
                     {
                         {"redeemScript", UniValueType(UniValue::VSTR)},
@@ -220,8 +269,8 @@ UniValue SignTransaction(CMutableTransaction& mtx, const UniValue& prevTxsUnival
                     // Automatically also add the P2WSH wrapped version of the script (to deal with P2SH-P2WSH).
                     keystore->AddCScript(GetScriptForWitness(witnessScript));
                 }
-                if (rs.isNull() && ws.isNull()) {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Missing redeemScript/witnessScript");
+                if (rs.isNull()) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Missing redeemScript");
                 }
             }
         }
@@ -238,36 +287,35 @@ UniValue SignTransaction(CMutableTransaction& mtx, const UniValue& prevTxsUnival
     // transaction to avoid rehashing.
     const CTransaction txConst(mtx);
     // Sign what we can:
+    mtx.witness.vtxinwit.resize(mtx.vin.size());
     for (unsigned int i = 0; i < mtx.vin.size(); i++) {
         CTxIn& txin = mtx.vin[i];
+        const CTxInWitness& inWitness = mtx.witness.vtxinwit[i];
+
         auto coin = coins.find(txin.prevout);
         if (coin == coins.end() || coin->second.IsSpent()) {
-            TxInErrorToJSON(txin, vErrors, "Input not found or already spent");
+            TxInErrorToJSON(txin, inWitness, vErrors, "Input not found or already spent");
             continue;
         }
+
         const CScript& prevPubKey = coin->second.out.scriptPubKey;
-        const CAmount& amount = coin->second.out.nValue;
+        const CConfidentialValue& amount = coin->second.out.nValue;
 
         SignatureData sigdata = DataFromTransaction(mtx, i, coin->second.out);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
         if (!fHashSingle || (i < mtx.vout.size())) {
-            ProduceSignature(*keystore, MutableTransactionSignatureCreator(&mtx, i, amount, nHashType), prevPubKey, sigdata);
+            ProduceSignature(*keystore, MutableTransactionSignatureCreator(&mtx, i, amount, nHashType), prevPubKey, sigdata, false);
         }
 
         UpdateInput(txin, sigdata);
 
-        // amount must be specified for valid segwit signature
-        if (amount == MAX_MONEY && !txin.scriptWitness.IsNull()) {
-            throw JSONRPCError(RPC_TYPE_ERROR, strprintf("Missing amount for %s", coin->second.out.ToString()));
-        }
-
         ScriptError serror = SCRIPT_ERR_OK;
-        if (!VerifyScript(txin.scriptSig, prevPubKey, &txin.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, TransactionSignatureChecker(&txConst, i, amount), &serror)) {
+        if (!VerifyScript(txin.scriptSig, prevPubKey, &inWitness.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, TransactionSignatureChecker(&txConst, i, amount), &serror)) {
             if (serror == SCRIPT_ERR_INVALID_STACK_OPERATION) {
                 // Unable to sign input and verification failed (possible attempt to partially sign).
-                TxInErrorToJSON(txin, vErrors, "Unable to sign input, invalid stack size (possibly missing key)");
+                TxInErrorToJSON(txin, inWitness, vErrors, "Unable to sign input, invalid stack size (possibly missing key)");
             } else {
-                TxInErrorToJSON(txin, vErrors, ScriptErrorString(serror));
+                TxInErrorToJSON(txin, inWitness, vErrors, ScriptErrorString(serror));
             }
         }
     }

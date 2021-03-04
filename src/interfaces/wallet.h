@@ -7,9 +7,11 @@
 
 #include <amount.h>                    // For CAmount
 #include <pubkey.h>                    // For CKeyID and CScriptID (definitions needed in CTxDestination instantiation)
+#include <wallet/ismine.h>             // For isminefilter, isminetype
 #include <script/standard.h>           // For CTxDestination
 #include <support/allocators/secure.h> // For SecureString
 #include <ui_interface.h>              // For ChangeType
+#include <pairresult.h>
 
 #include <functional>
 #include <map>
@@ -24,11 +26,15 @@ class CCoinControl;
 class CFeeRate;
 class CKey;
 class CWallet;
+class CWalletTx;
+class COutput;
+class CAddressBookData;
 enum isminetype : unsigned int;
 enum class FeeReason;
 typedef uint8_t isminefilter;
 
 enum class OutputType;
+enum class CoinType;
 struct CRecipient;
 
 namespace interfaces {
@@ -48,12 +54,7 @@ class Wallet
 {
 public:
     virtual ~Wallet() {}
-    
-    virtual CWallet* getWallet() =0;
 
-    virtual CAmount DenominatedUnconfirmedBalance () =0;
-
-    virtual float AverageAnonymizedRounds () =0;
     
     virtual int KeysLeftSinceAutoBackup () =0;
     
@@ -69,7 +70,7 @@ public:
     virtual bool lock() = 0;
 
     //! Unlock wallet.
-    virtual bool unlock(const SecureString& wallet_passphrase) = 0;
+    virtual bool unlock(const SecureString& wallet_passphrase, bool fStakingOnly) = 0;
 
     //! Return whether wallet is locked.
     virtual bool isLocked() = 0;
@@ -87,7 +88,7 @@ public:
     //! Get wallet name.
     virtual std::string getWalletName() = 0;
 
-    // Get key from pool.
+    // Get a new address.
     virtual bool getNewDestination(const OutputType type, const std::string label, CTxDestination& dest) = 0;
 
     //! Get public key.
@@ -95,6 +96,14 @@ public:
 
     //! Get private key.
     virtual bool getPrivKey(const CKeyID& address, CKey& key) = 0;
+
+    virtual CKeyID getKeyForDestination(const CTxDestination& dest) = 0 ;
+
+    //virtual CPubKey GetDestinationBlindingKey(const CTxDestination& dest);
+
+    virtual bool haveKey(const CKeyID &address) = 0;
+
+    virtual bool addKeyPubKey(const CKey& secret, const CPubKey &pubkey) = 0;
 
     //! Return whether wallet has private key.
     virtual bool isSpendable(const CTxDestination& dest) = 0;
@@ -108,11 +117,23 @@ public:
     // Remove address.
     virtual bool delAddressBook(const CTxDestination& dest) = 0;
 
+    virtual bool isMine(CTxDestination& dest) = 0;
+    
+    virtual void markDirty() =0;
+    
+    virtual void getAvailableP2CSCoins(std::vector<COutput>& vCoins) =0;
+
     //! Look up address in wallet, return whether exists.
     virtual bool getAddress(const CTxDestination& dest,
         std::string* name,
         isminetype* is_mine,
         std::string* purpose) = 0;
+
+    virtual PairResult getNewAddress(CTxDestination& dest, std::string& label, bool staking) =0;
+
+    virtual bool IsUsedDestination(const CTxDestination& dst) =0;
+
+    virtual std::map<CTxDestination, CAddressBookData> getMapAddressBook () =0;
 
     //! Get wallet address list.
     virtual std::vector<WalletAddress> getAddresses() = 0;
@@ -120,6 +141,9 @@ public:
     //! Add scripts to key store so old so software versions opening the wallet
     //! database can detect payments to newer address types.
     virtual void learnRelatedScripts(const CPubKey& key, OutputType type) = 0;
+
+    //! Get blinding pubkey for script
+    virtual CPubKey getBlindingPubKey(const CScript& script) = 0;
 
     //! Add dest data.
     virtual bool addDestData(const CTxDestination& dest, const std::string& key, const std::string& value) = 0;
@@ -147,7 +171,9 @@ public:
         const CCoinControl& coin_control,
         bool sign,
         int& change_pos,
-        CAmount& fee,
+        CAmountMap& fee,
+        std::vector<CAmount>& out_amounts,
+        std::string& srttxcomment, 
         std::string& fail_reason) = 0;
 
     //! Commit transaction.
@@ -156,6 +182,8 @@ public:
         WalletOrderForm order_form,
         std::string& reject_reason) = 0;
 
+
+    virtual int64_t getCreationTime() =0;
     //! Return whether transaction can be abandoned.
     virtual bool transactionCanBeAbandoned(const uint256& txid) = 0;
 
@@ -168,10 +196,10 @@ public:
     //! Create bump transaction.
     virtual bool createBumpTransaction(const uint256& txid,
         const CCoinControl& coin_control,
-        CAmount total_fee,
+        CAmountMap total_fee,
         std::vector<std::string>& errors,
-        CAmount& old_fee,
-        CAmount& new_fee,
+        CAmountMap& old_fee,
+        CAmountMap& new_fee,
         CMutableTransaction& mtx) = 0;
 
     //! Sign bump transaction.
@@ -185,6 +213,8 @@ public:
 
     //! Get a transaction.
     virtual CTransactionRef getTx(const uint256& txid) = 0;
+
+    virtual CWalletTx getAmounts(const uint256& txid) = 0;
 
     //! Get transaction information.
     virtual WalletTx getWalletTx(const uint256& txid) = 0;
@@ -213,10 +243,10 @@ public:
     virtual bool tryGetBalances(WalletBalances& balances, int& num_blocks) = 0;
 
     //! Get balance.
-    virtual CAmount getBalance() = 0;
+    virtual CAmountMap getBalance() = 0;
 
     //! Get available balance.
-    virtual CAmount getAvailableBalance(const CCoinControl& coin_control) = 0;
+    virtual CAmountMap getAvailableBalance(const CCoinControl& coin_control) = 0;
 
     //! Return whether transaction input belongs to wallet.
     virtual isminetype txinIsMine(const CTxIn& txin) = 0;
@@ -225,10 +255,13 @@ public:
     virtual isminetype txoutIsMine(const CTxOut& txout) = 0;
 
     //! Return debit amount if transaction input belongs to wallet.
-    virtual CAmount getDebit(const CTxIn& txin, isminefilter filter) = 0;
+    virtual CAmountMap getDebit(const CTxIn& txin, isminefilter filter) = 0;
 
     //! Return credit amount if transaction input belongs to wallet.
-    virtual CAmount getCredit(const CTxOut& txout, isminefilter filter) = 0;
+    virtual CAmountMap getCredit(const CTransaction& tx, const size_t out_index, isminefilter filter) = 0;
+
+    //! Return credit amount if transaction input belongs to wallet.
+    virtual CAmountMap getCredit(const CTxOut& txout, isminefilter filter) = 0;
 
     //! Return AvailableCoins + LockedCoins grouped by wallet address.
     //! (put change in one group with wallet address)
@@ -239,16 +272,20 @@ public:
     virtual std::vector<WalletTxOut> getCoins(const std::vector<COutPoint>& outputs) = 0;
 
     //! Get required fee.
-    virtual CAmount getRequiredFee(unsigned int tx_bytes) = 0;
+    virtual CAmountMap getRequiredFee(unsigned int tx_bytes) = 0;
 
     //! Get minimum fee.
-    virtual CAmount getMinimumFee(unsigned int tx_bytes,
+    virtual CAmountMap getMinimumFee(unsigned int tx_bytes,
         const CCoinControl& coin_control,
         int* returned_target,
         FeeReason* reason) = 0;
 
+    virtual std::vector<COutput> availableCoins (bool fOnlySafe, bool fStake, bool fIncludeDelegated, bool fIncludeColdStaking, CoinType nCoinType, const CAmount& nMinimumAmount, const CAmount& nMaximumAmount, const CAmount& nMinimumSumAmount, const uint64_t nMaximumCount, uint32_t nSpendTime) = 0;
+
     //! Get tx confirm target.
     virtual unsigned int getConfirmTarget() = 0;
+    
+    virtual std::vector<std::pair<std::string, int> > m_vMultiSend() =0;
 
     // Return whether HD enabled.
     virtual bool hdEnabled() = 0;
@@ -271,8 +308,10 @@ public:
     // Remove wallet.
     virtual void remove() = 0;
 
-	virtual bool isSPVEnabled() = 0;
-	virtual void SetSPVEnabled(bool state)= 0;
+    virtual bool isSPVEnabled() = 0;
+    virtual void SetSPVEnabled(bool state)= 0;
+
+    virtual std::shared_ptr<CWallet> getWallet() =0;
 
     //! Try get the stake weight
     virtual bool tryGetStakeWeight(uint64_t& nWeight) = 0;
@@ -340,27 +379,24 @@ struct WalletAddress
 //! Collection of wallet balances.
 struct WalletBalances
 {
-    CAmount balance = 0;
-    CAmount unconfirmed_balance = 0;
-    CAmount immature_balance = 0;
-    CAmount stake = 0;
-    CAmount anonymized = 0;
-    CAmount anonymizable = 0;
-    CAmount denominated = 0;
-    CAmount normalized_anonymized = 0;
-    CAmount watch_only_stake = 0;
+    CAmountMap balance = CAmountMap();
+    CAmountMap unconfirmed_balance = CAmountMap();
+    CAmountMap immature_balance = CAmountMap();
+    CAmountMap stake = CAmountMap();
+    CAmountMap watch_only_stake = CAmountMap();
 
     bool have_watch_only = false;
-    CAmount watch_only_balance = 0;
-    CAmount unconfirmed_watch_only_balance = 0;
-    CAmount immature_watch_only_balance = 0;
-
+    CAmountMap watch_only_balance = CAmountMap();
+    CAmountMap unconfirmed_watch_only_balance = CAmountMap();
+    CAmountMap immature_watch_only_balance = CAmountMap();
+    CAmountMap locked = CAmountMap();
+    CAmountMap unlocked =CAmountMap();
     bool balanceChanged(const WalletBalances& prev) const
     {
         return balance != prev.balance || unconfirmed_balance != prev.unconfirmed_balance ||
                immature_balance != prev.immature_balance || stake != prev.stake || watch_only_balance != prev.watch_only_balance ||
                unconfirmed_watch_only_balance != prev.unconfirmed_watch_only_balance ||
-               immature_watch_only_balance != prev.immature_watch_only_balance || watch_only_stake != prev.watch_only_stake;
+               immature_watch_only_balance != prev.immature_watch_only_balance || watch_only_stake != prev.watch_only_stake || locked != prev.locked || unlocked != prev.unlocked;
     }
 };
 
@@ -370,11 +406,18 @@ struct WalletTx
     CTransactionRef tx;
     std::vector<isminetype> txin_is_mine;
     std::vector<isminetype> txout_is_mine;
+    std::vector<bool> txout_is_change;
     std::vector<CTxDestination> txout_address;
     std::vector<isminetype> txout_address_is_mine;
-    CAmount credit;
-    CAmount debit;
-    CAmount change;
+    std::vector<CAmount> txout_amounts;
+    std::vector<CAsset> txout_assets;
+    std::vector<CAmount> txin_issuance_asset_amount;
+    std::vector<CAsset> txin_issuance_asset;
+    std::vector<CAmount> txin_issuance_token_amount;
+    std::vector<CAsset> txin_issuance_token;
+    CAmountMap credit;
+    CAmountMap debit;
+    CAmountMap change;
     int64_t time;
     std::map<std::string, std::string> value_map;
     bool is_coinbase;
@@ -396,9 +439,6 @@ struct WalletTxStatus
     bool is_coinbase;
     bool is_coinstake;
     bool is_in_main_chain;
-    bool fValidated;
-    bool isChainLocked;
-    bool isLockedByInstantSend;
 };
 
 //! Wallet transaction output.

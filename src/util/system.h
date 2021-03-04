@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -38,7 +38,7 @@
 #include <boost/thread/condition_variable.hpp> // for boost::thread_interrupted
 
 //Rain only features
-
+extern bool fDisableGovernance;
 extern bool fMasternodeMode;
 extern bool fLiteMode;
 extern int nWalletBackups;
@@ -85,6 +85,7 @@ bool CheckDataDirOption();
 /** Tests only */
 void ClearDatadirCache();
 fs::path GetConfigFile(const std::string& confPath);
+fs::path GetMasternodeConfigFile();
 #ifdef WIN32
 fs::path GetSpecialFolderPath(int nFolder, bool fCreate = true);
 #endif
@@ -166,7 +167,7 @@ protected:
         unsigned int m_flags;
     };
 
-    mutable CCriticalSection cs_args;
+    mutable RecursiveMutex cs_args;
     std::map<std::string, std::vector<std::string>> m_override_args GUARDED_BY(cs_args);
     std::map<std::string, std::vector<std::string>> m_config_args GUARDED_BY(cs_args);
     std::string m_network GUARDED_BY(cs_args);

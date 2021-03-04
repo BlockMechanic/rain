@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -52,7 +52,7 @@ AQABoxAwDjAMBgNVHRMEBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQBGejPxLxj9\
 +crv6gUeEBMZPiUx7pUgcI22Wm5yymP96B4fwI3Y0DBehq20d76vbWGPN17Z6pH3\
 ge7PVY1SYqXtS6hXTo4olCm/BZADli+2Bs2xCiaa+Ltve4ufVej+bKJXN/YnrhvO\
 Kq+klQkuuHywU+GJV/NQeBqToIrSOBgi477NgLFCCCmmx2QWsxHoCFGfuRCBVseT\
-z2k/tMuALCDXGeZBRPTsGHu1y4cj84swAeoDK5QSQcI+Ub7GKc+zkoj02sdDLiMo\
+z2k/tMuALXQMGeZBRPTsGHu1y4cj84swAeoDK5QSQcI+Ub7GKc+zkoj02sdDLiMo\
 3wokYPcIy47oclhmb4xubHc+y7nF610yZBoC/zgbhbawnZ65hDDWkdQ/SVAnWZD7\
 9PFfmNnYPTQH\
 ";
@@ -438,7 +438,7 @@ d2hj739GDLz0b5KuJ2SG6VknMRQM976w/m2qlq0ccVGaaZ2zMIGfpzL3p6adwx/5\
 ";
 
 //
-// Payment request with amount overflow (amount is set to 21000001 RAIN)
+// Payment request with amount overflow (amount is set to 21000001 TALK)
 //
 const char* paymentrequest5_cert2_BASE64 =
 "\

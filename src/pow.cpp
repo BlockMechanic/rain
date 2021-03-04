@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,17 +10,11 @@
 #include <primitives/block.h>
 #include <uint256.h>
 
-#include <util/strencodings.h>
-#include <util/system.h>
-
 const CBlockIndex* GetLastBlockIndex(const CBlockIndex* pindex, bool fProofOfStake)
 {
     //CBlockIndex will be updated with information about the proof type later
     while (pindex && pindex->pprev && (pindex->IsProofOfStake() != fProofOfStake))
         pindex = pindex->pprev;
-
-    //LogPrintf("GetLastBlockIndex : block %d , is %s \n", pindex->nHeight, fProofOfStake ? "pos" : "pow");
-
     return pindex;
 }
 
@@ -48,7 +42,6 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const Consensus:
     if (pindexPrevPrev->pprev == NULL)
         return nTargetLimit;
 
-//    LogPrintf("GetNextWorkRequired : %d  , %s, %s \n", pindexLast->nHeight, pblock->GetHash().ToString(), fProofOfStake ? "pos" : "pow");
 
     return CalculateNextWorkRequired(pindexPrev, pindexPrevPrev->GetBlockTime(), params, fProofOfStake);
 }

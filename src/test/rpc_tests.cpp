@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2019 The Rain Core developers
+// Copyright (c) 2012-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -353,7 +353,7 @@ BOOST_AUTO_TEST_CASE(rpc_getblockstats_calculate_percentiles_by_weight)
         feerates.emplace_back(std::make_pair(2 ,1));
     }
 
-    CalculatePercentilesByWeight(result, feerates, total_weight);
+//    CalculatePercentilesByWeight(result, populateMap(feerates), total_weight);
     BOOST_CHECK_EQUAL(result[0], 1);
     BOOST_CHECK_EQUAL(result[1], 1);
     BOOST_CHECK_EQUAL(result[2], 1);
@@ -371,7 +371,7 @@ BOOST_AUTO_TEST_CASE(rpc_getblockstats_calculate_percentiles_by_weight)
     feerates.emplace_back(std::make_pair(5 ,10));
     feerates.emplace_back(std::make_pair(9 ,15));  // 90th percentile
 
-    CalculatePercentilesByWeight(result2, feerates, total_weight);
+//    CalculatePercentilesByWeight(result2, populateMap(feerates), total_weight);
 
     BOOST_CHECK_EQUAL(result2[0], 2);
     BOOST_CHECK_EQUAL(result2[1], 2);
@@ -391,7 +391,7 @@ BOOST_AUTO_TEST_CASE(rpc_getblockstats_calculate_percentiles_by_weight)
     feerates.emplace_back(std::make_pair(5 ,10));
     feerates.emplace_back(std::make_pair(9 ,15)); // 90th percentile
 
-    CalculatePercentilesByWeight(result3, feerates, total_weight);
+//    CalculatePercentilesByWeight(result3, populateMap(feerates), total_weight);
 
     BOOST_CHECK_EQUAL(result3[0], 2);
     BOOST_CHECK_EQUAL(result3[1], 2);
@@ -410,7 +410,7 @@ BOOST_AUTO_TEST_CASE(rpc_getblockstats_calculate_percentiles_by_weight)
     feerates.emplace_back(std::make_pair(3, 1));
     feerates.emplace_back(std::make_pair(999999, 1));
 
-    CalculatePercentilesByWeight(result4, feerates, total_weight);
+//    CalculatePercentilesByWeight(result4, feerates, total_weight);
 
     for (int64_t i = 0; i < NUM_GETBLOCKSTATS_PERCENTILES; i++) {
         BOOST_CHECK_EQUAL(result4[i], 1);

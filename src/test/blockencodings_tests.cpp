@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2019 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -26,10 +26,12 @@ static CBlock BuildBlockTestCase() {
     tx.vin.resize(1);
     tx.vin[0].scriptSig.resize(10);
     tx.vout.resize(1);
-    tx.vout[0].nValue = 42;
+    tx.vout[0].nValue = 42000;
+    tx.nTime = 1585412782;
 
     block.vtx.resize(3);
     block.vtx[0] = MakeTransactionRef(tx);
+    block.nTime = tx.nTime;
     block.nVersion = 42;
     block.hashPrevBlock = InsecureRand256();
     block.nBits = 0x207fffff;
@@ -117,6 +119,7 @@ class TestHeaderAndShortIDs {
 public:
     CBlockHeader header;
     uint64_t nonce;
+    std::vector<unsigned char> vchBlockSig;
     std::vector<uint64_t> shorttxids;
     std::vector<PrefilledTransaction> prefilledtxn;
 
@@ -142,6 +145,7 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(header);
         READWRITE(nonce);
+        READWRITE(vchBlockSig);
         size_t shorttxids_size = shorttxids.size();
         READWRITE(VARINT(shorttxids_size));
         shorttxids.resize(shorttxids_size);
@@ -284,7 +288,8 @@ BOOST_AUTO_TEST_CASE(EmptyBlockRoundTripTest)
     coinbase.vin.resize(1);
     coinbase.vin[0].scriptSig.resize(10);
     coinbase.vout.resize(1);
-    coinbase.vout[0].nValue = 42;
+    coinbase.vout[0].nValue = 42000;
+    coinbase.nTime = 1585412782;
 
     CBlock block;
     block.vtx.resize(1);
@@ -292,6 +297,7 @@ BOOST_AUTO_TEST_CASE(EmptyBlockRoundTripTest)
     block.nVersion = 42;
     block.hashPrevBlock = InsecureRand256();
     block.nBits = 0x207fffff;
+    block.nTime = coinbase.nTime;
 
     bool mutated;
     block.hashMerkleRoot = BlockMerkleRoot(block, &mutated);

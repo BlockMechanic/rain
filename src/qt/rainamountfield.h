@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -6,13 +6,15 @@
 #define RAIN_QT_RAINAMOUNTFIELD_H
 
 #include <amount.h>
+#include <primitives/asset.h>
 
+#include <set>
 #include <QWidget>
 
 class AmountSpinBox;
 
 QT_BEGIN_NAMESPACE
-class QValueComboBox;
+class QComboBox;
 QT_END_NAMESPACE
 
 /** Widget for entering rain amounts.
@@ -26,7 +28,11 @@ class RainAmountField: public QWidget
     Q_PROPERTY(qint64 value READ value WRITE setValue NOTIFY valueChanged USER true)
 
 public:
+    explicit RainAmountField(std::set<CAsset> allowed_assets, QWidget *parent = 0);
     explicit RainAmountField(QWidget *parent = nullptr);
+
+    std::pair<CAsset, CAmount> fullValue(bool *valid=0) const;
+    void setFullValue(const CAsset& asset, const CAmount& value);
 
     CAmount value(bool *value=nullptr) const;
     void setValue(const CAmount& value);
@@ -51,7 +57,10 @@ public:
     /** Perform input validation, mark field as invalid if entered value is not valid. */
     bool validate();
 
+    void setAllowedAssets(const std::set<CAsset>& allowed_assets);
+
     /** Change unit used to display amount. */
+    void setDisplayUnit(const CAsset&);
     void setDisplayUnit(int unit);
 
     /** Make field empty and ready for new input. */
@@ -73,8 +82,14 @@ protected:
     bool eventFilter(QObject *object, QEvent *event);
 
 private:
+    std::set<CAsset> m_allowed_assets;
+    CAsset asset;
     AmountSpinBox *amount;
-    QValueComboBox *unit;
+    QComboBox *unit;
+
+    bool hasAssetChoice(const CAsset&) const;
+    void addAssetChoice(const CAsset&);
+    void removeAssetChoice(const CAsset&);
 
 private Q_SLOTS:
     void unitChanged(int idx);

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -144,6 +144,72 @@ bool WalletBatch::EraseWatchOnly(const CScript &dest)
     return EraseIC(std::make_pair(DBKeys::WATCHS, dest));
 }
 
+bool WalletBatch::WriteMultiSend(std::vector<std::pair<std::string, int> > vMultiSend)
+{
+    bool ret = true;
+    for (unsigned int i = 0; i < vMultiSend.size(); i++) {
+        std::pair<std::string, int> pMultiSend;
+        pMultiSend = vMultiSend[i];
+        if (!WriteIC(std::make_pair(std::string("multisend"), i), pMultiSend, true))
+            ret = false;
+    }
+    return ret;
+}
+
+bool WalletBatch::EraseMultiSend(std::vector<std::pair<std::string, int> > vMultiSend)
+{
+    bool ret = true;
+    for (unsigned int i = 0; i < vMultiSend.size(); i++) {
+        std::pair<std::string, int> pMultiSend;
+        pMultiSend = vMultiSend[i];
+        if (!EraseIC(std::make_pair(std::string("multisend"), i)))
+            ret = false;
+    }
+    return ret;
+}
+
+bool WalletBatch::WriteMSettings(bool fMultiSendStake, bool fMultiSendMasternode, int nLastMultiSendHeight)
+{
+    std::pair<bool, bool> enabledMS(fMultiSendStake, fMultiSendMasternode);
+    std::pair<std::pair<bool, bool>, int> pSettings(enabledMS, nLastMultiSendHeight);
+
+    return WriteIC(std::string("msettingsv2"), pSettings, true);    
+}
+
+bool WalletBatch::WriteMSDisabledAddresses(std::vector<std::string> vDisabledAddresses)
+{
+    bool ret = true;
+    for (unsigned int i = 0; i < vDisabledAddresses.size(); i++) {
+        if (!WriteIC(std::make_pair(std::string("mdisabled"), i), vDisabledAddresses[i]))
+            ret = false;
+    }
+    return ret;    
+}
+
+bool WalletBatch::EraseMSDisabledAddresses(std::vector<std::string> vDisabledAddresses)
+{
+    bool ret = true;
+    for (unsigned int i = 0; i < vDisabledAddresses.size(); i++) {
+        if (!EraseIC(std::make_pair(std::string("mdisabled"), i)))
+            ret = false;
+    }
+    return ret;    
+}
+
+bool WalletBatch::WriteAutoCombineSettings(bool fEnable, CAmount nCombineThreshold)
+{
+    std::pair<bool, CAmount> pSettings;
+    pSettings.first = fEnable;
+    pSettings.second = nCombineThreshold;
+    return WriteIC(std::string("autocombinesettings"), pSettings, true);
+}
+
+
+bool WalletBatch::WriteStakeSplitThreshold(const CAmount& nStakeSplitThreshold)
+{
+    return WriteIC(std::string("stakeSplitThreshold"), nStakeSplitThreshold);
+}
+
 bool WalletBatch::WriteBestBlock(const CBlockLocator& locator)
 {
     WriteIC(DBKeys::BESTBLOCK, CBlockLocator()); // Write empty block locator so versions that require a merkle branch automatically rescan
@@ -190,6 +256,14 @@ bool WalletBatch::ErasePool(int64_t nPool)
 bool WalletBatch::WriteMinVersion(int nVersion)
 {
     return WriteIC(DBKeys::MINVERSION, nVersion);
+}
+
+bool WalletBatch::WriteBlindingDerivationKey(const uint256& key) {
+     return WriteIC(std::string("blindingderivationkey"), key);
+}
+
+bool WalletBatch::WriteSpecificBlindingKey(const uint160& scriptid, const uint256& key) {
+    return WriteIC(std::make_pair(std::string("specificblindingkey"), scriptid), key);
 }
 
 class CWalletScanState {
@@ -419,6 +493,24 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
                    strType != DBKeys::VERSION && strType != DBKeys::SETTINGS) {
             wss.m_unknown_records++;
         }
+        else if (strType == "blindingderivationkey")
+        {
+            assert(pwallet->blinding_derivation_key.IsNull());
+            uint256 key;
+            ssValue >> key;
+            pwallet->blinding_derivation_key = key;
+        }
+        else if (strType == "specificblindingkey")
+        {
+            CScriptID scriptid;
+            ssKey >> scriptid;
+            uint256 key;
+            ssValue >> key;
+            if (!pwallet->LoadSpecificBlindingKey(scriptid, key)) {
+                strErr = "Error reading wallet database: LoadSpecificBlindingKey failed";
+                return false;
+            }
+       }
     } catch (const std::exception& e) {
         if (strErr.empty()) {
             strErr = e.what();
@@ -509,6 +601,16 @@ DBErrors WalletBatch::LoadWallet(CWallet* pwallet)
 
     if (fNoncriticalErrors && result == DBErrors::LOAD_OK)
         result = DBErrors::NONCRITICAL_ERROR;
+
+    if (pwallet->blinding_derivation_key.IsNull()) {
+        CKey key;
+        key.MakeNewKey(true);
+        uint256 keybin;
+        memcpy(keybin.begin(), key.begin(), key.size());
+        if (!pwallet->SetMasterBlindingKey(keybin)) {
+            result = DBErrors::LOAD_FAIL;
+        }
+    }
 
     // Any wallet corruption at all: skip any rewriting or
     // upgrading, we don't want to make it worse.

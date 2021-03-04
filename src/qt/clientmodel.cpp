@@ -1,27 +1,24 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <qt/clientmodel.h>
 
-//#include <auxiliaryblockrequest.h>
+#include <auxiliaryblockrequest.h>
 #include <qt/bantablemodel.h>
 #include <qt/guiconstants.h>
 #include <qt/guiutil.h>
 #include <qt/peertablemodel.h>
 
+#include <chainparams.h>
 #include <clientversion.h>
 #include <interfaces/handler.h>
 #include <interfaces/node.h>
 #include <net.h>
 #include <netbase.h>
 #include <util/system.h>
-
+#include <validation.h>
 #include <masternode/masternode-sync.h>
-#include <privatesend/privatesend.h>
-
-#include <llmq/quorums_instantsend.h>
-
 #include <stdint.h>
 
 #include <QDebug>
@@ -111,6 +108,15 @@ int ClientModel::getHeaderTipHeight() const
     return cachedBestHeaderHeight;
 }
 
+QDateTime ClientModel::getLastBlockDate() const
+{
+    LOCK(cs_main);
+    if (::ChainActive().Tip())
+        return QDateTime::fromTime_t(::ChainActive().Tip()->GetBlockTime());
+    else
+        return QDateTime::fromTime_t(Params().GenesisBlock().GetBlockTime()); // Genesis block's time of current network
+}
+
 int64_t ClientModel::getHeaderTipTime() const
 {
     if (cachedBestHeaderTime == -1) {
@@ -124,21 +130,11 @@ int64_t ClientModel::getHeaderTipTime() const
     return cachedBestHeaderTime;
 }
 
-size_t ClientModel::getInstantSentLockCount() const
-{
-    if (!llmq::quorumInstantSendManager) {
-        return 0;
-    }
-    return llmq::quorumInstantSendManager->GetInstantSendLockCount();
-}
-
-
 void ClientModel::updateTimer()
 {
     // no locking required at this point
     // the following calls will acquire the required lock
     Q_EMIT mempoolSizeChanged(m_node.getMempoolSize(), m_node.getMempoolDynamicUsage());
-    Q_EMIT islockCountChanged(getInstantSentLockCount());
     Q_EMIT bytesChanged(m_node.getTotalBytesRecv(), m_node.getTotalBytesSent());
 }
 
@@ -155,6 +151,11 @@ void ClientModel::updateNetworkActive(bool networkActive)
 void ClientModel::updateAlert()
 {
     Q_EMIT alertsChanged(getStatusBarWarnings());
+}
+
+bool ClientModel::inInitialBlockDownload() const
+{
+    return m_node.isInitialBlockDownload();
 }
 
 enum BlockSource ClientModel::getBlockSource() const
@@ -204,6 +205,11 @@ bool ClientModel::isReleaseVersion() const
     return CLIENT_VERSION_IS_RELEASE;
 }
 
+QString ClientModel::clientName() const
+{
+    return QString::fromStdString(CLIENT_NAME);
+}
+
 QString ClientModel::formatClientStartupTime() const
 {
     return QDateTime::fromTime_t(GetStartupTime()).toString();
@@ -223,7 +229,7 @@ void ClientModel::updateBanlist()
 {
     banTableModel->refresh();
 }
-/*
+
 bool ClientModel::hasAuxiliaryBlockRequest(int64_t* createdRet, size_t* requestedBlocksRet, size_t* loadedBlocksRet, size_t* processedBlocksRet)
 {
     std::shared_ptr<CAuxiliaryBlockRequest> blockRequest = CAuxiliaryBlockRequest::GetCurrentRequest();
@@ -240,7 +246,7 @@ bool ClientModel::hasAuxiliaryBlockRequest(int64_t* createdRet, size_t* requeste
         *processedBlocksRet = blockRequest->processedUpToSize;
     return true;
 }
-*/
+
 // Handlers for core signals
 static void ShowProgress(ClientModel *clientmodel, const std::string &title, int nProgress)
 {
@@ -320,7 +326,7 @@ static void NotifyAdditionalDataSyncProgressChanged(ClientModel *clientmodel, do
                               Q_ARG(double, nSyncProgress));
 }
 
-/*
+
 static void AuxiliaryBlockRequestProgressUpdate(ClientModel *clientmodel, int64_t created, size_t blocksRequested, size_t blocksLoaded, size_t blocksProcessed)
 {
     QMetaObject::invokeMethod(clientmodel, "auxiliaryBlockRequestProgressChanged", Qt::QueuedConnection,
@@ -329,7 +335,7 @@ static void AuxiliaryBlockRequestProgressUpdate(ClientModel *clientmodel, int64_
                               Q_ARG(int, (int)blocksLoaded),
                               Q_ARG(int, (int)blocksProcessed));
 }
-*/
+
 void ClientModel::subscribeToCoreSignals()
 {
     // Connect signals to client
@@ -340,14 +346,10 @@ void ClientModel::subscribeToCoreSignals()
     m_handler_banned_list_changed = m_node.handleBannedListChanged(std::bind(BannedListChanged, this));
     m_handler_notify_block_tip = m_node.handleNotifyBlockTip(std::bind(BlockTipChanged, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, false));
     m_handler_notify_header_tip = m_node.handleNotifyHeaderTip(std::bind(BlockTipChanged, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, true));
+    m_handler_auxiliary_block_request_progress = m_node.handleAuxiliaryBlockRequestProgress(std::bind(AuxiliaryBlockRequestProgressUpdate, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
     m_handler_notify_masternode_list_changed =  m_node.handleNotifyMasternodeListChanged(std::bind(NotifyMasternodeListChanged, this, std::placeholders::_1));
     m_handler_notify_additional_data_sync_progress_changed =  m_node.handleNotifyAdditionalDataSyncProgressChanged(std::bind(NotifyAdditionalDataSyncProgressChanged, this, std::placeholders::_1));
 
-//    m_handler_notify_islock_received = m_node.handleNotifyISLockReceived(std::bind(NotifyISLockReceived, this));
-//    m_handler_notify_chainlock_received = m_node.handleNotifyChainLockReceived(std::bind(NotifyChainLockReceived, this, std::placeholders::_1));
-
-
-//    m_handler_auxiliary_block_request_progress = m_node.handleAuxiliaryBlockRequestProgress(std::bind(AuxiliaryBlockRequestProgressUpdate, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
 }
 
 void ClientModel::unsubscribeFromCoreSignals()
@@ -360,10 +362,9 @@ void ClientModel::unsubscribeFromCoreSignals()
     m_handler_banned_list_changed->disconnect();
     m_handler_notify_block_tip->disconnect();
     m_handler_notify_header_tip->disconnect();
+    m_handler_auxiliary_block_request_progress->disconnect();
     m_handler_notify_masternode_list_changed->disconnect();
     m_handler_notify_additional_data_sync_progress_changed->disconnect();
-
-//    m_handler_auxiliary_block_request_progress->disconnect();
 }
 
 bool ClientModel::getProxyInfo(std::string& ip_port) const

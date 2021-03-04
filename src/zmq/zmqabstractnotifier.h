@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 The Rain Core developers
+// Copyright (c) 2015-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -50,11 +50,8 @@ public:
     virtual bool NotifyBlock(const CBlockIndex *pindex);
     virtual bool NotifyChainLock(const CBlockIndex *pindex, const llmq::CChainLockSig& clsig);
     virtual bool NotifyTransaction(const CTransaction &transaction);
-    virtual bool NotifyTransactionLock(const CTransaction &transaction, const llmq::CInstantSendLock& islock);
     virtual bool NotifyGovernanceVote(const CGovernanceVote &vote);
     virtual bool NotifyGovernanceObject(const CGovernanceObject &object);
-    virtual bool NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx);
-
 
 protected:
     void *psocket;

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -17,6 +17,8 @@ const char* ScriptErrorString(const ScriptError serror)
             return "Script failed an OP_VERIFY operation";
         case SCRIPT_ERR_EQUALVERIFY:
             return "Script failed an OP_EQUALVERIFY operation";
+        case SCRIPT_ERR_CHECKCOLDSTAKEVERIFY:
+            return "Script failed an OP_CHECKCOLDSTAKEVERIFY operation";
         case SCRIPT_ERR_CHECKMULTISIGVERIFY:
             return "Script failed an OP_CHECKMULTISIGVERIFY operation";
         case SCRIPT_ERR_CHECKSIGVERIFY:
@@ -93,6 +95,10 @@ const char* ScriptErrorString(const ScriptError serror)
             return "Using OP_CODESEPARATOR in non-witness script";
         case SCRIPT_ERR_SIG_FINDANDDELETE:
             return "Signature is found in scriptCode";
+        case SCRIPT_ERR_RANGEPROOF:
+            return "RangeProof error";
+        case SCRIPT_ERR_PEDERSEN_TALLY:
+            return "Pedersen tally error";   
         case SCRIPT_ERR_UNKNOWN_ERROR:
         case SCRIPT_ERR_ERROR_COUNT:
         default: break;

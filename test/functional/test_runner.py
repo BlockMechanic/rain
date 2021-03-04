@@ -236,7 +236,7 @@ def main():
     parser.add_argument('--failfast', action='store_true', help='stop execution after the first test failure')
     args, unknown_args = parser.parse_known_args()
 
-    # args to be passed on always start with two raines; tests are the remaining unknown args
+    # args to be passed on always start with two dashes; tests are the remaining unknown args
     tests = [arg for arg in unknown_args if arg[:2] != "--"]
     passon_args = [arg for arg in unknown_args if arg[:2] == "--"]
 

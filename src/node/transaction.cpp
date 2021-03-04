@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -25,51 +25,53 @@ TransactionError BroadcastTransaction(const CTransactionRef tx, std::string& err
     bool callback_set = false;
 
     { // cs_main scope
-    LOCK(cs_main);
-    // If the transaction is already confirmed in the chain, don't do anything
-    // and return early.
-    CCoinsViewCache &view = *::pcoinsTip;
-    for (size_t o = 0; o < tx->vout.size(); o++) {
-        const Coin& existingCoin = view.AccessCoin(COutPoint(hashTx, o));
-        // IsSpent doesnt mean the coin is spent, it means the output doesnt' exist.
-        // So if the output does exist, then this transaction exists in the chain.
-        if (!existingCoin.IsSpent()) return TransactionError::ALREADY_IN_CHAIN;
-    }
-    if (!mempool.exists(hashTx)) {
-        // push to local node and sync with wallets
-        CValidationState state;
-        bool fMissingInputs;
-        if (!AcceptToMemoryPool(mempool, state, std::move(tx), &fMissingInputs,
-                nullptr /* plTxnReplaced */, false /* bypass_limits */, max_tx_fee)) {
-            if (state.IsInvalid()) {
-                err_string = FormatStateMessage(state);
-                return TransactionError::MEMPOOL_REJECTED;
-            } else {
-                if (fMissingInputs) {
-                    return TransactionError::MISSING_INPUTS;
-                }
-                err_string = FormatStateMessage(state);
-                return TransactionError::MEMPOOL_ERROR;
-            }
-        }
+		LOCK(cs_main);
+		// If the transaction is already confirmed in the chain, don't do anything
+		// and return early.
+		CCoinsViewCache &view = *::pcoinsTip;
+		for (size_t o = 0; o < tx->vout.size(); o++) {
+			const Coin& existingCoin = view.AccessCoin(COutPoint(hashTx, o));
+			// IsSpent doesnt mean the coin is spent, it means the output doesnt' exist.
+			// So if the output does exist, then this transaction exists in the chain.
+			if (!existingCoin.IsSpent()) return TransactionError::ALREADY_IN_CHAIN;
+		}
 
-        // Transaction was accepted to the mempool.
+		if (!mempool.exists(hashTx)) {
+			// push to local node and sync with wallets
+			CValidationState state;
+			bool fMissingInputs;
 
-        if (wait_callback) {
-            // For transactions broadcast from outside the wallet, make sure
-            // that the wallet has been notified of the transaction before
-            // continuing.
-            // If wallet is enabled, ensure that the wallet has been made aware
-            // of the new transaction prior to returning. This prevents a race
-            // where a user might call sendrawtransaction with a transaction
-            // to/from their wallet, immediately call some wallet RPC, and get
-            // a stale result because callbacks have not yet been processed.
-            CallFunctionInValidationInterfaceQueue([&promise] {
-                promise.set_value();
-            });
-            callback_set = true;
-        }
-    }
+			if (!AcceptToMemoryPool(mempool, state, std::move(tx), &fMissingInputs,
+					nullptr /* plTxnReplaced */, false /* bypass_limits */, max_tx_fee)) {
+				if (state.IsInvalid()) {
+					err_string = FormatStateMessage(state);
+					return TransactionError::MEMPOOL_REJECTED;
+				} else {
+					if (fMissingInputs) {
+						return TransactionError::MISSING_INPUTS;
+					}
+					err_string = FormatStateMessage(state);
+					return TransactionError::MEMPOOL_ERROR;
+				}
+			}
+
+			// Transaction was accepted to the mempool.
+
+			if (wait_callback) {
+				// For transactions broadcast from outside the wallet, make sure
+				// that the wallet has been notified of the transaction before
+				// continuing.
+				//
+				// This prevents a race where a user might call sendrawtransaction
+				// with a transaction to/from their wallet, immediately call some
+				// wallet RPC, and get a stale result because callbacks have not
+				// yet been processed.
+				CallFunctionInValidationInterfaceQueue([&promise] {
+					promise.set_value();
+				});
+				callback_set = true;
+			}
+		}
 
     } // cs_main
 

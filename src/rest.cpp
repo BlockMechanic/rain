@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -554,7 +554,9 @@ static bool rest_getutxos(HTTPRequest* req, const std::string& strURIPart)
         for (const CCoin& coin : outs) {
             UniValue utxo(UniValue::VOBJ);
             utxo.pushKV("height", (int32_t)coin.nHeight);
-            utxo.pushKV("value", ValueFromAmount(coin.out.nValue));
+            if (coin.out.nValue.IsExplicit()) {
+                utxo.pushKV("value", ValueFromAmount(coin.out.nValue.GetAmount()));
+            }
 
             // include the script in a json output
             UniValue o(UniValue::VOBJ);

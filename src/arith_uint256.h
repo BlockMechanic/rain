@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -15,7 +15,6 @@
 #include <vector>
 
 class uint256;
-class uint512;
 
 class uint_error : public std::runtime_error {
 public:
@@ -65,14 +64,6 @@ public:
     }
 
     explicit base_uint(const std::string& str);
-
-    bool operator!() const
-    {
-        for (int i = 0; i < WIDTH; i++)
-            if (pn[i] != 0)
-                return false;
-        return true;
-    }
 
     const base_uint operator~() const
     {
@@ -239,26 +230,6 @@ public:
     void SetHex(const std::string& str);
     std::string ToString() const;
 
-    unsigned char* begin()
-    {
-        return (unsigned char*)&pn[0];
-    }
-
-    unsigned char* end()
-    {
-        return (unsigned char*)&pn[WIDTH];
-    }
-
-    const unsigned char* begin() const
-    {
-        return (unsigned char*)&pn[0];
-    }
-
-    const unsigned char* end() const
-    {
-        return (unsigned char*)&pn[WIDTH];
-    }
-
     unsigned int size() const
     {
         return sizeof(pn);
@@ -310,7 +281,6 @@ public:
 
     friend uint256 ArithToUint256(const arith_uint256 &);
     friend arith_uint256 UintToArith256(const uint256 &);
-    uint64_t GetHash(const arith_uint256& salt) const;
 };
 
 uint256 ArithToUint256(const arith_uint256 &);

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -28,7 +28,7 @@
 #endif
 
 // Settings
-static CCriticalSection cs_proxyInfos;
+static RecursiveMutex cs_proxyInfos;
 static proxyType proxyInfo[NET_MAX] GUARDED_BY(cs_proxyInfos);
 static proxyType nameProxy GUARDED_BY(cs_proxyInfos);
 int nConnectTimeout = DEFAULT_CONNECT_TIMEOUT;
@@ -197,7 +197,7 @@ bool Lookup(const char *pszName, std::vector<CService>& vAddr, int portDefault, 
     if (pszName[0] == 0)
         return false;
     int port = portDefault;
-    std::string hostname;
+    std::string hostname = "";
     SplitHostPort(std::string(pszName), port, hostname);
 
     std::vector<CNetAddr> vIP;
@@ -326,8 +326,8 @@ static IntrRecvError InterruptibleRecv(uint8_t* data, size_t len, int timeout, c
 {
     int64_t curTime = GetTimeMillis();
     int64_t endTime = curTime + timeout;
-    // Maximum time to wait in one select call. It will take up until this time (in millis)
-    // to break off in case of an interruption.
+    // Maximum time to wait for I/O readiness. It will take up until this time
+    // (in millis) to break off in case of an interruption.
     const int64_t maxWait = 1000;
     while (len > 0 && curTime < endTime) {
         ssize_t ret = recv(hSocket, (char*)data, len, 0); // Optimistically try the recv first
@@ -348,7 +348,7 @@ static IntrRecvError InterruptibleRecv(uint8_t* data, size_t len, int timeout, c
 #ifdef USE_POLL
                 struct pollfd pollfd = {};
                 pollfd.fd = hSocket;
-                pollfd.events = POLLIN | POLLOUT;
+                pollfd.events = POLLIN;
                 int nRet = poll(&pollfd, 1, timeout_ms);
 #else
                 struct timeval tval = MillisToTimeval(timeout_ms);
@@ -428,15 +428,15 @@ static bool Socks5(const std::string& strDest, int port, const ProxyCredentials 
     if (strDest.size() > 255) {
         return error("Hostname too long");
     }
-    // Accepted authentication methods
+    // Construct the version identifier/method selection message
     std::vector<uint8_t> vSocks5Init;
     vSocks5Init.push_back(SOCKSVersion::SOCKS5); // We want the SOCK5 protocol
     if (auth) {
-        vSocks5Init.push_back(0x02); // Number of methods
+        vSocks5Init.push_back(0x02); // 2 method identifiers follow...
         vSocks5Init.push_back(SOCKS5Method::NOAUTH);
         vSocks5Init.push_back(SOCKS5Method::USER_PASS);
     } else {
-        vSocks5Init.push_back(0x01); // Number of methods
+        vSocks5Init.push_back(0x01); // 1 method identifier follows...
         vSocks5Init.push_back(SOCKS5Method::NOAUTH);
     }
     ssize_t ret = send(hSocket, (const char*)vSocks5Init.data(), vSocks5Init.size(), MSG_NOSIGNAL);
@@ -572,15 +572,15 @@ SOCKET CreateSocket(const CService &addrConnect)
 
 #ifdef SO_NOSIGPIPE
     int set = 1;
-    // Different way of disabling SIGPIPE on BSD
+    // Set the no-sigpipe option on the socket for BSD systems, other UNIXes
     // should use the MSG_NOSIGNAL flag for every send.
     setsockopt(hSocket, SOL_SOCKET, SO_NOSIGPIPE, (void*)&set, sizeof(int));
 #endif
 
-    //Disable Nagle's algorithm
+    // Set the no-delay option (disable Nagle's algorithm) on the TCP socket.
     SetSocketNoDelay(hSocket);
 
-    // Set to non-blocking
+    // Set the non-blocking option on the socket.
     if (!SetSocketNonBlocking(hSocket, true)) {
         CloseSocket(hSocket);
         LogPrintf("CreateSocket: Setting socket to non-blocking failed, error %s\n", NetworkErrorString(WSAGetLastError()));
@@ -610,7 +610,7 @@ static void LogConnectFailure(bool manual_connection, const char* fmt, const Arg
  *
  * @returns Whether or not a connection was successfully made.
  */
-bool ConnectSocketDirectly(const CService &addrConnect, const SOCKET& hSocket, int nTimeout, bool manual_connection)
+bool ConnectSocketDirectly(const CService &addrConnect, const SOCKET& hSocket, int nTimeout)
 {
     // Create a sockaddr from the specified service.
     struct sockaddr_storage sockaddr;
@@ -673,7 +673,7 @@ bool ConnectSocketDirectly(const CService &addrConnect, const SOCKET& hSocket, i
             }
             if (nRet != 0)
             {
-                LogConnectFailure(manual_connection, "connect() to %s failed after select(): %s", addrConnect.ToString(), NetworkErrorString(nRet));
+                LogPrintf("connect() to %s failed after select(): %s\n", addrConnect.ToString(), NetworkErrorString(nRet));
                 return false;
             }
         }
@@ -683,7 +683,7 @@ bool ConnectSocketDirectly(const CService &addrConnect, const SOCKET& hSocket, i
         else
 #endif
         {
-            LogConnectFailure(manual_connection, "connect() to %s failed: %s", addrConnect.ToString(), NetworkErrorString(WSAGetLastError()));
+            LogPrintf("connect() to %s failed: %s\n", addrConnect.ToString(), NetworkErrorString(WSAGetLastError()));
             return false;
         }
     }
@@ -772,7 +772,7 @@ bool IsProxy(const CNetAddr &addr) {
 bool ConnectThroughProxy(const proxyType &proxy, const std::string& strDest, int port, const SOCKET& hSocket, int nTimeout, bool *outProxyConnectionFailed)
 {
     // first connect to proxy server
-    if (!ConnectSocketDirectly(proxy.proxy, hSocket, nTimeout, true)) {
+    if (!ConnectSocketDirectly(proxy.proxy, hSocket, nTimeout)) {
         if (outProxyConnectionFailed)
             *outProxyConnectionFailed = true;
         return false;
@@ -802,7 +802,7 @@ bool ConnectSocket(const CService &addrDest, SOCKET& hSocketRet, int nTimeout, b
     if (GetProxy(addrDest.GetNetwork(), proxy))
         return ConnectThroughProxy(proxy, addrDest.ToStringIP(), addrDest.GetPort(), hSocketRet, nTimeout, outProxyConnectionFailed);
     else // no proxy needed (none set for target network)
-        return ConnectSocketDirectly(addrDest, hSocketRet, nTimeout, false);
+        return ConnectSocketDirectly(addrDest, hSocketRet, nTimeout);
 }
 
 bool ConnectSocketByName(CService &addr, SOCKET& hSocketRet, const char *pszDest, int portDefault, int nTimeout, bool *outProxyConnectionFailed)

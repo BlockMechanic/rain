@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <boost/test/unit_test.hpp>
+#include <util/system.h>
 
 #include <test/setup_common.h>
 #include <wallet/test/init_test_fixture.h>

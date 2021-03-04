@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 The Rain Core developers
+// Copyright (c) 2014-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -160,4 +160,12 @@ bool DecodeBase58Check(const char* psz, std::vector<unsigned char>& vchRet)
 bool DecodeBase58Check(const std::string& str, std::vector<unsigned char>& vchRet)
 {
     return DecodeBase58Check(str.c_str(), vchRet);
+}
+
+std::string convertAddress(const char address[], char newVersionByte){
+    std::vector<unsigned char> v;
+    DecodeBase58Check(address,v);
+    v[0]=newVersionByte;
+    std::string result = EncodeBase58Check(v);
+    return result;
 }

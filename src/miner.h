@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -30,8 +30,7 @@ static const int DEFAULT_GENERATE_THREADS = 1;
 static const bool DEFAULT_PRINTPRIORITY = false;
 static const bool DEFAULT_STAKE = true;
 
-static const bool DEFAULT_STAKE_CACHE = true;
-
+extern int64_t nLastCoinStakeSearchTime;
 //How many seconds to look ahead and prepare a block for staking
 //Look ahead up to 3 "timeslots" in the future, 48 seconds
 //Reduce this to reduce computational waste for stakers, increase this to increase the amount of time available to construct full blocks
@@ -41,7 +40,7 @@ static const int32_t MAX_STAKE_LOOKAHEAD = 16 * 3;
 struct CBlockTemplate
 {
     CBlock block;
-    std::vector<CAmount> vTxFees;
+    std::vector<CAmountMap> vTxFees;
     std::vector<int64_t> vTxSigOpsCost;
     std::vector<unsigned char> vchCoinbaseCommitment;
     std::vector<CTxOut> voutMasternodePayments; // masternode payment
@@ -56,19 +55,19 @@ struct CTxMemPoolModifiedEntry {
     {
         iter = entry;
         nSizeWithAncestors = entry->GetSizeWithAncestors();
-        nModFeesWithAncestors = entry->GetModFeesWithAncestors();
+        mapModFeesWithAncestors = entry->GetModFeesWithAncestors();
         nSigOpCostWithAncestors = entry->GetSigOpCostWithAncestors();
     }
 
-    int64_t GetModifiedFee() const { return iter->GetModifiedFee(); }
+    CAmountMap GetModifiedFee() const { return iter->GetModifiedFee(); }
     uint64_t GetSizeWithAncestors() const { return nSizeWithAncestors; }
-    CAmount GetModFeesWithAncestors() const { return nModFeesWithAncestors; }
+    CAmountMap GetModFeesWithAncestors() const { return mapModFeesWithAncestors; }
     size_t GetTxSize() const { return iter->GetTxSize(); }
     const CTransaction& GetTx() const { return iter->GetTx(); }
 
     CTxMemPool::txiter iter;
     uint64_t nSizeWithAncestors;
-    CAmount nModFeesWithAncestors;
+    CAmountMap mapModFeesWithAncestors;
     int64_t nSigOpCostWithAncestors;
 };
 
@@ -130,7 +129,7 @@ struct update_for_parent_inclusion
 
     void operator() (CTxMemPoolModifiedEntry &e)
     {
-        e.nModFeesWithAncestors -= iter->GetFee();
+        e.mapModFeesWithAncestors -= iter->GetFee();
         e.nSizeWithAncestors -= iter->GetTxSize();
         e.nSigOpCostWithAncestors -= iter->GetSigOpCost();
     }
@@ -156,7 +155,7 @@ private:
     uint64_t nBlockWeight;
     uint64_t nBlockTx;
     uint64_t nBlockSigOpsCost;
-    CAmount nFees;
+    CAmountMap mapFees;
     CTxMemPool::setEntries inBlock;
 
     // Chain context for the block
@@ -175,7 +174,7 @@ public:
     BlockAssembler(const CChainParams& params, const Options& options);
 
     /** Construct a new block template with coinbase to scriptPubKeyIn */
-    std::unique_ptr<CBlockTemplate> CreateNewBlock(const CScript& scriptPubKeyIn, bool fProofOfStake=false, CWallet* pwallet=nullptr, bool* pfPoSCancel=nullptr);
+    std::unique_ptr<CBlockTemplate> CreateNewBlock(const CScript& scriptPubKeyIn, bool fProofOfStake=false, CWallet* pwallet=nullptr, bool* pfPoSCancel=nullptr, std::string strtxcomment ="",CScript const* commit_script = nullptr);
 
     static Optional<int64_t> m_last_block_num_txs;
     static Optional<int64_t> m_last_block_weight;
@@ -220,7 +219,6 @@ void Stake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread);
 /** Modify the extranonce in a block */
 void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev);
-std::string convertAddress(const char address[], char newVersionByte);
 extern double dHashesPerMin;
 extern int64_t nHPSTimerStart;
 bool CheckStake(const CBlock* pblock);

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -18,10 +18,18 @@ class CScript;
 enum isminetype : unsigned int
 {
     ISMINE_NO         = 0,
-    ISMINE_WATCH_ONLY = 1 << 0,
     ISMINE_SPENDABLE  = 1 << 1,
     ISMINE_USED       = 1 << 2,
-    ISMINE_ALL        = ISMINE_WATCH_ONLY | ISMINE_SPENDABLE,
+    ISMINE_COLD = 1 << 3,
+    ISMINE_SPENDABLE_DELEGATED = 1 << 4,
+    //! Indicates that we dont know how to create a scriptSig that would solve this if we were given the appropriate private keys
+    ISMINE_WATCH_UNSOLVABLE = 1 << 5,
+    //! Indicates that we know how to create a scriptSig that would solve this if we were given the appropriate private keys
+    ISMINE_WATCH_SOLVABLE = 1 << 6,
+    ISMINE_WATCH_ONLY = ISMINE_WATCH_SOLVABLE | ISMINE_WATCH_UNSOLVABLE,
+    ISMINE_SPENDABLE_ALL = ISMINE_SPENDABLE_DELEGATED | ISMINE_SPENDABLE,
+    ISMINE_SPENDABLE_STAKEABLE = ISMINE_SPENDABLE_DELEGATED | ISMINE_COLD,
+    ISMINE_ALL = ISMINE_WATCH_ONLY | ISMINE_SPENDABLE | ISMINE_COLD | ISMINE_SPENDABLE_DELEGATED,
     ISMINE_ALL_USED   = ISMINE_ALL | ISMINE_USED,
     ISMINE_ENUM_ELEMENTS,
 };
@@ -38,12 +46,12 @@ struct CachableAmount
 {
     // NO and ALL are never (supposed to be) cached
     std::bitset<ISMINE_ENUM_ELEMENTS> m_cached;
-    CAmount m_value[ISMINE_ENUM_ELEMENTS];
+    CAmountMap m_value[ISMINE_ENUM_ELEMENTS];
     inline void Reset()
     {
         m_cached.reset();
     }
-    void Set(isminefilter filter, CAmount value)
+    void Set(isminefilter filter, CAmountMap value)
     {
         m_cached.set(filter);
         m_value[filter] = value;

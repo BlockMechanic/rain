@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -25,15 +25,48 @@
 #include <QDoubleValidator>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QItemDelegate>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QPainter>
 #include <QPoint>
 #include <QScrollBar>
 #include <QTableView>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
+
+class TransactionRecordDelegate : public QItemDelegate
+{
+    QSortFilterProxyModel* m_proxy;
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
+    {
+        bool alternate = false;
+        QVariant previous_hash;
+
+        for (int row = 0; row <= index.row(); ++row) {
+            QModelIndex sibling = m_proxy->mapToSource(index.sibling(row, 0));
+            QVariant hash = sibling.data(TransactionTableModel::TxHashRole);
+            if (row == 0) {
+                previous_hash = hash;
+            } else if (hash != previous_hash) {
+                alternate = !alternate;
+                previous_hash = hash;
+            }
+        }
+
+        if (alternate) {
+            painter->fillRect(option.rect, option.palette.alternateBase());
+        }
+
+        QItemDelegate::paint(painter, option, index);
+    }
+
+public:
+    TransactionRecordDelegate(QSortFilterProxyModel* proxy) : m_proxy(proxy) {}
+};
 
 TransactionView::TransactionView(const PlatformStyle *platformStyle, QWidget *parent) :
     QWidget(parent), model(nullptr), transactionProxyModel(nullptr),
@@ -90,6 +123,8 @@ TransactionView::TransactionView(const PlatformStyle *platformStyle, QWidget *pa
     typeWidget->addItem(tr("To yourself"), TransactionFilterProxy::TYPE(TransactionRecord::SendToSelf));
     typeWidget->addItem(tr("Mined"), TransactionFilterProxy::TYPE(TransactionRecord::Generated));
     typeWidget->addItem(tr("Staked"), TransactionFilterProxy::TYPE(TransactionRecord::Staked));
+    typeWidget->addItem(tr("Fee"), TransactionFilterProxy::TYPE(TransactionRecord::Fee));
+    typeWidget->addItem(tr("Issuance"), TransactionFilterProxy::TYPE(TransactionRecord::IssuedAsset));
     typeWidget->addItem(tr("Other"), TransactionFilterProxy::TYPE(TransactionRecord::Other));
 
     hlayout->addWidget(typeWidget);

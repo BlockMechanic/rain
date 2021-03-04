@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 The Rain Core developers
+// Copyright (c) 2015-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -33,11 +33,8 @@ protected:
     void BlockDisconnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex* pindexDisconnected) override;
     void UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload) override;
     void NotifyChainLock(const CBlockIndex *pindex, const llmq::CChainLockSig& clsig) override;
-    void NotifyTransactionLock(const CTransaction &tx, const llmq::CInstantSendLock& islock) override;
     void NotifyGovernanceVote(const CGovernanceVote& vote) override;
     void NotifyGovernanceObject(const CGovernanceObject& object) override;
-    void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) override;
-
 
 private:
     CZMQNotificationInterface();

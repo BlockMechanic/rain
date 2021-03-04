@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -62,13 +62,15 @@ public:
     int getNumBlocks() const;
     int getHeaderTipHeight() const;
     int64_t getHeaderTipTime() const;
-    //! Return number of ISLOCKs
-    size_t getInstantSentLockCount() const;
 
     void setMasternodeList(const CDeterministicMNList& mnList);
     CDeterministicMNList getMasternodeList() const;
     void refreshMasternodeList();
 
+    QDateTime getLastBlockDate() const;
+
+    //! Return true if core is doing initial block download
+    bool inInitialBlockDownload() const;
     //! Returns enum BlockSource of the current importing/syncing state
     enum BlockSource getBlockSource() const;
     //! Return warnings to be displayed in status bar
@@ -77,6 +79,7 @@ public:
     QString formatFullVersion() const;
     QString formatSubVersion() const;
     bool isReleaseVersion() const;
+    QString clientName() const;
     QString formatClientStartupTime() const;
     QString dataDir() const;
     QString blocksDir() const;
@@ -88,9 +91,8 @@ public:
     mutable std::atomic<int64_t> cachedBestHeaderTime;
 
     bool hasAuxiliaryBlockRequest(int64_t* createdRet = NULL, size_t* requestedBlocksRet = NULL, size_t* loadedBlocksRet = NULL, size_t* processedBlocksRet = NULL);
-
-private:
     interfaces::Node& m_node;
+private:
     std::unique_ptr<interfaces::Handler> m_handler_show_progress;
     std::unique_ptr<interfaces::Handler> m_handler_notify_num_connections_changed;
     std::unique_ptr<interfaces::Handler> m_handler_notify_network_active_changed;
@@ -98,9 +100,9 @@ private:
     std::unique_ptr<interfaces::Handler> m_handler_banned_list_changed;
     std::unique_ptr<interfaces::Handler> m_handler_notify_block_tip;
     std::unique_ptr<interfaces::Handler> m_handler_notify_header_tip;
+    std::unique_ptr<interfaces::Handler> m_handler_auxiliary_block_request_progress;
     std::unique_ptr<interfaces::Handler> m_handler_notify_masternode_list_changed;
     std::unique_ptr<interfaces::Handler> m_handler_notify_additional_data_sync_progress_changed;
-//    std::unique_ptr<interfaces::Handler> m_handler_auxiliary_block_request_progress;
     OptionsModel *optionsModel;
     PeerTableModel *peerTableModel;
     BanTableModel *banTableModel;
@@ -110,7 +112,7 @@ private:
     // The cache for mn list is not technically needed because CDeterministicMNManager
     // caches it internally for recent blocks but it's not enough to get consistent
     // representation of the list in UI during initial sync/reindex, so we cache it here too.
-    mutable CCriticalSection cs_mnlinst; // protects mnListCached
+    mutable RecursiveMutex cs_mnlinst; // protects mnListCached
     CDeterministicMNList mnListCached;
 
     void subscribeToCoreSignals();
@@ -122,7 +124,6 @@ Q_SIGNALS:
     void numBlocksChanged(int count, const QDateTime& blockDate, double nVerificationProgress, bool header);
     void additionalDataSyncProgressChanged(double nSyncProgress);
     void mempoolSizeChanged(long count, size_t mempoolSizeInBytes);
-    void islockCountChanged(size_t count);
     void networkActiveChanged(bool networkActive);
     void alertsChanged(const QString &warnings);
     void bytesChanged(quint64 totalBytesIn, quint64 totalBytesOut);
@@ -133,7 +134,7 @@ Q_SIGNALS:
     // Show progress dialog e.g. for verifychain
     void showProgress(const QString &title, int nProgress);
 
-//    void auxiliaryBlockRequestProgressChanged(const QDateTime& created, int blocksRequested, int blocksLoaded, int blocksProcessed);
+    void auxiliaryBlockRequestProgressChanged(const QDateTime& created, int blocksRequested, int blocksLoaded, int blocksProcessed);
 
 public Q_SLOTS:
     void updateTimer();

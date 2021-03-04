@@ -11,3 +11,4 @@ android_CC=$(ANDROID_TOOLCHAIN_BIN)/$(HOST)$(ANDROID_API_LEVEL)-clang
 android_RANLIB=$(ANDROID_TOOLCHAIN_BIN)/$(HOST)-ranlib
 android_NM=$(ANDROID_TOOLCHAIN_BIN)/$(HOST)-nm
 endif
+android_cmake_system=Android

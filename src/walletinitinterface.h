@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 The Rain Core developers
+// Copyright (c) 2017-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -17,6 +17,10 @@ public:
     virtual bool ParameterInteraction() const = 0;
     /** Add wallets that should be opened to list of init interfaces. */
     virtual void Construct(InitInterfaces& interfaces) const = 0;
+
+    // Dash Specific WalletInitInterface
+    virtual void AutoLockMasternodeCollaterals() = 0;
+    virtual bool InitAutoBackup() = 0;
 
     virtual ~WalletInitInterface() {}
 };

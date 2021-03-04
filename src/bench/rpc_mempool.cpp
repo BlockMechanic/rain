@@ -1,17 +1,17 @@
-// Copyright (c) 2011-2019 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <bench/bench.h>
 #include <rpc/blockchain.h>
 #include <txmempool.h>
-
+#include <primitives/assetsdir.h>
 #include <univalue.h>
 
 #include <list>
 #include <vector>
 
-static void AddTx(const CTransactionRef& tx, const CAmount& fee, CTxMemPool& pool) EXCLUSIVE_LOCKS_REQUIRED(cs_main, pool.cs)
+static void AddTx(const CTransactionRef& tx, const CAmountMap& fee, CTxMemPool& pool) EXCLUSIVE_LOCKS_REQUIRED(cs_main, pool.cs)
 {
     LockPoints lp;
     pool.addUnchecked(CTxMemPoolEntry(tx, fee, /* time */ 0, /* height */ 1, /* spendsCoinbase */ false, /* sigOpCost */ 4, lp));
@@ -26,12 +26,12 @@ static void RpcMempool(benchmark::State& state)
         CMutableTransaction tx = CMutableTransaction();
         tx.vin.resize(1);
         tx.vin[0].scriptSig = CScript() << OP_1;
-        tx.vin[0].scriptWitness.stack.push_back({1});
+        //tx.vin[0].scriptWitness.stack.push_back({1});
         tx.vout.resize(1);
         tx.vout[0].scriptPubKey = CScript() << OP_1 << OP_EQUAL;
         tx.vout[0].nValue = i;
         const CTransactionRef tx_r{MakeTransactionRef(tx)};
-        AddTx(tx_r, /* fee */ i, pool);
+        AddTx(tx_r, /* fee */ populateMap(i), pool);
     }
 
     while (state.KeepRunning()) {

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -16,6 +16,7 @@
 enum class OutputType {
     LEGACY,
     P2SH_SEGWIT,
+    STAKING,
     BECH32,
 
     /**
@@ -35,6 +36,7 @@ const std::string& FormatOutputType(OutputType type);
  * The caller must make sure LearnRelatedScripts has been called beforehand.
  */
 CTxDestination GetDestinationForKey(const CPubKey& key, OutputType);
+CTxDestination GetDestinationForKey(const CPubKey& key, OutputType, const CPubKey& blinding_pubkey);
 
 /** Get all destinations (potentially) supported by the wallet for the given key. */
 std::vector<CTxDestination> GetAllDestinationsForKey(const CPubKey& key);

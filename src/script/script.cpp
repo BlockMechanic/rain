@@ -1,7 +1,9 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#include "streams.h"
+#include "version.h"
 
 #include <script/script.h>
 
@@ -71,6 +73,7 @@ const char* GetOpName(opcodetype opcode)
     // splice ops
     case OP_CAT                    : return "OP_CAT";
     case OP_SUBSTR                 : return "OP_SUBSTR";
+    case OP_SUBSTR_LAZY            : return "OP_SUBSTR_LAZY";
     case OP_LEFT                   : return "OP_LEFT";
     case OP_RIGHT                  : return "OP_RIGHT";
     case OP_SIZE                   : return "OP_SIZE";
@@ -125,6 +128,9 @@ const char* GetOpName(opcodetype opcode)
     case OP_CHECKSIGVERIFY         : return "OP_CHECKSIGVERIFY";
     case OP_CHECKMULTISIG          : return "OP_CHECKMULTISIG";
     case OP_CHECKMULTISIGVERIFY    : return "OP_CHECKMULTISIGVERIFY";
+    case OP_DETERMINISTICRANDOM    : return "OP_DETERMINISTICRANDOM";
+    case OP_CHECKSIGFROMSTACK      : return "OP_CHECKSIGFROMSTACK";
+    case OP_CHECKSIGFROMSTACKVERIFY: return "OP_CHECKSIGFROMSTACKVERIFY";
 
     // expansion
     case OP_NOP1                   : return "OP_NOP1";
@@ -137,6 +143,9 @@ const char* GetOpName(opcodetype opcode)
     case OP_NOP8                   : return "OP_NOP8";
     case OP_NOP9                   : return "OP_NOP9";
     case OP_NOP10                  : return "OP_NOP10";
+
+    // cold staking
+    case OP_CHECKCOLDSTAKEVERIFY   : return "OP_CHECKCOLDSTAKEVERIFY";
 
     case OP_INVALIDOPCODE          : return "OP_INVALIDOPCODE";
 
@@ -155,7 +164,8 @@ unsigned int CScript::GetSigOpCount(bool fAccurate) const
         opcodetype opcode;
         if (!GetOp(pc, opcode))
             break;
-        if (opcode == OP_CHECKSIG || opcode == OP_CHECKSIGVERIFY)
+        if (opcode == OP_CHECKSIG || opcode == OP_CHECKSIGVERIFY ||
+            opcode == OP_CHECKSIGFROMSTACK || opcode == OP_CHECKSIGFROMSTACKVERIFY)
             n++;
         else if (opcode == OP_CHECKMULTISIG || opcode == OP_CHECKMULTISIGVERIFY)
         {
@@ -193,6 +203,37 @@ unsigned int CScript::GetSigOpCount(const CScript& scriptSig) const
     return subscript.GetSigOpCount(true);
 }
 
+bool CScript::IsNormalPaymentScript() const
+{
+    if(this->size() != 25) return false;
+
+    std::string str;
+    opcodetype opcode;
+    const_iterator pc = begin();
+    int i = 0;
+    while (pc < end())
+    {
+        GetOp(pc, opcode);
+
+        if(     i == 0 && opcode != OP_DUP) return false;
+        else if(i == 1 && opcode != OP_HASH160) return false;
+        else if(i == 3 && opcode != OP_EQUALVERIFY) return false;
+        else if(i == 4 && opcode != OP_CHECKSIG) return false;
+        else if(i == 5) return false;
+
+        i++;
+    }
+
+    return true;
+}
+
+bool CScript::IsPayToWitnessPubkeyHash() const
+{
+    return (this->size() == 22 &&
+            (*this)[0] == 0x00 &&
+            (*this)[1] == 0x14);
+}
+
 bool CScript::IsPayToScriptHash() const
 {
     // Extra-fast test for pay-to-script-hash CScripts:
@@ -200,6 +241,18 @@ bool CScript::IsPayToScriptHash() const
             (*this)[0] == OP_HASH160 &&
             (*this)[1] == 0x14 &&
             (*this)[22] == OP_EQUAL);
+}
+
+bool CScript::IsPayToColdStaking() const
+{
+    // Extra-fast test for pay-to-cold-staking CScripts:
+    return (this->size() == 51 &&
+            (*this)[2] == OP_ROT &&
+            (*this)[4] == OP_CHECKCOLDSTAKEVERIFY &&
+            (*this)[5] == 0x14 &&
+            (*this)[27] == 0x14 &&
+            (*this)[49] == OP_EQUALVERIFY &&
+            (*this)[50] == OP_CHECKSIG);
 }
 
 bool CScript::IsPayToPubkey() const
@@ -274,6 +327,23 @@ bool CScript::IsPushOnly() const
     return this->IsPushOnly(begin());
 }
 
+std::string CScriptWitness::ToString() const
+{
+    std::string ret = "CScriptWitness(";
+    for (unsigned int i = 0; i < stack.size(); i++) {
+        if (i) {
+            ret += ", ";
+        }
+        ret += HexStr(stack[i]);
+    }
+    return ret + ")\n";
+}
+
+uint32_t CScriptWitness::GetSerializedSize() const
+{
+    return ::GetSerializeSize(stack, 0);
+}
+
 std::string CScript::ToString() const
 {
     std::string str;
@@ -295,18 +365,6 @@ std::string CScript::ToString() const
             str += GetOpName(opcode);
     }
     return str;
-}
-
-std::string CScriptWitness::ToString() const
-{
-    std::string ret = "CScriptWitness(";
-    for (unsigned int i = 0; i < stack.size(); i++) {
-        if (i) {
-            ret += ", ";
-        }
-        ret += HexStr(stack[i]);
-    }
-    return ret + ")";
 }
 
 bool CScript::HasValidOps() const

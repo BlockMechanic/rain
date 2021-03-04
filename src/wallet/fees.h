@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,6 +7,7 @@
 #define RAIN_WALLET_FEES_H
 
 #include <amount.h>
+#include <primitives/asset.h>
 
 class CCoinControl;
 class CFeeRate;
@@ -17,13 +18,13 @@ struct FeeCalculation;
  * Return the minimum required absolute fee for this size
  * based on the required fee rate
  */
-CAmount GetRequiredFee(const CWallet& wallet, unsigned int nTxBytes);
+CAmountMap GetRequiredFee(const CWallet& wallet, unsigned int nTxBytes);
 
 /**
  * Estimate the minimum fee considering user set parameters
  * and the required fee
  */
-CAmount GetMinimumFee(const CWallet& wallet, unsigned int nTxBytes, const CCoinControl& coin_control, FeeCalculation* feeCalc);
+CAmountMap GetMinimumFee(const CWallet& wallet, unsigned int nTxBytes, const CCoinControl& coin_control, FeeCalculation* feeCalc);
 
 /**
  * Return the minimum required feerate taking into account the

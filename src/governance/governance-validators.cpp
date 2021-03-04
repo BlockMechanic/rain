@@ -153,11 +153,11 @@ bool CProposalValidator::ValidatePaymentAddress()
         return false;
     }
 
-	CTxDestination dest = DecodeDestination(strPaymentAddress);
-	if (!IsValidDestination(dest)) {
+    CTxDestination dest = DecodeDestination(strPaymentAddress);
+    if (!IsValidDestination(dest)) {
         strErrorMessages += "payment_address is invalid;";
-        return false;		
-	}
+        return false;
+    }
 
     if (*boost::get<ScriptHash>(&dest) == ScriptHash(GetScriptForDestination(dest))) {
         strErrorMessages += "script addresses are not supported;";

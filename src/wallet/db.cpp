@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -44,7 +44,7 @@ void CheckUniqueFileid(const BerkeleyEnvironment& env, const std::string& filena
     }
 }
 
-CCriticalSection cs_db;
+RecursiveMutex cs_db;
 std::map<std::string, std::weak_ptr<BerkeleyEnvironment>> g_dbenvs GUARDED_BY(cs_db); //!< Map from directory name to db environment.
 } // namespace
 
@@ -652,7 +652,7 @@ void BerkeleyEnvironment::ReloadDbEnv()
 {
     // Make sure that no Db's are in use
     AssertLockNotHeld(cs_db);
-    std::unique_lock<CCriticalSection> lock(cs_db);
+    std::unique_lock<RecursiveMutex> lock(cs_db);
     m_db_in_use.wait(lock, [this](){
         for (auto& count : mapFileUseCount) {
             if (count.second > 0) return false;
@@ -758,7 +758,7 @@ bool BerkeleyBatch::Rewrite(BerkeleyDatabase& database, const char* pszSkip)
                 return fSuccess;
             }
         }
-        MilliSleep(100);
+        UninterruptibleSleep(std::chrono::milliseconds{100});
     }
 }
 
@@ -889,7 +889,7 @@ bool BerkeleyDatabase::Backup(const std::string& strDest)
                 }
             }
         }
-        MilliSleep(100);
+        UninterruptibleSleep(std::chrono::milliseconds{100});
     }
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2019 The Rain Core developers
+// Copyright (c) 2012-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -144,7 +144,7 @@ BOOST_AUTO_TEST_CASE(intarg)
     BOOST_CHECK_EQUAL(gArgs.GetArg("-bar", 11), 0);
 }
 
-BOOST_AUTO_TEST_CASE(doublerain)
+BOOST_AUTO_TEST_CASE(doubledash)
 {
     const auto foo = std::make_pair("-foo", ArgsManager::ALLOW_ANY);
     const auto bar = std::make_pair("-bar", ArgsManager::ALLOW_ANY);

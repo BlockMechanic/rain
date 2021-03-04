@@ -19,6 +19,7 @@
 #include <vector>
 
 class BanMan;
+class CBlockIndex;
 class CCoinControl;
 class CFeeRate;
 class CNodeStats;
@@ -147,12 +148,17 @@ public:
 
     //! Get last block time.
     virtual int64_t getLastBlockTime() = 0;
+    
+    virtual CAmountMap getMoneySupply()=0;
 
     //! Get block hash.
     virtual uint256 getBlockHash(int blockNumber) = 0;
 
     //! Get block time.
     virtual int64_t getBlockTime(int blockNumber) = 0;
+
+    //! Get block time.
+    virtual int64_t lastCoinStakeSearchTime() = 0;
 
     //! Get verification progress.
     virtual double getVerificationProgress() = 0;
@@ -174,6 +180,9 @@ public:
 
     //! Get network active.
     virtual bool getNetworkActive() = 0;
+
+    //! Get max tx fee.
+    virtual CAmount getMaxTxFee() = 0;
 
     //! Estimate smart fee.
     virtual CFeeRate estimateSmartFee(int num_blocks, bool conservative, int* returned_target = nullptr) = 0;
@@ -259,6 +268,11 @@ public:
     using NotifyHeaderTipFn =
         std::function<void(bool initial_download, int height, int64_t block_time, double verification_progress)>;
     virtual std::unique_ptr<Handler> handleNotifyHeaderTip(NotifyHeaderTipFn fn) = 0;
+
+    //! Register handler for spv messages.
+    using AuxiliaryBlockRequestProgress =
+        std::function<void(int64_t initial_download, size_t requested, size_t blocks, size_t progress)>;
+    virtual std::unique_ptr<Handler> handleAuxiliaryBlockRequestProgress(AuxiliaryBlockRequestProgress fn) = 0;
 
     //! Register handler for masternode list messages.
     using NotifyMasternodeListChangedFn = std::function<void(const CDeterministicMNList& i)>;

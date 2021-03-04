@@ -5,8 +5,8 @@
 #include <llmq/quorums_commitment.h>
 #include <llmq/quorums_utils.h>
 
-#include "chainparams.h"
-#include "validation.h"
+#include <chainparams.h>
+#include <validation.h>
 
 #include <evo/specialtx.h>
 

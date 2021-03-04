@@ -1,5 +1,5 @@
 // Copyright (c) 2012 Pieter Wuille
-// Copyright (c) 2012-2018 The Rain Core developers
+// Copyright (c) 2012-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -176,7 +176,7 @@ class CAddrMan
 {
 protected:
     //! critical section to protect the inner data structures
-    mutable CCriticalSection cs;
+    mutable RecursiveMutex cs;
 
 private:
     //! last used nId

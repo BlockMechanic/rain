@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2019 The Rain Core developers
+// Copyright (c) 2012-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -394,7 +394,7 @@ BOOST_AUTO_TEST_CASE(test_CheckQueueControl_Locks)
                     CCheckQueueControl<FakeCheck> control(queue.get());
                     // While sleeping, no other thread should execute to this point
                     auto observed = ++nThreads;
-                    MilliSleep(10);
+                    UninterruptibleSleep(std::chrono::milliseconds{10});
                     fails += observed  != nThreads;
                     });
         }

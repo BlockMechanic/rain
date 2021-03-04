@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 The Rain Core developers
+// Copyright (c) 2016-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -11,12 +11,4 @@ const struct VBDeploymentInfo VersionBitsDeploymentInfo[Consensus::MAX_VERSION_B
         /*.name =*/ "testdummy",
         /*.gbt_force =*/ true,
     },
-    {
-        /*.name =*/ "csv",
-        /*.gbt_force =*/ true,
-    },
-    {
-        /*.name =*/ "segwit",
-        /*.gbt_force =*/ true,
-    }
 };

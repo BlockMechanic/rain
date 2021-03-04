@@ -4,25 +4,12 @@
 
 DIST_SUBDIRS = secp256k1 univalue
 
-AM_LDFLAGS = $(PTHREAD_CFLAGS) $(LIBTOOL_LDFLAGS) $(HARDENED_LDFLAGS) $(GPROF_LDFLAGS) $(SANITIZER_LDFLAGS)
-AM_CXXFLAGS = $(DEBUG_CXXFLAGS) $(HARDENED_CXXFLAGS) $(WARN_CXXFLAGS) $(NOWARN_CXXFLAGS) $(ERROR_CXXFLAGS) $(GPROF_CXXFLAGS) $(SANITIZER_CXXFLAGS) -fPIC
-AM_CPPFLAGS = $(DEBUG_CPPFLAGS) $(HARDENED_CPPFLAGS) -fPIC
-
-AM_CFLAGS = -fPIC
+AM_LDFLAGS = $(LIBTOOL_LDFLAGS) $(HARDENED_LDFLAGS) $(GPROF_LDFLAGS) $(SANITIZER_LDFLAGS)
+AM_CXXFLAGS = $(DEBUG_CXXFLAGS) $(HARDENED_CXXFLAGS) $(WARN_CXXFLAGS) $(NOWARN_CXXFLAGS) $(ERROR_CXXFLAGS) $(GPROF_CXXFLAGS) $(SANITIZER_CXXFLAGS)
+AM_CPPFLAGS = $(DEBUG_CPPFLAGS) $(HARDENED_CPPFLAGS)
 AM_LIBTOOLFLAGS = --preserve-dup-deps
+PTHREAD_FLAGS = $(PTHREAD_CFLAGS) $(PTHREAD_LIBS)
 EXTRA_LIBRARIES =
-
-if ENABLE_CRASH_HOOKS
-if CRASH_HOOKS_WRAPPED_CXX_ABI
-# Wrap internal C++ ABI's so that we can attach stacktraces to exceptions
-LDFLAGS_WRAP_EXCEPTIONS = -Wl,-wrap,__cxa_allocate_exception -Wl,-wrap,__cxa_free_exception
-if TARGET_WINDOWS
-LDFLAGS_WRAP_EXCEPTIONS += -Wl,-wrap,_assert -Wl,-wrap,_wassert
-else
-LDFLAGS_WRAP_EXCEPTIONS += -Wl,-wrap,__assert_fail
-endif
-endif
-endif
 
 if TARGET_WINDOWS
 BACKTRACE_LIB = -ldbghelp -lbacktrace
@@ -39,9 +26,8 @@ else
 LIBUNIVALUE = $(UNIVALUE_LIBS)
 endif
 
-RAIN_INCLUDES=-I$(builddir) $(BDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
+RAIN_INCLUDES=-I$(builddir) -I$(srcdir)/secp256k1/include $(BDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS)
 
-RAIN_INCLUDES += -I$(srcdir)/secp256k1/include
 RAIN_INCLUDES += $(UNIVALUE_CFLAGS)
 
 BLS_LIBS=-lchiabls -lgmp
@@ -124,17 +110,24 @@ endif
 RAIN_CORE_H = \
   addrdb.h \
   addressindex.h \
+  assetdb.h \
   spentindex.h \
+  timestampindex.h \
+  addressbook.h \
   addrman.h \
+  asset.h \
+  assetsdir.h \
   attributes.h \
+  auxiliaryblockrequest.h \
   banman.h \
   base58.h \
   batchedlogger.h \
-  bignum.h \
   bech32.h \
-  bloom.h \
+  blech32.h \
+  blind.h \
   blockencodings.h \
   blockfilter.h \
+  bloom.h \
   bls/bls_batchverifier.h \
   bls/bls_ies.h \
   bls/bls_worker.h \
@@ -151,9 +144,11 @@ RAIN_CORE_H = \
   compat.h \
   compat/assumptions.h \
   compat/byteswap.h \
+  compat/cpuid.h \
   compat/endian.h \
   compat/sanity.h \
   compressor.h \
+  confidential_validation.h \
   consensus/consensus.h \
   consensus/tx_check.h \
   consensus/tx_verify.h \
@@ -163,6 +158,7 @@ RAIN_CORE_H = \
   cuckoocache.h \
   ctpl.h \
   cxxtimer.hpp \
+  dbwrapper.h \
   evo/cbtx.h \
   evo/deterministicmns.h \
   evo/evodb.h \
@@ -170,10 +166,6 @@ RAIN_CORE_H = \
   evo/providertx.h \
   evo/simplifiedmns.h \
   evo/specialtx.h \
-  privatesend/privatesend.h \
-  privatesend/privatesend-client.h \
-  privatesend/privatesend-server.h \
-  privatesend/privatesend-util.h \
   dsnotificationinterface.h \
   governance/governance.h \
   governance/governance-classes.h \
@@ -185,6 +177,7 @@ RAIN_CORE_H = \
   flat-database.h \
   flatfile.h \
   fs.h \
+  groestl.h \
   httprpc.h \
   httpserver.h \
   hashblock.h \
@@ -197,10 +190,9 @@ RAIN_CORE_H = \
   interfaces/handler.h \
   interfaces/node.h \
   interfaces/wallet.h \
+  issuance.h \
   key.h \
-  keepass.h \
   key_io.h \
-  dbwrapper.h \
   limitedmap.h \
   logging.h \
   llmq/quorums.h \
@@ -212,7 +204,6 @@ RAIN_CORE_H = \
   llmq/quorums_dkgsessionmgr.h \
   llmq/quorums_dkgsession.h \
   llmq/quorums_init.h \
-  llmq/quorums_instantsend.h \
   llmq/quorums_signing.h \
   llmq/quorums_signing_shares.h \
   llmq/quorums_utils.h \
@@ -233,6 +224,7 @@ RAIN_CORE_H = \
   netfulfilledman.h \
   netmessagemaker.h \
   node/coin.h \
+  node/coinstats.h \
   node/psbt.h \
   node/transaction.h \
   noui.h \
@@ -250,6 +242,7 @@ RAIN_CORE_H = \
   protocol.h \
   psbt.h \
   random.h \
+  randomenv.h \
   reverse_iterator.h \
   reverselock.h \
   rpc/blockchain.h \
@@ -263,8 +256,10 @@ RAIN_CORE_H = \
   rpc/util.h \
   saltedhasher.h \
   scheduler.h \
+  script/compiler.h \
   script/descriptor.h \
   script/keyorigin.h \
+  script/miniscript.h \
   script/sigcache.h \
   script/sign.h \
   script/signingprovider.h \
@@ -287,7 +282,8 @@ RAIN_CORE_H = \
   sphlib/sph_simd.h \
   sphlib/sph_skein.h \
   spork.h \
-  stacktraces.h \
+  sporkdb.h \
+  sporkid.h \
   streams.h \
   support/allocators/mt_pooled_secure.h \
   support/allocators/pooled_secure.h \
@@ -297,8 +293,8 @@ RAIN_CORE_H = \
   support/events.h \
   support/lockedpool.h \
   sync.h \
-  threadsafety.h \
   threadinterrupt.h \
+  threadsafety.h \
   timedata.h \
   torcontrol.h \
   txdb.h \
@@ -310,6 +306,7 @@ RAIN_CORE_H = \
   util/bytevectorhash.h \
   util/error.h \
   util/fees.h \
+  util/spanparsing.h \
   util/system.h \
   util/memory.h \
   util/moneystr.h \
@@ -320,6 +317,7 @@ RAIN_CORE_H = \
   util/translation.h \
   util/url.h \
   util/validation.h \
+  util/vector.h \
   validation.h \
   validationinterface.h \
   versionbits.h \
@@ -344,7 +342,8 @@ RAIN_CORE_H = \
   zmq/zmqconfig.h\
   zmq/zmqnotificationinterface.h \
   zmq/zmqpublishnotifier.h \
-  zmq/zmqrpc.h
+  zmq/zmqrpc.h \
+  zmq/zmqutil.h
 
 obj/build.h: FORCE
 	@$(MKDIR_P) $(builddir)/obj
@@ -361,6 +360,9 @@ librain_server_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_server_a_SOURCES = \
   addrdb.cpp \
   addrman.cpp \
+  assetdb.cpp \
+  auxiliaryblockrequest.cpp \
+  primitives/assetsdir.cpp \
   banman.cpp \
   batchedlogger.cpp \
   blockencodings.cpp \
@@ -369,7 +371,9 @@ librain_server_a_SOURCES = \
   bls/bls_worker.cpp \
   chain.cpp \
   checkpoints.cpp \
+  confidential_validation.cpp \
   consensus/tx_verify.cpp \
+  dbwrapper.cpp \
   dsnotificationinterface.cpp \
   evo/cbtx.cpp \
   evo/deterministicmns.cpp \
@@ -387,7 +391,6 @@ librain_server_a_SOURCES = \
   interfaces/chain.cpp \
   interfaces/node.cpp \
   init.cpp \
-  dbwrapper.cpp \
   governance/governance.cpp \
   governance/governance-classes.cpp \
   governance/governance-object.cpp \
@@ -403,7 +406,6 @@ librain_server_a_SOURCES = \
   llmq/quorums_dkgsessionmgr.cpp \
   llmq/quorums_dkgsession.cpp \
   llmq/quorums_init.cpp \
-  llmq/quorums_instantsend.cpp \
   llmq/quorums_signing.cpp \
   llmq/quorums_signing_shares.cpp \
   llmq/quorums_utils.cpp \
@@ -418,6 +420,7 @@ librain_server_a_SOURCES = \
   netfulfilledman.cpp \
   net_processing.cpp \
   node/coin.cpp \
+  node/coinstats.cpp \
   node/psbt.cpp \
   node/transaction.cpp \
   noui.cpp \
@@ -426,11 +429,8 @@ librain_server_a_SOURCES = \
   policy/settings.cpp \
   pos.cpp \
   pow.cpp \
-  privatesend/privatesend.cpp \
-  privatesend/privatesend-server.cpp \
-  privatesend/privatesend-client.cpp \
-  privatesend/privatesend-util.cpp \
   rest.cpp \
+  rpc/contracts.cpp \
   rpc/blockchain.cpp \
   rpc/masternode.cpp \
   rpc/governance.cpp \
@@ -441,7 +441,6 @@ librain_server_a_SOURCES = \
   rpc/rpcevo.cpp \
   rpc/rpcquorums.cpp \
   rpc/server.cpp \
-  rpc/privatesend.cpp \
   rpc/smessage.cpp \
   script/sigcache.cpp \
   shutdown.cpp \
@@ -473,7 +472,8 @@ librain_zmq_a_SOURCES = \
   zmq/zmqabstractnotifier.cpp \
   zmq/zmqnotificationinterface.cpp \
   zmq/zmqpublishnotifier.cpp \
-  zmq/zmqrpc.cpp
+  zmq/zmqrpc.cpp \
+  zmq/zmqutil.cpp
 endif
 
 
@@ -482,7 +482,7 @@ endif
 librain_wallet_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 librain_wallet_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_wallet_a_SOURCES = \
-  keepass.cpp \
+  addressbook.cpp \
   interfaces/wallet.cpp \
   wallet/coincontrol.cpp \
   wallet/crypter.cpp \
@@ -536,7 +536,6 @@ crypto_librain_crypto_base_a_SOURCES = \
   crypto/siphash.cpp \
   crypto/siphash.h
 
-
 if USE_ASM
 crypto_librain_crypto_base_a_SOURCES += crypto/sha256_sse4.cpp
 endif
@@ -587,14 +586,21 @@ librain_consensus_a_SOURCES = \
   sphlib/simd.c \
   sphlib/keccak.c \
   sphlib/groestl.c \
+  groestl.cpp \
   prevector.h \
+  primitives/asset.cpp \
   primitives/block.cpp \
   primitives/block.h \
+  primitives/confidential.cpp \
+  primitives/confidential.h \
+  primitives/txwitness.cpp \
+  primitives/txwitness.h \
   primitives/transaction.cpp \
   primitives/transaction.h \
   pubkey.cpp \
   pubkey.h \
   script/rainconsensus.cpp \
+  script/compiler.cpp \
   script/interpreter.cpp \
   script/interpreter.h \
   script/script.cpp \
@@ -616,12 +622,15 @@ librain_common_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_common_a_SOURCES = \
   base58.cpp \
   bech32.cpp \
+  blech32.cpp \
   bloom.cpp \
+  blind.cpp \
   chainparams.cpp \
   coins.cpp \
   compressor.cpp \
   core_read.cpp \
   core_write.cpp \
+  issuance.cpp \
   key.cpp \
   key_io.cpp \
   merkleblock.cpp \
@@ -639,6 +648,7 @@ librain_common_a_SOURCES = \
   saltedhasher.cpp \
   scheduler.cpp \
   script/descriptor.cpp \
+  script/miniscript.cpp \
   script/sign.cpp \
   script/signingprovider.cpp \
   script/standard.cpp \
@@ -656,6 +666,7 @@ librain_util_a_SOURCES = \
   support/lockedpool.cpp \
   chainparamsbase.cpp \
   clientversion.cpp \
+  compat/glibc_sanity_fdelt.cpp \
   compat/glibc_sanity.cpp \
   compat/glibcxx_sanity.cpp \
   compat/strnlen.cpp \
@@ -663,6 +674,7 @@ librain_util_a_SOURCES = \
   interfaces/handler.cpp \
   logging.cpp \
   random.cpp \
+  randomenv.cpp \
   rpc/request.cpp \
   support/cleanse.cpp \
   sync.cpp \
@@ -675,6 +687,7 @@ librain_util_a_SOURCES = \
   util/moneystr.cpp \
   util/rbf.cpp \
   util/threadnames.cpp \
+  util/spanparsing.cpp \
   util/strencodings.cpp \
   util/string.cpp \
   util/time.cpp \
@@ -701,7 +714,7 @@ nodist_librain_util_a_SOURCES = $(srcdir)/obj/build.h
 raind_SOURCES = raind.cpp
 raind_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 raind_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-raind_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
+raind_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS) $(PTHREAD_FLAGS)
 
 if TARGET_WINDOWS
 raind_SOURCES += raind-res.rc
@@ -712,7 +725,6 @@ endif
 raind_LDADD = \
   $(LIBRAIN_SERVER) \
   $(LIBRAIN_WALLET) \
-  $(LIBRAIN_SERVER) \
   $(LIBRAIN_COMMON) \
   $(LIBUNIVALUE) \
   $(LIBRAIN_UTIL) \
@@ -724,13 +736,13 @@ raind_LDADD = \
   $(LIBMEMENV) \
   $(LIBSECP256K1)
 
-raind_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) $(BLS_LIBS)
+raind_LDADD += $(BACKTRACE_LIB) $(BOOST_LIBS) $(BDB_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) $(BLS_LIBS)
 
 # rain-cli binary #
 rain_cli_SOURCES = rain-cli.cpp
 rain_cli_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES) $(EVENT_CFLAGS)
 rain_cli_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-rain_cli_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
+rain_cli_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS) $(PTHREAD_FLAGS)
 
 if TARGET_WINDOWS
 rain_cli_SOURCES += rain-cli-res.rc
@@ -741,14 +753,15 @@ rain_cli_LDADD = \
   $(LIBUNIVALUE) \
   $(LIBRAIN_UTIL) \
   $(LIBRAIN_CRYPTO)
-rain_cli_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS) $(BLS_LIBS)
+
+rain_cli_LDADD += $(BACKTRACE_LIB) $(BOOST_LIBS) $(EVENT_LIBS) $(BLS_LIBS)
 #
 
 # rain-tx binary #
 rain_tx_SOURCES = rain-tx.cpp
 rain_tx_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
 rain_tx_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-rain_tx_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
+rain_tx_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS) $(PTHREAD_FLAGS)
 
 if TARGET_WINDOWS
 rain_tx_SOURCES += rain-tx-res.rc
@@ -757,12 +770,23 @@ endif
 rain_tx_LDADD = \
   $(LIBUNIVALUE) \
   $(LIBRAIN_COMMON) \
-  $(LIBRAIN_UTIL) \
+  $(LIBRAIN_WALLET) \
+  $(LIBRAIN_SERVER) \
+  $(LIBRAIN_COMMON) \
   $(LIBRAIN_CONSENSUS) \
+  $(LIBRAIN_UTIL) \
+  $(LIBRAIN_WALLET) \
+  $(LIBRAIN_SERVER) \
+  $(LIBRAIN_COMMON) \
+  $(LIBRAIN_UTIL) \
   $(LIBRAIN_CRYPTO) \
+  $(LIBRAIN_ZMQ) \
+  $(LIBLEVELDB) \
+  $(LIBLEVELDB_SSE42) \
+  $(LIBMEMENV) \
   $(LIBSECP256K1)
 
-rain_tx_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS) $(BLS_LIBS)
+rain_tx_LDADD += $(BACKTRACE_LIB) $(BOOST_LIBS) $(BDB_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(MINIUPNPC_LIBS) $(ZMQ_LIBS) $(BLS_LIBS)
 #
 
 # rain-wallet binary #
@@ -778,8 +802,12 @@ endif
 rain_wallet_LDADD = \
   $(LIBRAIN_WALLET_TOOL) \
   $(LIBRAIN_WALLET) \
+  $(LIBRAIN_SERVER) \
   $(LIBRAIN_COMMON) \
   $(LIBRAIN_CONSENSUS) \
+  $(LIBRAIN_WALLET) \
+  $(LIBRAIN_SERVER) \
+  $(LIBRAIN_COMMON) \
   $(LIBRAIN_UTIL) \
   $(LIBRAIN_CRYPTO) \
   $(LIBRAIN_ZMQ) \
@@ -789,7 +817,7 @@ rain_wallet_LDADD = \
   $(LIBSECP256K1) \
   $(LIBUNIVALUE)
 
-rain_wallet_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(CRYPTO_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(MINIUPNPC_LIBS) $(ZMQ_LIBS) $(BLS_LIBS)
+rain_wallet_LDADD += $(BACKTRACE_LIB) $(BOOST_LIBS) $(BDB_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(MINIUPNPC_LIBS) $(ZMQ_LIBS) $(BLS_LIBS)
 #
 
 # rainconsensus library #
@@ -820,18 +848,25 @@ CLEANFILES = $(EXTRA_LIBRARIES)
 CLEANFILES += *.gcda *.gcno
 CLEANFILES += compat/*.gcda compat/*.gcno
 CLEANFILES += consensus/*.gcda consensus/*.gcno
+CLEANFILES += crc32c/src/*.gcda crc32c/src/*.gcno
 CLEANFILES += crypto/*.gcda crypto/*.gcno
+CLEANFILES += index/*.gcda index/*.gcno
+CLEANFILES += interfaces/*.gcda interfaces/*.gcno
+CLEANFILES += node/*.gcda node/*.gcno
 CLEANFILES += policy/*.gcda policy/*.gcno
 CLEANFILES += primitives/*.gcda primitives/*.gcno
+CLEANFILES += rpc/*.gcda rpc/*.gcno
 CLEANFILES += script/*.gcda script/*.gcno
 CLEANFILES += support/*.gcda support/*.gcno
 CLEANFILES += univalue/*.gcda univalue/*.gcno
+CLEANFILES += util/*.gcda util/*.gcno
 CLEANFILES += wallet/*.gcda wallet/*.gcno
 CLEANFILES += wallet/test/*.gcda wallet/test/*.gcno
 CLEANFILES += zmq/*.gcda zmq/*.gcno
 CLEANFILES += obj/build.h
 
 EXTRA_DIST = $(CTAES_DIST)
+
 
 config/rain-config.h: config/stamp-h1
 	@$(MAKE) -C $(top_builddir) $(subdir)/$(@)
@@ -853,6 +888,16 @@ clean-local:
 	$(AM_V_GEN) $(WINDRES) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(CPPFLAGS) -DWINDRES_PREPROC -i $< -o $@
 
 check-symbols: $(bin_PROGRAMS)
+if TARGET_DARWIN
+	@echo "Checking macOS dynamic libraries..."
+	$(AM_V_at) OTOOL=$(OTOOL) $(PYTHON) $(top_srcdir)/contrib/devtools/symbol-check.py $(bin_PROGRAMS)
+endif
+
+if TARGET_WINDOWS
+	@echo "Checking Windows dynamic libraries..."
+	$(AM_V_at) OBJDUMP=$(OBJDUMP) $(PYTHON) $(top_srcdir)/contrib/devtools/symbol-check.py $(bin_PROGRAMS)
+endif
+
 if GLIBC_BACK_COMPAT
 	@echo "Checking glibc back compat..."
 	$(AM_V_at) READELF=$(READELF) CPPFILT=$(CPPFILT) $(PYTHON) $(top_srcdir)/contrib/devtools/symbol-check.py < $(bin_PROGRAMS)
@@ -865,8 +910,12 @@ if HARDEN
 endif
 
 if EMBEDDED_LEVELDB
+include Makefile.crc32c.include
 include Makefile.leveldb.include
 endif
+
+include Makefile.test_util.include
+include Makefile.test_fuzz.include
 
 if ENABLE_TESTS
 include Makefile.test.include

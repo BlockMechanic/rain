@@ -1080,7 +1080,7 @@ UniValue getsuperblockbudget(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Block height out of range");
     }
 
-    return ValueFromAmount(CSuperblock::GetPaymentsLimit(nBlockHeight));
+    return ValueFromAmountMap(CSuperblock::GetPaymentsLimit(nBlockHeight));
 }
 
 static const CRPCCommand commands[] =

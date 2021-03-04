@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 The Rain Core developers
+// Copyright (c) 2017-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,8 +14,13 @@ static constexpr CAmount MIN_CHANGE{COIN / 100};
 //! final minimum change amount after paying for fees
 static const CAmount MIN_FINAL_CHANGE = MIN_CHANGE/2;
 
+class CWalletTx;
+class uint256;
+
 class CInputCoin {
 public:
+    CInputCoin(const CWalletTx* wtx, unsigned int i);
+
     CInputCoin(const CTransactionRef& tx, unsigned int i)
     {
         if (!tx)
@@ -26,10 +31,22 @@ public:
         outpoint = COutPoint(tx->GetHash(), i);
         txout = tx->vout[i];
         txr = tx;
-        effective_value = txout.nValue;
+
+        if (tx->vout[i].nValue.IsExplicit()) {
+            effective_value = tx->vout[i].nValue.GetAmount();
+            value = tx->vout[i].nValue.GetAmount();
+            asset = tx->vout[i].nAsset.GetAsset();
+        } else {
+            effective_value = 0;
+        }
     }
 
     CInputCoin(const CTransactionRef& tx, unsigned int i, int input_bytes) : CInputCoin(tx, i)
+    {
+        m_input_bytes = input_bytes;
+    }
+
+    CInputCoin(const CWalletTx* wtx, unsigned int i, int input_bytes) : CInputCoin(wtx, i)
     {
         m_input_bytes = input_bytes;
     }
@@ -38,6 +55,12 @@ public:
     CTxOut txout;
     CAmount effective_value;
     CTransactionRef txr; 
+
+    // ELEMENTS:
+    CAmount value;
+    CAsset asset;
+    uint256 bf_value;
+    uint256 bf_asset;
 
     /** Pre-computed estimated size of this output as a fully-signed input in a transaction. Can be -1 if it could not be calculated */
     int m_input_bytes{-1};
@@ -99,5 +122,9 @@ bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& target_v
 
 // Original coin selection algorithm as a fallback
 bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& groups, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet);
+
+
+// Knapsack that delegates for every asset individually.
+bool KnapsackSolver(const CAmountMap& mapTargetValue, std::vector<OutputGroup>& groups, std::set<CInputCoin>& setCoinsRet, CAmountMap& mapValueRet);
 
 #endif // RAIN_WALLET_COINSELECTION_H

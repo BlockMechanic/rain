@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -206,6 +206,15 @@ void PSBTOutput::Merge(const PSBTOutput& output)
 
     if (redeem_script.empty() && !output.redeem_script.empty()) redeem_script = output.redeem_script;
     if (witness_script.empty() && !output.witness_script.empty()) witness_script = output.witness_script;
+
+    if (!blinding_pubkey.IsValid() && output.blinding_pubkey.IsValid()) blinding_pubkey = output.blinding_pubkey;
+    if (value_commitment.IsNull() && !output.value_commitment.IsNull()) value_commitment = output.value_commitment;
+    if (value_blinding_factor.IsNull() && !output.value_blinding_factor.IsNull()) value_blinding_factor = output.value_blinding_factor;
+    if (asset_commitment.IsNull() && !output.asset_commitment.IsNull()) asset_commitment = output.asset_commitment;
+    if (asset_blinding_factor.IsNull() && !output.asset_blinding_factor.IsNull()) asset_blinding_factor = output.asset_blinding_factor;
+    if (nonce_commitment.IsNull() && !output.nonce_commitment.IsNull()) nonce_commitment = output.nonce_commitment;
+    if (range_proof.empty() && !output.range_proof.empty()) range_proof = output.range_proof;
+    if (surjection_proof.empty() && !output.surjection_proof.empty()) surjection_proof = output.surjection_proof;
 }
 bool PSBTInputSigned(const PSBTInput& input)
 {
@@ -225,7 +234,7 @@ void UpdatePSBTOutput(const SigningProvider& provider, PartiallySignedTransactio
     // Note that ProduceSignature is used to fill in metadata (not actual signatures),
     // so provider does not need to provide any private keys (it can be a HidingSigningProvider).
     MutableTransactionSignatureCreator creator(psbt.tx.get_ptr(), /* index */ 0, out.nValue, SIGHASH_ALL);
-    ProduceSignature(provider, creator, out.scriptPubKey, sigdata);
+    ProduceSignature(provider, creator, out.scriptPubKey, sigdata, false);
 
     // Put redeem_script, witness_script, key paths, into PSBTOutput.
     psbt_out.FromSignatureData(sigdata);
@@ -274,10 +283,10 @@ bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& 
     sigdata.witness = false;
     bool sig_complete;
     if (use_dummy) {
-        sig_complete = ProduceSignature(provider, DUMMY_SIGNATURE_CREATOR, utxo.scriptPubKey, sigdata);
+        sig_complete = ProduceSignature(provider, DUMMY_SIGNATURE_CREATOR, utxo.scriptPubKey, sigdata, false);
     } else {
         MutableTransactionSignatureCreator creator(&tx, index, utxo.nValue, sighash);
-        sig_complete = ProduceSignature(provider, creator, utxo.scriptPubKey, sigdata);
+        sig_complete = ProduceSignature(provider, creator, utxo.scriptPubKey, sigdata, false);
     }
     // Verify that a witness signature was produced in case one was required.
     if (require_witness_sig && !sigdata.witness) return false;
@@ -323,10 +332,35 @@ bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransacti
     }
 
     result = *psbtx.tx;
+    result.witness.vtxinwit.resize(result.vin.size());
     for (unsigned int i = 0; i < result.vin.size(); ++i) {
         result.vin[i].scriptSig = psbtx.inputs[i].final_script_sig;
-        result.vin[i].scriptWitness = psbtx.inputs[i].final_script_witness;
+        result.witness.vtxinwit[i].scriptWitness = psbtx.inputs[i].final_script_witness;
     }
+
+    result.witness.vtxoutwit.resize(result.vout.size());
+    for (unsigned int i = 0; i < result.vout.size(); ++i) {
+        PSBTOutput& output = psbtx.outputs.at(i);
+        CTxOut& out = result.vout[i];
+        CTxOutWitness& outwit = result.witness.vtxoutwit[i];
+
+        if (!output.value_commitment.IsNull()) {
+            out.nValue = output.value_commitment;
+        }
+        if (!output.asset_commitment.IsNull()) {
+            out.nAsset = output.asset_commitment;
+        }
+        if (!output.nonce_commitment.IsNull()) {
+            out.nNonce = output.nonce_commitment;
+        }
+        if (!output.range_proof.empty()) {
+            outwit.vchRangeproof = output.range_proof;
+        }
+        if (!output.surjection_proof.empty()) {
+            outwit.vchSurjectionproof = output.surjection_proof;
+        }
+    }
+
     return true;
 }
 

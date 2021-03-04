@@ -1,11 +1,12 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <rpc/blockchain.h>
 
 #include <amount.h>
+#include <auxiliaryblockrequest.h>
 #include <blockfilter.h>
 #include <chain.h>
 #include <chainparams.h>
@@ -42,7 +43,6 @@
 #include <evo/cbtx.h>
 
 #include <llmq/quorums_chainlocks.h>
-#include <llmq/quorums_instantsend.h>
 
 #include <assert.h>
 #include <stdint.h>
@@ -124,7 +124,7 @@ double GetPoSKernelPS()
     int nStakesHandled = 0, nStakesTime = 0;
 
     CBlockIndex* pindex = pindexBestHeader;
-    CBlockIndex* pindexPrevStake = NULL;
+    CBlockIndex* pindexPrevStake = nullptr;
 
     while (pindex && nStakesHandled < nPoSInterval)
     {
@@ -146,8 +146,6 @@ double GetPoSKernelPS()
 
     if (nStakesTime)
         result = dStakeKernelsTriedAvg / nStakesTime;
-    
-    result *= STAKE_TIMESTAMP_MASK + 1;
 
     return result;
 }
@@ -191,7 +189,7 @@ UniValue blockheaderToJSON(const CBlockIndex* tip, const CBlockIndex* blockindex
 
     result.pushKV("flags", strprintf("%s", blockindex->IsProofOfStake()? "proof-of-stake" : "proof-of-work"));
     result.pushKV("proofhash", blockindex->hashProof.GetHex());
-    result.pushKV("modifier", blockindex->nStakeModifier);
+    result.pushKV("modifier", blockindex->nStakeModifier.GetHex());
 
     return result;
 }
@@ -221,9 +219,7 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* tip, const CBlockIn
         {
             UniValue objTx(UniValue::VOBJ);
             TxToUniv(*tx, uint256(), objTx, nullptr, true, RPCSerializationFlags());
-            bool fLocked = llmq::quorumInstantSendManager->IsLocked(tx->GetHash());
-            objTx.pushKV("instantlock", fLocked || chainLock);
-            objTx.pushKV("instantlock_internal", fLocked);
+            objTx.pushKV("instantlock", chainLock);
             txs.push_back(objTx);
         }
         else
@@ -255,7 +251,7 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* tip, const CBlockIn
 
     result.pushKV("flags", strprintf("%s", blockindex->IsProofOfStake()? "proof-of-stake" : "proof-of-work"));
     result.pushKV("proofhash", blockindex->hashProof.GetHex());
-    result.pushKV("modifier", blockindex->nStakeModifier);
+    result.pushKV("modifier", blockindex->nStakeModifier.GetHex());
 
     if (block.IsProofOfStake())
         result.pushKV("signature", HexStr(block.vchBlockSig.begin(), block.vchBlockSig.end()));	
@@ -538,25 +534,25 @@ static void entryToJSON(const CTxMemPool& pool, UniValue& info, const CTxMemPool
     AssertLockHeld(pool.cs);
 
     UniValue fees(UniValue::VOBJ);
-    fees.pushKV("base", ValueFromAmount(e.GetFee()));
-    fees.pushKV("modified", ValueFromAmount(e.GetModifiedFee()));
-    fees.pushKV("ancestor", ValueFromAmount(e.GetModFeesWithAncestors()));
-    fees.pushKV("descendant", ValueFromAmount(e.GetModFeesWithDescendants()));
+    fees.pushKV("base", ValueFromAmountMap(e.GetFee()));
+    fees.pushKV("modified", ValueFromAmountMap(e.GetModifiedFee()));
+    fees.pushKV("ancestor", ValueFromAmountMap(e.GetModFeesWithAncestors()));
+    fees.pushKV("descendant", ValueFromAmountMap(e.GetModFeesWithDescendants()));
     info.pushKV("fees", fees);
 
     info.pushKV("vsize", (int)e.GetTxSize());
     if (IsDeprecatedRPCEnabled("size")) info.pushKV("size", (int)e.GetTxSize());
     info.pushKV("weight", (int)e.GetTxWeight());
-    info.pushKV("fee", ValueFromAmount(e.GetFee()));
-    info.pushKV("modifiedfee", ValueFromAmount(e.GetModifiedFee()));
+    info.pushKV("fee", ValueFromAmountMap(e.GetFee()));
+    info.pushKV("modifiedfee", ValueFromAmountMap(e.GetModifiedFee()));
     info.pushKV("time", e.GetTime());
     info.pushKV("height", (int)e.GetHeight());
     info.pushKV("descendantcount", e.GetCountWithDescendants());
     info.pushKV("descendantsize", e.GetSizeWithDescendants());
-    info.pushKV("descendantfees", e.GetModFeesWithDescendants());
+    info.pushKV("descendantfees", ValueFromAmountMap(e.GetModFeesWithDescendants()));
     info.pushKV("ancestorcount", e.GetCountWithAncestors());
     info.pushKV("ancestorsize", e.GetSizeWithAncestors());
-    info.pushKV("ancestorfees", e.GetModFeesWithAncestors());
+    info.pushKV("ancestorfees", ValueFromAmountMap(e.GetModFeesWithAncestors()));
     info.pushKV("wtxid", pool.vTxHashes[e.vTxHashesIdx].first.ToString());
     const CTransaction& tx = e.GetTx();
     std::set<std::string> setDepends;
@@ -1105,9 +1101,13 @@ static void ApplyStats(CCoinsStats &stats, CHashWriter& ss, const uint256& hash,
     for (const auto& output : outputs) {
         ss << VARINT(output.first + 1);
         ss << output.second.out.scriptPubKey;
-        ss << VARINT(output.second.out.nValue);
+        ss << output.second.out.nValue;
+        ss << output.second.out.nAsset;
+        ss << output.second.out.nNonce;
         stats.nTransactionOutputs++;
-        stats.nTotalAmount += output.second.out.nValue;
+        if (output.second.out.nValue.IsExplicit()) {
+            stats.nTotalAmount += output.second.out.nValue.GetAmount();
+        }
         stats.nBogoSize += 32 /* txid */ + 4 /* vout index */ + 4 /* height + coinbase */ + 8 /* amount */ +
                            2 /* scriptPubKey len */ + output.second.out.scriptPubKey.size() /* scriptPubKey */;
     }
@@ -1320,7 +1320,20 @@ UniValue gettxout(const JSONRPCRequest& request)
     } else {
         ret.pushKV("confirmations", (int64_t)(pindex->nHeight - coin.nHeight + 1));
     }
-    ret.pushKV("value", ValueFromAmount(coin.out.nValue));
+    if (coin.out.nValue.IsExplicit()) {
+        ret.pushKV("value", ValueFromAmount(coin.out.nValue.GetAmount()));
+    } else {
+        ret.pushKV("valuecommitment", coin.out.nValue.GetHex());
+    }
+   
+        if (coin.out.nAsset.IsExplicit()) {
+            ret.pushKV("asset", coin.out.nAsset.GetAsset().GetHex());
+        } else {
+            ret.pushKV("assetcommitment", coin.out.nAsset.GetHex());
+        }
+
+        ret.pushKV("commitmentnonce", coin.out.nNonce.GetHex());
+    
     UniValue o(UniValue::VOBJ);
     ScriptPubKeyToUniv(coin.out.scriptPubKey, o, true);
     ret.pushKV("scriptPubKey", o);
@@ -1489,7 +1502,11 @@ UniValue getblockchaininfo(const JSONRPCRequest& request)
     obj.pushKV("headers",               pindexBestHeader ? pindexBestHeader->nHeight : -1);
     obj.pushKV("bestblockhash",         tip->GetBlockHash().GetHex());
     obj.pushKV("difficulty",            (double)GetDifficulty(tip));
-    obj.pushKV("moneysupply",           pindexBestHeader->nMoneySupply / COIN);
+    UniValue supplyobj(UniValue::VOBJ);
+	for(auto elem : pindexBestHeader->nMoneySupply){
+		supplyobj.pushKV(elem.first.assetID.ToString(),  ValueFromAmount(elem.second));		
+	}
+    obj.pushKV("moneysupply",           supplyobj);
     obj.pushKV("mediantime",            (int64_t)tip->GetMedianTimePast());
     obj.pushKV("verificationprogress",  GuessVerificationProgress(Params().TxData(), tip));
     obj.pushKV("initialblockdownload",  ::ChainstateActive().IsInitialBlockDownload());
@@ -1659,8 +1676,8 @@ UniValue MempoolInfoToJSON(const CTxMemPool& pool)
     ret.pushKV("usage", (int64_t)pool.DynamicMemoryUsage());
     size_t maxmempool = gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000;
     ret.pushKV("maxmempool", (int64_t) maxmempool);
-    ret.pushKV("mempoolminfee", ValueFromAmount(std::max(pool.GetMinFee(maxmempool), ::minRelayTxFee).GetFeePerK()));
-    ret.pushKV("minrelaytxfee", ValueFromAmount(::minRelayTxFee.GetFeePerK()));
+    ret.pushKV("mempoolminfee", ValueFromAmountMap(std::max(pool.GetMinFee(maxmempool), ::minRelayTxFee).GetFeePerK()));
+    ret.pushKV("minrelaytxfee", ValueFromAmountMap(::minRelayTxFee.GetFeePerK()));
 
     return ret;
 }
@@ -1815,6 +1832,7 @@ static UniValue getchaintxstats(const JSONRPCRequest& request)
             "  \"time\": xxxxx,                         (numeric) The timestamp for the final block in the window in UNIX format.\n"
             "  \"txcount\": xxxxx,                      (numeric) The total number of transactions in the chain up to that point.\n"
             "  \"window_final_block_hash\": \"...\",      (string) The hash of the final block in the window.\n"
+            "  \"window_final_block_height\": xxxxx,    (numeric) The height of the final block in the window.\n"
             "  \"window_block_count\": xxxxx,           (numeric) Size of the window in number of blocks.\n"
             "  \"window_tx_count\": xxxxx,              (numeric) The number of transactions in the window. Only returned if \"window_block_count\" is > 0.\n"
             "  \"window_interval\": xxxxx,              (numeric) The elapsed time in the window in seconds. Only returned if \"window_block_count\" is > 0.\n"
@@ -1865,6 +1883,7 @@ static UniValue getchaintxstats(const JSONRPCRequest& request)
     ret.pushKV("time", (int64_t)pindex->nTime);
     ret.pushKV("txcount", (int64_t)pindex->nChainTx);
     ret.pushKV("window_final_block_hash", pindex->GetBlockHash().GetHex());
+    ret.pushKV("window_final_block_height", pindex->nHeight);
     ret.pushKV("window_block_count", blockcount);
     if (blockcount > 0) {
         ret.pushKV("window_tx_count", nTxDiff);
@@ -1882,7 +1901,7 @@ static T CalculateTruncatedMedian(std::vector<T>& scores)
 {
     size_t size = scores.size();
     if (size == 0) {
-        return 0;
+        //return CAmountMap();
     }
 
     std::sort(scores.begin(), scores.end());
@@ -1893,7 +1912,7 @@ static T CalculateTruncatedMedian(std::vector<T>& scores)
     }
 }
 
-void CalculatePercentilesByWeight(CAmount result[NUM_GETBLOCKSTATS_PERCENTILES], std::vector<std::pair<CAmount, int64_t>>& scores, int64_t total_weight)
+void CalculatePercentilesByWeight(CAmount result[NUM_GETBLOCKSTATS_PERCENTILES], std::vector<std::pair<CAmountMap, int64_t>>& scores, int64_t total_weight)
 {
     if (scores.empty()) {
         return;
@@ -1911,15 +1930,18 @@ void CalculatePercentilesByWeight(CAmount result[NUM_GETBLOCKSTATS_PERCENTILES],
     for (const auto& element : scores) {
         cumulative_weight += element.second;
         while (next_percentile_index < NUM_GETBLOCKSTATS_PERCENTILES && cumulative_weight >= weights[next_percentile_index]) {
-            result[next_percentile_index] = element.first;
-            ++next_percentile_index;
+            for(auto&a : element.first){
+                result[next_percentile_index] = a.second;
+                ++next_percentile_index;
+	    }
         }
     }
 
     // Fill any remaining percentiles with the last value.
-    for (int64_t i = next_percentile_index; i < NUM_GETBLOCKSTATS_PERCENTILES; i++) {
-        result[i] = scores.back().first;
-    }
+    //for (int64_t i = next_percentile_index; i < NUM_GETBLOCKSTATS_PERCENTILES; i++) {
+        //for(auto&a : element.first)
+            //result[i] = a.back().second;
+    //}
 }
 
 template<typename T>
@@ -2028,6 +2050,8 @@ static UniValue getblockstats(const JSONRPCRequest& request)
         }
     }
 
+    // ELEMENTS:
+
     const CBlock block = GetBlockChecked(pindex);
     const CBlockUndo blockUndo = GetUndoChecked(pindex);
 
@@ -2043,11 +2067,12 @@ static UniValue getblockstats(const JSONRPCRequest& request)
     const bool do_calculate_weight = do_all || SetHasKeys(stats, "total_weight", "avgfeerate", "swtotal_weight", "avgfeerate", "feerate_percentiles", "minfeerate", "maxfeerate");
     const bool do_calculate_sw = do_all || SetHasKeys(stats, "swtxs", "swtotal_size", "swtotal_weight");
 
-    CAmount maxfee = 0;
-    CAmount maxfeerate = 0;
-    CAmount minfee = MAX_MONEY;
-    CAmount minfeerate = MAX_MONEY;
-    CAmount total_out = 0;
+
+    CAmountMap maxfee = populateMap(0);
+    CAmountMap maxfeerate = populateMap(0);
+    CAmountMap minfee = populateMap(MAX_MONEY);
+    CAmountMap minfeerate = populateMap(MAX_MONEY);
+    CAmountMap total_out;
     CAmount totalfee = 0;
     int64_t inputs = 0;
     int64_t maxtxsize = 0;
@@ -2059,21 +2084,27 @@ static UniValue getblockstats(const JSONRPCRequest& request)
     int64_t total_size = 0;
     int64_t total_weight = 0;
     int64_t utxo_size_inc = 0;
-    std::vector<CAmount> fee_array;
-    std::vector<std::pair<CAmount, int64_t>> feerate_array;
+    std::vector<CAmountMap> fee_array;
+    std::vector<std::pair<CAmountMap, int64_t>> feerate_array;
     std::vector<int64_t> txsize_array;
 
     for (size_t i = 0; i < block.vtx.size(); ++i) {
         const auto& tx = block.vtx.at(i);
         outputs += tx->vout.size();
 
-        CAmount tx_total_out = 0;
-        if (loop_outputs) {
-            for (const CTxOut& out : tx->vout) {
-                tx_total_out += out.nValue;
-                utxo_size_inc += GetSerializeSize(out, PROTOCOL_VERSION) + PER_UTXO_OVERHEAD;
+        CAmountMap tx_total_out;
+        // ELEMENTS:
+        CAmountMap elements_txfee;
+            if (loop_outputs) {
+                for (const CTxOut& out : tx->vout) {
+                    if (out.IsFee()) {
+                        elements_txfee[out.nAsset.GetAsset()] += out.nValue.GetAmount();
+                    }
+                    if (out.nValue.IsExplicit() && out.nAsset.IsExplicit()) {
+                        tx_total_out[out.nAsset.GetAsset()] += out.nValue.GetAmount();
+                    }
+                }
             }
-        }
 
         if (tx->IsCoinBase() || tx->IsCoinStake()) {
             continue;
@@ -2112,23 +2143,23 @@ static UniValue getblockstats(const JSONRPCRequest& request)
             for (const Coin& coin: txundo.vprevout) {
                 const CTxOut& prevoutput = coin.out;
 
-                tx_total_in += prevoutput.nValue;
+                tx_total_in += 0;
                 utxo_size_inc -= GetSerializeSize(prevoutput, PROTOCOL_VERSION) + PER_UTXO_OVERHEAD;
             }
 
-            CAmount txfee = tx_total_in - tx_total_out;
+            CAmountMap txfee = elements_txfee;
             assert(MoneyRange(txfee));
             if (do_medianfee) {
                 fee_array.push_back(txfee);
             }
             maxfee = std::max(maxfee, txfee);
             minfee = std::min(minfee, txfee);
-            totalfee += txfee;
+            txfee += totalfee;
 
             // New feerate uses satoshis per virtual byte instead of per serialized byte
-            CAmount feerate = weight ? (txfee * WITNESS_SCALE_FACTOR) / weight : 0;
+            CAmountMap feerate = weight ? (txfee * WITNESS_SCALE_FACTOR) / weight : populateMap(0);
             if (do_feerate_percentiles) {
-                feerate_array.emplace_back(std::make_pair(feerate, weight));
+                feerate_array.emplace_back(std::make_pair(feerate, tx_size));
             }
             maxfeerate = std::max(maxfeerate, feerate);
             minfeerate = std::min(minfeerate, feerate);
@@ -2145,28 +2176,28 @@ static UniValue getblockstats(const JSONRPCRequest& request)
 
     UniValue ret_all(UniValue::VOBJ);
     ret_all.pushKV("avgfee", (block.vtx.size() > 1) ? totalfee / (block.vtx.size() - 1) : 0);
-    ret_all.pushKV("avgfeerate", total_weight ? (totalfee * WITNESS_SCALE_FACTOR) / total_weight : 0); // Unit: sat/vbyte
+    ret_all.pushKV("avgfeerate", total_size ? totalfee / total_size : 0); // Unit: sat/byte
     ret_all.pushKV("avgtxsize", (block.vtx.size() > 1) ? total_size / (block.vtx.size() - 1) : 0);
     ret_all.pushKV("blockhash", pindex->GetBlockHash().GetHex());
     ret_all.pushKV("feerate_percentiles", feerates_res);
     ret_all.pushKV("height", (int64_t)pindex->nHeight);
     ret_all.pushKV("ins", inputs);
-    ret_all.pushKV("maxfee", maxfee);
-    ret_all.pushKV("maxfeerate", maxfeerate);
+    ret_all.pushKV("maxfee", ValueFromAmountMap(maxfee));
+    ret_all.pushKV("maxfeerate", ValueFromAmountMap(maxfeerate));
     ret_all.pushKV("maxtxsize", maxtxsize);
-    ret_all.pushKV("medianfee", CalculateTruncatedMedian(fee_array));
+    ret_all.pushKV("medianfee", ValueFromAmountMap(CalculateTruncatedMedian(fee_array)));
     ret_all.pushKV("mediantime", pindex->GetMedianTimePast());
     ret_all.pushKV("mediantxsize", CalculateTruncatedMedian(txsize_array));
-    ret_all.pushKV("minfee", (minfee == MAX_MONEY) ? 0 : minfee);
-    ret_all.pushKV("minfeerate", (minfeerate == MAX_MONEY) ? 0 : minfeerate);
+    ret_all.pushKV("minfee", (minfee == populateMap(MAX_MONEY)) ? 0 : ValueFromAmountMap(minfee));
+    ret_all.pushKV("minfeerate", (minfeerate == populateMap(MAX_MONEY)) ? 0 : ValueFromAmountMap(minfeerate));
     ret_all.pushKV("mintxsize", mintxsize == MAX_BLOCK_SERIALIZED_SIZE ? 0 : mintxsize);
     ret_all.pushKV("outs", outputs);
-    ret_all.pushKV("subsidy", GetBlockSubsidy(pindex->nHeight, Params().GetConsensus(), pindex->GetBlockHash()));
+    ret_all.pushKV("subsidy", ValueFromAmountMap(GetBlockSubsidy(pindex->nHeight, Params().GetConsensus(), CAsset(), block.IsProofOfStake(), 0, pindex->nMoneySupply)));
     ret_all.pushKV("swtotal_size", swtotal_size);
     ret_all.pushKV("swtotal_weight", swtotal_weight);
     ret_all.pushKV("swtxs", swtxs);
     ret_all.pushKV("time", pindex->GetBlockTime());
-    ret_all.pushKV("total_out", total_out);
+    ret_all.pushKV("total_out", ValueFromAmountMap(total_out));
     ret_all.pushKV("total_size", total_size);
     ret_all.pushKV("total_weight", total_weight);
     ret_all.pushKV("totalfee", totalfee);
@@ -2272,6 +2303,84 @@ public:
     }
 };
 
+UniValue requestblocks(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1 || request.params.size() > 2)
+        throw std::runtime_error(
+            "requestblocks ( add | flush | status ) ( [\"hash_0\", \"hash_1\", ...] )\n"
+            "\nPriorize blocks downloads.\n"
+            "\nArguments:\n"
+            "1. action            (string, required) the action to execute\n"
+            "                                        add  = add new blocks to the priority download\n"
+            "                                        flush = flush the queue (blocks in-flight will still be downloaded)\n"
+            "                                        status = get info about the queue\n"
+            "2. blockhashes       (array, optional) the hashes of the blocks to download\n"
+            "\nResult:\n"
+            "   add: <null>\n"
+            "   flush: <true|false> (if the the queue wasn't empty)\n"
+            "   status: {\"count\": \"<amount of blocks in the queue>\"}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("requestblocks", "add, \"'[\"<blockhash>\"]'\"")
+            + HelpExampleRpc("requestblocks", "add, \"'[\"<blockhash>\"]'\"")
+            );
+
+    if (request.params[0].get_str() == "flush") {
+        return UniValue(FlushPriorityDownloads());
+    }
+    else if (request.params[0].get_str() == "status") {
+        UniValue ret(UniValue::VOBJ);
+        ret.pushKV("count", (uint64_t)CountPriorityDownloads());
+        return ret;
+    }
+    else if (request.params[0].get_str() == "add") {
+        if (request.params[1].isNull()) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Missing blocks array");
+        }
+        std::vector<const CBlockIndex*> blocksToDownload;
+        {
+            LOCK(cs_main); //mapBlockIndex
+            for (const UniValue& strHashU : request.params[1].get_array().getValues()) {
+                uint256 hash(uint256S(strHashU.get_str()));
+                BlockMap::const_iterator mi = mapBlockIndex.find(hash);
+                if (mi == mapBlockIndex.end()) {
+                    throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");
+                }
+                blocksToDownload.push_back(mi->second);
+            }
+        }
+
+        AddPriorityDownload(blocksToDownload);
+        return NullUniValue;
+    }
+    else {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Unkown action");
+    }
+}
+
+UniValue setautorequestblocks(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() > 1)
+        throw std::runtime_error(
+                            "setautorequestblocks (true|false)\n"
+                            "\nIf set to false, blocks will no longer be requested automatically\n"
+                            "Useful for a pure non-validation mode in conjunction with requestblocks.\n"
+                            "\nArguments:\n"
+                            "1. state             (boolean, optional) enables or disables the automatic block download\n"
+                            "\nResult:\n"
+                            "   status: <true|false> (\"true\" if a automatic blockdownloads are enabled)\n"
+                            "\nExamples:\n"
+                            + HelpExampleCli("setautorequestblocks", "\"false\"")
+                            + HelpExampleRpc("setautorequestblocks", "\"false\"")
+                            );
+
+    if (request.params.size() == 1)
+        fAutoRequestBlocks = request.params[0].get_bool();
+
+    UniValue ret(UniValue::VOBJ);
+    ret.pushKV("status", UniValue(fAutoRequestBlocks));
+    return ret;
+}
+
 UniValue scantxoutset(const JSONRPCRequest& request)
 {
             RPCHelpMan{"scantxoutset",
@@ -2315,6 +2424,7 @@ UniValue scantxoutset(const JSONRPCRequest& request)
             "    \"scriptPubKey\" : \"script\",    (string) the script key\n"
             "    \"desc\" : \"descriptor\",        (string) A specialized descriptor for the matched scriptPubKey\n"
             "    \"amount\" : x.xxx,             (numeric) The total amount in " + CURRENCY_UNIT + " of the unspent output\n"
+            "    \"asset\" : \"asset\",           (hex) The asset ID\n"
             "    \"height\" : n,                 (numeric) Height of the unspent transaction output\n"
             "   }\n"
             "   ,...], \n"
@@ -2382,25 +2492,37 @@ UniValue scantxoutset(const JSONRPCRequest& request)
         result.pushKV("success", res);
         result.pushKV("searched_items", count);
 
-        for (const auto& it : coins) {
-            const COutPoint& outpoint = it.first;
-            const Coin& coin = it.second;
-            const CTxOut& txo = coin.out;
-            input_txos.push_back(txo);
-            total_in += txo.nValue;
+            CAmount total_in_explicit_parent = 0;
+            for (const auto& it : coins) {
+                const COutPoint& outpoint = it.first;
+                const Coin& coin = it.second;
+                const CTxOut& txo = coin.out;
+                input_txos.push_back(txo);
+                if (txo.nValue.IsExplicit() && txo.nAsset.IsExplicit() && txo.nAsset.GetAsset() == Params().GetConsensus().subsidy_asset) {
+                    total_in_explicit_parent += txo.nValue.GetAmount();
+                }
 
-            UniValue unspent(UniValue::VOBJ);
-            unspent.pushKV("txid", outpoint.hash.GetHex());
-            unspent.pushKV("vout", (int32_t)outpoint.n);
-            unspent.pushKV("scriptPubKey", HexStr(txo.scriptPubKey.begin(), txo.scriptPubKey.end()));
-            unspent.pushKV("desc", descriptors[txo.scriptPubKey]);
-            unspent.pushKV("amount", ValueFromAmount(txo.nValue));
-            unspent.pushKV("height", (int32_t)coin.nHeight);
+                UniValue unspent(UniValue::VOBJ);
+                unspent.pushKV("txid", outpoint.hash.GetHex());
+                unspent.pushKV("vout", (int32_t)outpoint.n);
+                unspent.pushKV("scriptPubKey", HexStr(txo.scriptPubKey.begin(), txo.scriptPubKey.end()));
+                unspent.pushKV("desc", descriptors[txo.scriptPubKey]);
+                if (txo.nValue.IsExplicit()) {
+                    unspent.pushKV("amount", ValueFromAmount(txo.nValue.GetAmount()));
+                } else {
+                    unspent.pushKV("amountcommitment", HexStr(txo.nValue.vchCommitment));
+                }
+                if (txo.nAsset.IsExplicit()) {
+                    unspent.pushKV("asset", txo.nAsset.GetAsset().GetHex());
+                } else {
+                    unspent.pushKV("assetcommitment", HexStr(txo.nAsset.vchCommitment));
+                }
+                unspent.pushKV("height", (int32_t)coin.nHeight);
 
-            unspents.push_back(unspent);
-        }
-        result.pushKV("unspents", unspents);
-        result.pushKV("total_amount", ValueFromAmount(total_in));
+                unspents.push_back(unspent);
+            }
+            result.pushKV("unspents", unspents);
+            result.pushKV("total_amount", ValueFromAmount(total_in_explicit_parent));
     } else {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid command");
     }
@@ -2506,7 +2628,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "pruneblockchain",        &pruneblockchain,        {"height"} },
     { "blockchain",         "savemempool",            &savemempool,            {} },
     { "blockchain",         "verifychain",            &verifychain,            {"checklevel","nblocks"} },
-
+    { "blockchain",         "requestblocks",          &requestblocks,          {"action", "blockhashes", "pass_internally"} },
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
     { "blockchain",         "scantxoutset",           &scantxoutset,           {"action", "scanobjects"} },
     { "blockchain",         "getblockfilter",         &getblockfilter,         {"blockhash", "filtertype"} },
@@ -2518,6 +2640,7 @@ static const CRPCCommand commands[] =
     { "hidden",             "waitforblock",           &waitforblock,           {"blockhash","timeout"} },
     { "hidden",             "waitforblockheight",     &waitforblockheight,     {"height","timeout"} },
     { "hidden",             "syncwithvalidationinterfacequeue", &syncwithvalidationinterfacequeue, {} },
+    { "hidden",             "setautorequestblocks",   &setautorequestblocks,   {"state"} },
 };
 // clang-format on
 

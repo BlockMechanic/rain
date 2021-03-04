@@ -69,8 +69,8 @@ extern std::map<int64_t, SecMsgBucket>  smsgBuckets;
 extern std::vector<SecMsgAddress>       smsgAddresses;
 extern SecMsgOptions                    smsgOptions;
 
-extern CCriticalSection cs_smsg;            // all except inbox and outbox
-extern CCriticalSection cs_smsgDB;
+extern RecursiveMutex cs_smsg;            // all except inbox and outbox
+extern RecursiveMutex cs_smsgDB;
 
 
 struct PayloadHeader {

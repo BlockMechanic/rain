@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2019 The Rain Core developers
+// Copyright (c) 2012-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -36,8 +36,8 @@ static void WalletBalance(benchmark::State& state, const bool set_dirty, const b
     while (state.KeepRunning()) {
         if (set_dirty) wallet.MarkDirty();
         bal = wallet.GetBalance();
-        if (add_mine) assert(bal.m_mine_trusted > 0);
-        if (add_watchonly) assert(bal.m_watchonly_trusted > 0);
+        if (add_mine) assert(bal.m_mine_trusted > CAmountMap());
+        if (add_watchonly) assert(bal.m_watchonly_trusted > CAmountMap());
     }
 }
 

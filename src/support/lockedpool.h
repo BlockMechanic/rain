@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 The Rain Core developers
+// Copyright (c) 2016-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,7 +10,7 @@
 #include <map>
 #include <mutex>
 #include <memory>
-//#include <unordered_map>
+#include <unordered_map>
 
 /**
  * OS-dependent allocation and deallocation of locked/pinned memory pages.
@@ -93,18 +93,14 @@ private:
     /** Map to enable O(log(n)) best-fit allocation, as it's sorted by size */
     SizeToChunkSortedMap size_to_free_chunk;
 
-//    typedef std::unordered_map<char*, SizeToChunkSortedMap::const_iterator> ChunkToSizeMap;
+    typedef std::unordered_map<char*, SizeToChunkSortedMap::const_iterator> ChunkToSizeMap;
     /** Map from begin of free chunk to its node in size_to_free_chunk */
-//    ChunkToSizeMap chunks_free;
+    ChunkToSizeMap chunks_free;
     /** Map from end of free chunk to its node in size_to_free_chunk */
-//    ChunkToSizeMap chunks_free_end;
+    ChunkToSizeMap chunks_free_end;
 
     /** Map from begin of used chunk to its size */
-//    std::unordered_map<char*, size_t> chunks_used;
-
-    std::map<char*, size_t> chunks_free;
-    std::map<char*, size_t> chunks_free_end;
-    std::map<char*, size_t> chunks_used;
+    std::unordered_map<char*, size_t> chunks_used;
 
     /** Base address of arena */
     char* base;
@@ -225,7 +221,8 @@ public:
     /** Return the current instance, or create it once */
     static LockedPoolManager& Instance()
     {
-        std::call_once(LockedPoolManager::init_flag, LockedPoolManager::CreateInstance);
+        static std::once_flag init_flag;
+        std::call_once(init_flag, LockedPoolManager::CreateInstance);
         return *LockedPoolManager::_instance;
     }
 
@@ -238,7 +235,6 @@ private:
     static bool LockingFailed();
 
     static LockedPoolManager* _instance;
-    static std::once_flag init_flag;
 };
 
 #endif // RAIN_SUPPORT_LOCKEDPOOL_H

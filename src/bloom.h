@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2018 The Rain Core developers
+// Copyright (c) 2012-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -54,6 +54,10 @@ private:
     unsigned char nFlags;
 
     unsigned int Hash(unsigned int nHashNum, const std::vector<unsigned char>& vDataToHash) const;
+
+    // Private constructor for CRollingBloomFilter, no restrictions on size
+    CBloomFilter(const unsigned int nElements, const double nFPRate, const unsigned int nTweak);
+    friend class CRollingBloomFilter;
 
     // Check matches for arbitrary script data elements
     bool CheckScript(const CScript& script) const;

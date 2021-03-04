@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,32 +7,83 @@
 
 #include <chainparamsseeds.h>
 #include <consensus/merkle.h>
+#include <issuance.h>
 #include <consensus/consensus.h>
 #include <tinyformat.h>
 #include <util/system.h>
 #include <util/strencodings.h>
+#include <crypto/sha256.h>
 #include <versionbitsinfo.h>
 #include <arith_uint256.h>
-
+#include <policy/fees.h>
 #include <assert.h>
+#include <primitives/assetsdir.h>
+#include <streams.h>
 
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/thread.hpp>
 
+// Safer for users if they load incorrect parameters via arguments.
+static std::vector<unsigned char> CommitToArguments(const Consensus::Params& params, const std::string& networkID, const CScript& signblockscript)
+{
+    CSHA256 sha2;
+    unsigned char commitment[32];
+    sha2.Write((const unsigned char*)networkID.c_str(), networkID.length());
+    sha2.Write((const unsigned char*)HexStr(signblockscript).c_str(), HexStr(signblockscript).length());
+    sha2.Finalize(commitment);
+    return std::vector<unsigned char>(commitment, commitment + 32);
+}
 
-static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesisOutputScript, uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
+static CBlock CreateGenesisBlock(const CScript& genesisScriptSig, const CScript& genesisOutputScript, uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, Consensus::Params& consensus)
 {
     CMutableTransaction txNew;
     txNew.nVersion = 1;
     txNew.nTime = nTime;
     txNew.vin.resize(1);
-    txNew.vout.resize(1);
-    txNew.vin[0].scriptSig = CScript() << 0 << CScriptNum(42) << std::vector<unsigned char>((const unsigned char*)pszTimestamp, (const unsigned char*)pszTimestamp + strlen(pszTimestamp));
-    txNew.vout[0].SetEmpty();
+    txNew.vin[0].scriptSig = genesisScriptSig;
+    //txNew.nType = TRANSACTION_COINBASE;
+
+    AssetMetadata basemeta;
+    basemeta.nVersion = 1;
+    basemeta.setName("Rain");
+    basemeta.setShortName("RAIN");
+    basemeta.flags = AssetMetadata::AssetFlags::ASSET_TRANSFERABLE | AssetMetadata::AssetFlags::ASSET_CONVERTABLE | AssetMetadata::AssetFlags::ASSET_STAKEABLE;
+    CAsset baseasset = CAsset(basemeta);
+
+    AssetMetadata masternode;
+    masternode.nVersion = 0;
+    masternode.setName("Masternode");
+    masternode.setShortName("XMNA");
+    masternode.flags = AssetMetadata::AssetFlags::ASSET_TRANSFERABLE | AssetMetadata::AssetFlags::ASSET_CONVERTABLE;
+    CAsset masternodeasset = CAsset(masternode);
+
+    AssetMetadata founder;
+    founder.nVersion = 0;
+    founder.setName("Xequium");
+    founder.setShortName("XQUM");
+    founder.flags = AssetMetadata::AssetFlags::ASSET_TRANSFERABLE | AssetMetadata::AssetFlags::ASSET_CONVERTABLE | AssetMetadata::AssetFlags::ASSET_STAKEABLE | AssetMetadata::AssetFlags::ASSET_LIMITED | AssetMetadata::AssetFlags::ASSET_RESTRICTED;
+    CAsset founderasset = CAsset(founder);
+   
+    consensus.subsidy_asset = baseasset;
+    consensus.masternode_asset = masternodeasset;
+    consensus.founder_asset = founderasset;
     
+    txNew.vout.push_back(CTxOut(baseasset, 1*COIN, genesisOutputScript));
+    txNew.vout.push_back(CTxOut(masternodeasset, 1*COIN, genesisOutputScript));
+    txNew.vout.push_back(CTxOut(founderasset, 1*COIN, genesisOutputScript));
+
+    txNew.nLockTime = 0;
+//    std::string txcomment = "www.coindesk.com/bitcoin-is-a-form-of-money-d-c-federal-court-rules-bloomberg";
+//    std::copy(txcomment.begin(), txcomment.end(), std::back_inserter(txNew.strTxComment));
+//    txNew.strTxComment = txcomment.c_str();
+
+//    size_t nSize = ::GetSerializeSize(txNew.vout[0].nAsset, PROTOCOL_VERSION);
+//    std::cout << "size : " << nSize  <<"/"  << txNew.vout[0].nAsset.vchCommitment.size()  << " is valid = "  << (txNew.vout[0].nAsset.IsValid() ? "yes" : " no ") <<std::endl;
+
     CBlock genesis;
     genesis.nTime    = nTime;
+    genesis.nHeight  = 0;
     genesis.nBits    = nBits;
     genesis.nNonce   = nNonce;
     genesis.nVersion = nVersion;
@@ -53,41 +104,35 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
  *     CTxOut(nValue=50.00000000, scriptPubKey=0x5F1DF16B2B704C8A578D0B)
  *   vMerkleTree: 4a5e1e
  */
-
-
-static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
+static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, Consensus::Params& consensus)
 {
-	const char* pszTimestamp = "Cloudy with a 40% chance of precipitation";
-	const CScript genesisOutputScript = CScript();
-	return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce,nBits, nVersion, genesisReward);
+    const char* pszTimestamp = "www.coindesk.com/bitcoin-is-a-form-of-money-d-c-federal-court-rules-bloomberg";
+    const CScript genesisScriptSig = CScript() << 486604799 << CScriptNum(4) << std::vector<unsigned char>((const unsigned char*)pszTimestamp, (const unsigned char*)pszTimestamp + strlen(pszTimestamp));
+    std::vector<unsigned char> addrdata(ParseHex("76a914913a02f203207febf92a5fb659be964bddfa7c3988ac"));
+    const CScript genesisOutputScript(addrdata.begin(), addrdata.end());
+    return CreateGenesisBlock(genesisScriptSig, genesisOutputScript, nTime, nNonce, nBits, nVersion, consensus);
 }
 
 
 void static MineNewGenesisBlock(const Consensus::Params& consensus,CBlock &genesis)
 {
     //fPrintToConsole = true;
-    LogPrintf("Searching for genesis block...\n");
     std::cout << "Searching for genesis block...\n";
     arith_uint256 hashTarget = UintToArith256(consensus.powLimit);
 
     while(true) {
-
         arith_uint256 thash = UintToArith256(genesis.GetHash());
-
-
-		LogPrintf("test Hash %s\n", thash.ToString().c_str());
         std::cout << "testHash = " << thash.ToString().c_str() << "\n";
-		LogPrintf("Hash Target %s\n", hashTarget.ToString().c_str());
         std::cout << "Hash Target = " << hashTarget.ToString().c_str() << "\n";
 
       if (thash <= hashTarget)
             break;
         if ((genesis.nNonce & 0xFFF) == 0)
-            LogPrintf("nonce %08X: hash = %s (target = %s)\n", genesis.nNonce, thash.ToString().c_str(), hashTarget.ToString().c_str());
+            std::cout << strprintf("nonce %08X: hash = %s (target = %s)\n", genesis.nNonce, thash.ToString().c_str(), hashTarget.ToString().c_str());
 
         ++genesis.nNonce;
         if (genesis.nNonce == 0) {
-            LogPrintf("NONCE WRAPPED, incrementing time\n");
+            std::cout << ("NONCE WRAPPED, incrementing time\n");
             ++genesis.nTime;
         }
     }
@@ -96,12 +141,7 @@ void static MineNewGenesisBlock(const Consensus::Params& consensus,CBlock &genes
     std::cout << "genesis.nBits = " << genesis.nBits<< "\n";
     std::cout << "genesis.GetHash = " << genesis.GetHash().ToString().c_str()<< "\n";
     std::cout << "genesis.hashMerkleRoot = " << genesis.hashMerkleRoot.ToString().c_str()<< "\n";
-
-    LogPrintf("genesis.nTime = %u \n",  genesis.nTime);
-    LogPrintf("genesis.nNonce = %u \n",  genesis.nNonce);
-    LogPrintf("genesis.nBits = %u \n",  genesis.nBits);
-    LogPrintf("genesis.GetHash = %s\n",  genesis.GetHash().ToString().c_str());
-    LogPrintf("genesis.hashMerkleRoot = %s\n",  genesis.hashMerkleRoot.ToString().c_str());
+//    std::cout << "genesis block \n" << genesis.ToString()<< std::endl;
 
     exit(1);
 }
@@ -122,6 +162,7 @@ static Consensus::LLMQParams llmq50_60 = {
         .signingActiveQuorumCount = 24, // a full day worth of LLMQs
 
         .keepOldConnections = 25,
+        .recoveryMembers = 25,
 };
 
 static Consensus::LLMQParams llmq400_60 = {
@@ -140,6 +181,7 @@ static Consensus::LLMQParams llmq400_60 = {
         .signingActiveQuorumCount = 4, // two days worth of LLMQs
 
         .keepOldConnections = 5,
+        .recoveryMembers = 100,
 };
 
 // Used for deployment and min-proto-version signalling, so it needs a higher threshold
@@ -159,6 +201,7 @@ static Consensus::LLMQParams llmq400_85 = {
         .signingActiveQuorumCount = 4, // four days worth of LLMQs
 
         .keepOldConnections = 5,
+        .recoveryMembers = 100,
 };
 
 /**
@@ -169,24 +212,20 @@ public:
     CMainParams() {
         strNetworkID = "main";
 
-        consensus.nMasternodePaymentsStartBlock = 100000; // not true, but it's ok as long as it's less then nMasternodePaymentsIncreaseBlock
-        consensus.nMasternodePaymentsIncreaseBlock = 158000; // actual historical value
+        consensus.nMasternodePaymentsStartBlock = 1; // not true, but it's ok as long as it's less then nMasternodePaymentsIncreaseBlock
+        consensus.nMasternodePaymentsIncreaseBlock = 1; // actual historical value
         consensus.nMasternodePaymentsIncreasePeriod = 576*30; // 17280 - actual historical value
         consensus.nInstantSendConfirmationsRequired = 6;
         consensus.nInstantSendKeepLock = 24;
-        consensus.nBudgetPaymentsStartBlock = 328008; // actual historical value
-        consensus.nBudgetPaymentsCycleBlocks = 16616; // ~(60*24*30)/2.6, actual number of blocks per month is 200700 / 12 = 16725
+        consensus.nBudgetPaymentsStartBlock = 1; // actual historical value
+        consensus.nBudgetPaymentsCycleBlocks = 10080; // ~(60*24*30)/2.6, actual number of blocks per month is 200700 / 12 = 16725
         consensus.nBudgetPaymentsWindowBlocks = 100;
-        consensus.nSuperblockStartBlock = 1743040; // The block at which 12.1 goes live (end of final 12.0 budget cycle)
+        consensus.nSuperblockStartBlock = 1; // The block at which 12.1 goes live (end of final 12.0 budget cycle)
         consensus.nSuperblockStartHash = uint256S("");
-        consensus.nSuperblockCycle = 16616; // ~(60*24*30)/2.6, actual number of blocks per month is 200700 / 12 = 16725
+        consensus.nSuperblockCycle = 10080; // ~(60*24*30)/2.6, actual number of blocks per month is 200700 / 12 = 16725
         consensus.nGovernanceMinQuorum = 10;
         consensus.nGovernanceFilterElements = 20000;
         consensus.nMasternodeMinimumConfirmations = 15;
-        consensus.DIP0001Height = 1743040;
-        consensus.DIP0003Height = 1743040;
-        consensus.DIP0003EnforcementHeight = 1047200;
-        consensus.DIP0003EnforcementHash = uint256S("0x00");
 
         consensus.nSubsidyHalvingInterval = 210000;
         consensus.BIP16Exception = uint256S("0x00");
@@ -195,101 +234,95 @@ public:
         consensus.BIP65Height = 0; // 000000000000000004c2b624ed5d7756c508d90fd0da2c7c679febfa6c4735f0
         consensus.BIP66Height = 0; // 00000000000000000379eaa19dce8c9b722d46ae6a57c2f1a988119488b50931
         consensus.powLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.posLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.posLimit = uint256S("00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.fPoSNoRetargeting = false;
         consensus.nStakeTimestampMask = 0xf;
-        consensus.nLastPOWBlock = 200000;
-        consensus.nCONSENSUS_CHANGE_BLOCK = 1743040;
-        consensus.nStakeMinAge = 4 * 60 * 60;
-        consensus.nStakeMaxAge = 10* 24 * 60 * 60;
-        consensus.nCOIN_YEAR_REWARD = 200 * COIN/100;
-        consensus.nCOIN_YEAR_REWARD_NEW  = 10 * COIN/100;
-        consensus.nPowTargetTimespan = 15 * 60;
+        consensus.nLastPOWBlock = 10000;
+        consensus.nStakeMinAge = 60 * 60;
+        consensus.nStakeMaxAge = 28 * 24 * 60 * 60;
+        consensus.nCOIN_YEAR_REWARD = CENT * 10;
+        consensus.nPowTargetTimespan = 60;
         consensus.nPowTargetSpacing = 60;
-        consensus.nModifierInterval = 10 * 60;
+        consensus.nModifierInterval =  60;
+        consensus.CSVHeight = 0; // 000000000000000004a1b34462cb8aeebd5799177f7a29cf28f2d1961716b5b5
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 1916; // 95% of 2016
-        consensus.nMinerConfirmationWindow = 15; // nPowTargetTimespan / nPowTargetSpacing
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 1199145601; // January 1, 2008
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = 1230767999; // December 31, 2008
+        consensus.nMinerConfirmationWindow = 100; // nPowTargetTimespan / nPowTargetSpacing
 
-        // Deployment of BIP68, BIP112, and BIP113.
-        consensus.vDeployments[Consensus::DEPLOYMENT_CSV].bit = 0;
-        consensus.vDeployments[Consensus::DEPLOYMENT_CSV].nStartTime = 1462060800; // May 1st, 2016
-        consensus.vDeployments[Consensus::DEPLOYMENT_CSV].nTimeout = 1493596800; // May 1st, 2017
-
-        // Deployment of SegWit (BIP141, BIP143, and BIP147)
-        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].bit = 1;
-        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].nStartTime = 1479168000; // November 15th, 2016.
-        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].nTimeout = 1510704000; // November 15th, 2017.
 
         // The best chain should have at least this much work.
         consensus.nMinimumChainWork = uint256S("0x00");
 
         // By default assume that the signatures in ancestors of this block are valid.
-        consensus.defaultAssumeValid = uint256S("0xaa8da8f5445ccd4fc2350013b65283cc9661aa847eabe6e2a335b6350b7c7373"); //1524520
+        consensus.defaultAssumeValid = uint256S("0x00");
 
+        // Custom chains connect coinbase outputs to db by default
+        consensus.connect_genesis_outputs = true;
+        consensus.subsidy_asset = CAsset();
+        consensus.masternode_asset = CAsset();
+        consensus.founder_asset = CAsset();
+        anyonecanspend_aremine = false;
         /**
          * The message start string is designed to be unlikely to occur in normal data.
          * The characters are rarely used upper ASCII, not valid as UTF-8, and produce
          * a large 32-bit integer with any alignment.
          */
+        pchMessageStart[0] = 0xaa;
+        pchMessageStart[1] = 0xab;
+        pchMessageStart[2] = 0xac;
+        pchMessageStart[3] = 0xad;
 
-        pchMessageStart[0] = 0x47;
-        pchMessageStart[1] = 0x24;
-        pchMessageStart[2] = 0xa1;
-        pchMessageStart[3] = 0xb6;
-        nDefaultPort = 23373;
+        nDefaultPort = 2013;
         nPruneAfterHeight = 100000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        genesis = CreateGenesisBlock(1492648100, 2904155,0x1e0fffff, 1, 0 * COIN);
+        nMasternodeCollateral = 10000 * COIN;
+        consensus.nMinColdStakingAmount = 1 * COIN;
+        consensus.genesis_subsidy = 5*COIN;
+
+        // All non-zero coinbase outputs must go to this scriptPubKey
+        std::vector<unsigned char> addrdata(ParseHex("76a914913a02f203207febf92a5fb659be964bddfa7c3988ac"));
+        CScript genscript(addrdata.begin(), addrdata.end());
+
+        consensus.mandatory_coinbase_destination = genscript; // Blank script allows any coinbase destination
+
+        genesis = CreateGenesisBlock(1613343600, 1714406, 0x1e0ffff0, 1, consensus);
         consensus.hashGenesisBlock = genesis.GetHash();
-        
-	    //static boost::thread_group* minerThreads = NULL; 
-        //minerThreads = new boost::thread_group();
-        //for (int i = 0; i < 4; i++)    
-        //    minerThreads->create_thread(boost::bind(&MineNewGenesisBlock,consensus,genesis));
-        //MilliSleep(20000000);
+        //std::cout << "GENESISHASH "<< genesis.GetHash().ToString() << std::endl;
+        //std::cout << "GENESISMERKLE "<< genesis.hashMerkleRoot.ToString() << std::endl;
         //MineNewGenesisBlock(consensus,genesis);
-        //std::cout << genesis.vtx[0]->GetHash().c_str() << std::endl;
-        //std::cout << genesis.vtx[0]->hash.ToString().c_str() << std::endl;
-        //std::cout << genesis.ToString().c_str() << std::endl;
-        assert(consensus.hashGenesisBlock == uint256S("0x00000214a121e055869d35aa132433027b11242914a7f5910327b123d6939d7b"));
-        assert(genesis.hashMerkleRoot == uint256S("0x7a61ff14d15fc4012428b95e91512f05271da4e4618fe4776beeca2faf42799b"));
+        //std::cout << genesis.ToString() << std::endl;
+
+//        CDataStream ssBlock(SER_GETHASH, PROTOCOL_VERSION);
+//        ssBlock << genesis;
+//        std::string strHex = HexStr(ssBlock.begin(), ssBlock.end());
+//        std::cout << strHex << std::endl;
+
+        assert(consensus.hashGenesisBlock == uint256S("0x0000003fd35dbcaa59cf3cc33b4a4d6fe04d1e987abc7ee95e5843c00c5f0f75"));
+        assert(genesis.hashMerkleRoot == uint256S("0xa3d33a9d392004f2c50430d8cf78c8ae660095f9d34bf6f5cf3fd9d5a278363e"));
 
         // Note that of those which support the service bits prefix, most only support a subset of
         // possible options.
         // This is fine at runtime as we'll fall back to using them as a oneshot if they don't support the
         // service bits we want, but we should get them updated to support all service bits wanted by any
         // release ASAP to avoid it where possible.
-        
-        vSeeds.emplace_back("71.72.154.2");
-        vSeeds.emplace_back("119.148.107.107"); 
-        vSeeds.emplace_back("31.214.245.178"); 
-        vSeeds.emplace_back("118.104.164.86");
-        vSeeds.emplace_back("5.69.214.243");
-        
-        vSeeds.emplace_back("37.97.195.140");
-        vSeeds.emplace_back("37.97.195.142");
-        vSeeds.emplace_back("37.97.195.148");
-        vSeeds.emplace_back("37.97.195.179");
+        vSeeds.emplace_back("157.245.239.62");
+        vSeeds.emplace_back("45.86.162.195");
+        vSeeds.emplace_back("167.172.111.247");
+        vSeeds.emplace_back("142.93.235.158");
 
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,60);
-        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,50);
-        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,188);
+        base58Prefixes[PUBKEY_ADDRESS]  = std::vector<unsigned char>(1,60);     // starting with 'R'
+        base58Prefixes[SCRIPT_ADDRESS]  = std::vector<unsigned char>(1,38);     // starting with 'G'
+        base58Prefixes[STAKING_ADDRESS] = std::vector<unsigned char>(1,63);     // starting with 'S'
+        base58Prefixes[BLINDED_ADDRESS] = std::vector<unsigned char>(1,25);     // starting with 'B'
+        base58Prefixes[SECRET_KEY]      = std::vector<unsigned char>(1,128);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1E};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE4};
 
-        bech32_hrp = "rn";
-
-        vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_main, pnSeed6_main + ARRAYLEN(pnSeed6_main));
-
-        // Rain BIP44 coin type is '5'
-        nExtCoinType = 5;
+        bech32_hrp = "cd";
+        blech32_hrp = "xd";
 
         vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_main, pnSeed6_main + ARRAYLEN(pnSeed6_main));
 
@@ -306,6 +339,7 @@ public:
         fRequireRoutableExternalIP = true;
         fAllowMultipleAddressesFromGroup = false;
         fAllowMultiplePorts = false;
+        nLLMQConnectionRetryTimeout = 60;
 
         nPoolMinParticipants = 3;
         nPoolMaxParticipants = 5;
@@ -316,22 +350,14 @@ public:
 
         checkpointData = {
             {
-				{    0, uint256S("0x00000130028bd75067e05b06fe8126e7f8ce8027a67898a6d649d0e239232a75")},
-				{   21, uint256S("0x000001f1275915acd88c1d8237e9dc42df3b8bb60ac02fb1c89decc5b566045d")},
-				{ 1000, uint256S("00000000001a94aeaaa02de0aa0bc0ae54920de5ae6e13e5f2414b0d87d93524")},
-				{ 3450, uint256S("0x8ae6d3eab269099692d6ecfd4ee6a846659e7de64c7ff6134529d9bc3eb23da0")},
-				{10000, uint256S("0x000000000046da0680ee6a42c078eb17df1ef156cafc1bf500bf9601532eedb9")},
-				{13450, uint256S("0xd72d0eddc03aaa744c5b13f4b851fe3ad4e5df480ff99be7158d2d6dfece715a")},
-				{20000, uint256S("0x6f856872bfcbbfd851208ce803afbc9740352a7115578c9455ef97a0aab58772")},
-				{23450, uint256S("0x0000000000c43d8588b566325e216f4967ebc1a7f0a475ad83eb621192f6f5a8")},
-			  {1494133, uint256S("0x6232aaf8e4c4a8ba2e44ad8cf2e7a9416721851a3eb68451125095fc0308e8fa")},
+                { 0, uint256S("0x00")},
             }
         };
 
         chainTxData = ChainTxData{
             // Data from rpc: getchaintxstats 4096 23599282d5f953a73fac7d1710b055078f8397f2da3dbf767195a0db74160728
-            /* nTime    */ 1576783969,
-            /* nTxCount */ 2228704,
+            /* nTime    */ 1575570915,
+            /* nTxCount */ 1,
             /* dTxRate  */ 0.03119858631405764
         };
 
@@ -369,11 +395,6 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_CSV].nStartTime = 1456790400; // March 1st, 2016
         consensus.vDeployments[Consensus::DEPLOYMENT_CSV].nTimeout = 1493596800; // May 1st, 2017
 
-        // Deployment of SegWit (BIP141, BIP143, and BIP147)
-        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].bit = 1;
-        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].nStartTime = 1462060800; // May 1st 2016
-        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].nTimeout = 1493596800; // May 1st 2017
-
         // The best chain should have at least this much work.
         consensus.nMinimumChainWork = uint256S("0x00000000000000000000000000000000000000000000007dbe94253893cbd463");
 
@@ -384,16 +405,19 @@ public:
         pchMessageStart[1] = 0x11;
         pchMessageStart[2] = 0x09;
         pchMessageStart[3] = 0x07;
-        nDefaultPort = 18333;
+        nDefaultPort = 20480;
         nPruneAfterHeight = 1000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
+        consensus.genesis_subsidy = 5*COIN;
 
-        genesis = CreateGenesisBlock(1562734642, 221227,0x1e0fffff, 1, 5 * COIN);
+
+        genesis = CreateGenesisBlock(1591769651, 295473,0x1e0fffff, 1, consensus);
+
         consensus.hashGenesisBlock = genesis.GetHash();
         //MineNewGenesisBlock(consensus,genesis);
-//        assert(consensus.hashGenesisBlock == uint256S("0x13bc3f42175c6b3b744c28ec7e37ac59d822483b5eb21a5c5259154746378266"));
-//        assert(genesis.hashMerkleRoot == uint256S("0x202b7ffe141c1d8b99e1b76845a24d1933be562c32e56663768cf4c161f772e4"));
+  //      assert(consensus.hashGenesisBlock == uint256S("0x00000d1809d66fb14054356cf881c4a2dd087d0dac4e9fb84fd3f551c579cadc"));
+  //      assert(genesis.hashMerkleRoot == uint256S("0xba0035a477013f6a9d76fea7fd78df4e6ac70e41a87749772137693fadfb9482"));
         vFixedSeeds.clear();
         vSeeds.clear();
         // nodes with support for servicebits filtering should be at the top
@@ -461,9 +485,6 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_CSV].bit = 0;
         consensus.vDeployments[Consensus::DEPLOYMENT_CSV].nStartTime = 0;
         consensus.vDeployments[Consensus::DEPLOYMENT_CSV].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].bit = 1;
-        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
-        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
 
         // The best chain should have at least this much work.
         consensus.nMinimumChainWork = uint256S("0x00");
@@ -481,12 +502,14 @@ public:
         m_assumed_chain_state_size = 0;
 
         UpdateVersionBitsParametersFromArgs(args);
+        consensus.genesis_subsidy = 5*COIN;
 
-        genesis = CreateGenesisBlock(1561928393, 221227,0x1e0fffff, 1, 5 * COIN);
+
+        genesis = CreateGenesisBlock(1561928393, 221227,0x1e0fffff, 1,consensus);
 
         consensus.hashGenesisBlock = genesis.GetHash();
-       // assert(consensus.hashGenesisBlock == uint256S("0x0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"));
-      //  assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
+    //    assert(consensus.hashGenesisBlock == uint256S("0x0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"));
+    //    assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();      //!< Regtest mode doesn't have any DNS seeds.

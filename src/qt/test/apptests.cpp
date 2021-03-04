@@ -72,8 +72,8 @@ void AppTests::appTests()
         NetworkStyle::instantiate(QString::fromStdString(Params().NetworkIDString())));
     m_app.setupPlatformStyle();
     m_app.createWindow(style.data());
-    connect(&m_app, &RainApplication::windowShown, this, &AppTests::guiTests);
-    expectCallback("guiTests");
+    //connect(&m_app, &RainApplication::windowShown, this, &AppTests::guiTests);
+    //expectCallback("guiTests");
     m_app.baseInitialize();
     m_app.requestInitialize();
     m_app.exec();
@@ -89,7 +89,7 @@ void AppTests::appTests()
 void AppTests::guiTests(RainGUI* window)
 {
     HandleCallback callback{"guiTests", *this};
-    connect(window, &RainGUI::consoleShown, this, &AppTests::consoleTests);
+    //connect(window, &RainMobileGUI::consoleShown, this, &AppTests::consoleTests);
     expectCallback("consoleTests");
     QAction* action = window->findChild<QAction*>("openRPCConsoleAction");
     action->activate(QAction::Trigger);

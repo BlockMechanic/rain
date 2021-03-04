@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2018 The Rain Core developers
+// Copyright (c) 2016-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,6 +10,7 @@
 #include <memory>
 
 class CTxMemPool;
+class CDatabasedAssetData;
 
 // Dumb helper to handle CTransaction compression at serialize-time
 struct TransactionCompressor {
@@ -209,4 +210,31 @@ public:
     ReadStatus FillBlock(CBlock& block, const std::vector<CTransactionRef>& vtx_missing);
 };
 
+class SerializedAssetData {
+public:
+    std::string name;
+    int8_t units;
+    CAmount amount;
+    int8_t reissuable;
+    int8_t hasIPFS;
+    std::string ipfs;
+    int32_t nHeight;
+
+    SerializedAssetData(const CDatabasedAssetData &assetData);
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(name);
+        READWRITE(amount);
+        READWRITE(units);
+        READWRITE(reissuable);
+        READWRITE(hasIPFS);
+        READWRITE(ipfs);
+        READWRITE(nHeight);
+    }
+
+
+};
 #endif // RAIN_BLOCKENCODINGS_H

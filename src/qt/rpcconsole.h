@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2019 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,10 +9,13 @@
 #include <qt/peertablemodel.h>
 
 #include <net.h>
+#include <rpc/server.h>
+#include <rpc/client.h>
 
 #include <QWidget>
 #include <QCompleter>
 #include <QThread>
+#include <QTimer>
 
 class ClientModel;
 class PlatformStyle;
@@ -31,6 +34,55 @@ QT_BEGIN_NAMESPACE
 class QMenu;
 class QItemSelection;
 QT_END_NAMESPACE
+
+/* Object for executing console RPC commands in a separate thread.
+*/
+class RPCExecutor : public QObject
+{
+    Q_OBJECT
+public:
+    explicit RPCExecutor(interfaces::Node& node) : m_node(node) {}
+
+public Q_SLOTS:
+    void request(const QString &command, const WalletModel* wallet_model);
+
+Q_SIGNALS:
+    void reply(int category, const QString &command);
+
+private:
+    interfaces::Node& m_node;
+};
+
+/** Class for handling RPC timers
+ * (used for e.g. re-locking the wallet after a timeout)
+ */
+class QtRPCTimerBase: public QObject, public RPCTimerBase
+{
+    Q_OBJECT
+public:
+    QtRPCTimerBase(std::function<void()>& _func, int64_t millis):
+        func(_func)
+    {
+        timer.setSingleShot(true);
+        connect(&timer, &QTimer::timeout, [this]{ func(); });
+        timer.start(millis);
+    }
+    ~QtRPCTimerBase() {}
+private:
+    QTimer timer;
+    std::function<void()> func;
+};
+
+class QtRPCTimerInterface: public RPCTimerInterface
+{
+public:
+    ~QtRPCTimerInterface() {}
+    const char *Name() { return "Qt"; }
+    RPCTimerBase* NewTimer(std::function<void()>& func, int64_t millis)
+    {
+        return new QtRPCTimerBase(func, millis);
+    }
+};
 
 /** Local Rain RPC console. */
 class RPCConsole: public QWidget
@@ -73,27 +125,6 @@ protected:
     virtual bool eventFilter(QObject* obj, QEvent *event);
     void keyPressEvent(QKeyEvent *);
 
-private Q_SLOTS:
-    void on_lineEdit_returnPressed();
-    void on_tabWidget_currentChanged(int index);
-    /** open the debug.log from the current datadir */
-    void on_openDebugLogfileButton_clicked();
-    /** change the time range of the network traffic graph */
-    void on_sldGraphRange_valueChanged(int value);
-    /** update traffic statistics */
-    void updateTrafficStats(quint64 totalBytesIn, quint64 totalBytesOut);
-    void resizeEvent(QResizeEvent *event);
-    void showEvent(QShowEvent *event);
-    void hideEvent(QHideEvent *event);
-    /** Show custom context menu on Peers tab */
-    void showPeersTableContextMenu(const QPoint& point);
-    /** Show custom context menu on Bans tab */
-    void showBanTableContextMenu(const QPoint& point);
-    /** Hides ban table if no bans are present */
-    void showOrHideBanTableIfRequired();
-    /** clear the selected node */
-    void clearSelectedNode();
-
 public Q_SLOTS:
     void clear(bool clearHistory = true);
     void fontBigger();
@@ -102,32 +133,11 @@ public Q_SLOTS:
     /** Append the message to the message widget */
     void message(int category, const QString &msg) { message(category, msg, false); }
     void message(int category, const QString &message, bool html);
-    /** Set number of connections shown in the UI */
-    void setNumConnections(int count);
-    /** Set network state shown in the UI */
-    void setNetworkActive(bool networkActive);
-    /** Set number of blocks and last block date shown in the UI */
-    void setNumBlocks(int count, const QDateTime& blockDate, double nVerificationProgress, bool headers);
-    /** Set size (number of transactions and memory usage) of the mempool in the UI */
-    void setMempoolSize(long numberOfTxs, size_t dynUsage);
+
     /** Go forward or back in history */
     void browseHistory(int offset);
-    /** Scroll console view to end */
-    void scrollToEnd();
-    /** Handle selection of peer in peers list */
-    void peerSelected(const QItemSelection &selected, const QItemSelection &deselected);
-    /** Handle selection caching before update */
-    void peerLayoutAboutToChange();
-    /** Handle updated peer information */
-    void peerLayoutChanged();
-    /** Disconnect a selected node on the Peers tab */
-    void disconnectSelectedNode();
-    /** Ban a selected node on the Peers tab */
-    void banSelectedNode(int bantime);
-    /** Unban a selected node on the Bans tab */
-    void unbanSelectedNode();
+
     /** set which tab has the focus (is visible) */
-    void setTabFocus(enum TabTypes tabType);
 
 Q_SIGNALS:
     // For RPC command executor
@@ -135,9 +145,6 @@ Q_SIGNALS:
 
 private:
     void startExecutor();
-    void setTrafficGraphRange(int mins);
-    /** show detailed information on ui about selected node */
-    void updateNodeDetail(const CNodeCombinedStats *stats);
 
     enum ColumnWidths
     {
@@ -149,8 +156,6 @@ private:
 
     };
 
-    //interfaces::Node *m_node  = nullptr;
-    Ui::RPCConsole* const ui;
     ClientModel *clientModel = nullptr;
     QStringList history;
     int historyPtr = 0;
@@ -165,11 +170,6 @@ private:
     QThread thread;
     WalletModel* m_last_wallet_model{nullptr};
 
-    /** Update UI with latest network info from model. */
-    void updateNetworkState();
-
-private Q_SLOTS:
-    void updateAlerts(const QString& warnings);
 };
 
 #endif // RAIN_QT_RPCCONSOLE_H

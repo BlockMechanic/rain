@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -24,6 +24,7 @@ typedef enum ScriptError_t
     /* Failed verify operations */
     SCRIPT_ERR_VERIFY,
     SCRIPT_ERR_EQUALVERIFY,
+    SCRIPT_ERR_CHECKCOLDSTAKEVERIFY,
     SCRIPT_ERR_CHECKMULTISIGVERIFY,
     SCRIPT_ERR_CHECKSIGVERIFY,
     SCRIPT_ERR_NUMEQUALVERIFY,
@@ -68,7 +69,10 @@ typedef enum ScriptError_t
     SCRIPT_ERR_OP_CODESEPARATOR,
     SCRIPT_ERR_SIG_FINDANDDELETE,
 
-    SCRIPT_ERR_ERROR_COUNT
+    SCRIPT_ERR_ERROR_COUNT,
+
+    SCRIPT_ERR_RANGEPROOF,
+    SCRIPT_ERR_PEDERSEN_TALLY
 } ScriptError;
 
 #define SCRIPT_ERR_LAST SCRIPT_ERR_ERROR_COUNT

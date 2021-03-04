@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Copyright (c) 2017 The Zcash developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
@@ -101,6 +101,8 @@ public:
     //! Negate private key
     bool Negate();
 
+    uint256 GetPrivKey_256();
+
     /**
      * Convert the private key to a CPrivKey (serialized OpenSSL private key data).
      * This is expensive.
@@ -112,6 +114,11 @@ public:
      * This is expensive.
      */
     CPubKey GetPubKey() const;
+
+    /**
+     * Compute the ECDH exchange result using this private key and another public key.
+     */
+    uint256 ECDH(const CPubKey& pubkey) const;
 
     /**
      * Create a DER-serialized signature.
@@ -129,7 +136,7 @@ public:
     bool SignCompact(const uint256& hash, std::vector<unsigned char>& vchSig) const;
 
     //! Derive BIP32 child key.
-    bool Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc) const;
+    bool Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc, std::vector<unsigned char>* tweak = nullptr /* ELEMENTS: vector of key tweak values that are filled out if non-null */) const;
 
     /**
      * Verify thoroughly whether a private key and a public key match.
@@ -191,8 +198,5 @@ void ECC_Stop();
 
 /** Check that required EC support is available at runtime. */
 bool ECC_InitSanityCheck();
-
-/** Ensure that the signature is LowS */
-bool EnsureLowS(std::vector<unsigned char>& vchSig);
 
 #endif // RAIN_KEY_H

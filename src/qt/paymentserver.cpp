@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -23,8 +23,6 @@
 #include <cstdlib>
 #include <memory>
 
-#include <openssl/x509_vfy.h>
-
 #include <QApplication>
 #include <QByteArray>
 #include <QDataStream>
@@ -36,15 +34,7 @@
 #include <QList>
 #include <QLocalServer>
 #include <QLocalSocket>
-#include <QNetworkAccessManager>
-#include <QNetworkProxy>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QSslCertificate>
-#include <QSslConfiguration>
-#include <QSslError>
 #include <QStringList>
-#include <QTextDocument>
 #include <QUrlQuery>
 
 const int RAIN_IPC_CONNECT_TIMEOUT = 1000; // milliseconds

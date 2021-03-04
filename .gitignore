@@ -1,13 +1,17 @@
 *.tar.gz
 
 *.exe
+*.pdb
 src/rain
 src/raind
 src/rain-cli
+src/rain-gui
+src/rain-node
 src/rain-tx
 src/rain-wallet
+src/test/fuzz/*
+!src/test/fuzz/*.*
 src/test/test_rain
-src/test/test_rain_fuzzy
 src/qt/test/test_rain-qt
 
 # autoreconf
@@ -27,6 +31,7 @@ build-aux/m4/ltversion.m4
 build-aux/missing
 build-aux/compile
 build-aux/test-driver
+config.cache
 config.log
 config.status
 configure
@@ -34,6 +39,7 @@ libtool
 src/config/rain-config.h
 src/config/rain-config.h.in
 src/config/stamp-h1
+src/obj
 share/setup.nsi
 share/qt/Info.plist
 
@@ -76,7 +82,7 @@ src/qt/rain-qt.includes
 
 # Only ignore unexpected patches
 *.patch
-!depends/patches/*.patch
+!depends/patches/**/*.patch
 
 #libtool object files
 *.lo
@@ -85,9 +91,13 @@ src/qt/rain-qt.includes
 # Compilation and Qt preprocessor part
 *.qm
 Makefile
-rain-qt
+!depends/Makefile
+src/qt/rain-qt
 Rain-Qt.app
 background.tiff*
+
+# Qt Creator
+Makefile.am.user
 
 # Unit-tests
 Makefile.test
@@ -100,13 +110,19 @@ qrc_*.cpp
 .DS_Store
 build
 
+# Previous releases
+releases
+
 #lcov
 *.gcno
 *.gcda
 /*.info
 test_rain.coverage/
 total.coverage/
+fuzz.coverage/
 coverage_percent.txt
+/cov_tool_wrapper.sh
+qa-assets/
 
 #build tests
 linux-coverage-build
@@ -114,6 +130,7 @@ linux-build
 win32-build
 test/config.ini
 test/cache/*
+test/.mypy_cache/
 
 !src/leveldb*/Makefile
 
@@ -127,3 +144,7 @@ db4/
 
 # clang-check
 *.plist
+
+osx_volname
+dist/
+*.background.tiff

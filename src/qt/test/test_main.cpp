@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -34,6 +34,8 @@ Q_IMPORT_PLUGIN(QXcbIntegrationPlugin);
 Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin);
 #elif defined(QT_QPA_PLATFORM_COCOA)
 Q_IMPORT_PLUGIN(QCocoaIntegrationPlugin);
+#elif defined(QT_QPA_PLATFORM_ANDROID)
+Q_IMPORT_PLUGIN(QAndroidPlatformIntegrationPlugin);
 #endif
 #endif
 
@@ -76,10 +78,12 @@ int main(int argc, char *argv[])
     if (QTest::qExec(&test1) != 0) {
         fInvalid = true;
     }
+#ifndef MOBILE_GUI
     RPCNestedTests test3;
     if (QTest::qExec(&test3) != 0) {
         fInvalid = true;
     }
+#endif
     CompatTests test4;
     if (QTest::qExec(&test4) != 0) {
         fInvalid = true;
@@ -89,10 +93,12 @@ int main(int argc, char *argv[])
     if (QTest::qExec(&test5) != 0) {
         fInvalid = true;
     }
+#ifndef MOBILE_GUI
     AddressBookTests test6;
     if (QTest::qExec(&test6) != 0) {
         fInvalid = true;
     }
+#endif
 #endif
 
     return fInvalid;

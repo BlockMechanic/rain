@@ -1,17 +1,17 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 // NOTE: This file is intended to be customised by the end user, and includes only local node policy logic
 
 #include <policy/policy.h>
+#include <policy/feerate.h>
 
 #include <consensus/validation.h>
 #include <coins.h>
 
-
-CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
+CAmountMap GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
 {
     // "Dust" is defined in terms of dustRelayFee,
     // which has units satoshis-per-kilobyte.
@@ -28,7 +28,7 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
     // 98*dustRelayFee/1000 (in satoshis).
     // 294 satoshis at the default rate of 3000 sat/kB.
     if (txout.scriptPubKey.IsUnspendable())
-        return 0;
+        return CAmountMap();
 
     size_t nSize = GetSerializeSize(txout, SER_DISK, 0);
     int witnessversion = 0;
@@ -47,7 +47,13 @@ CAmount GetDustThreshold(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
 
 bool IsDust(const CTxOut& txout, const CFeeRate& dustRelayFeeIn)
 {
-    return (txout.nValue < GetDustThreshold(txout, dustRelayFeeIn));
+    if (!txout.nValue.IsExplicit())
+        return false; // FIXME
+    if (!txout.nAsset.IsExplicit())
+        return false;
+    if (txout.IsFee())
+        return false;
+    return (txout.nValue.GetAmount() < GetDustThreshold(txout, dustRelayFeeIn)[txout.nAsset.GetAsset()]);
 }
 
 bool IsStandard(const CScript& scriptPubKey, txnouttype& whichType)
@@ -56,7 +62,7 @@ bool IsStandard(const CScript& scriptPubKey, txnouttype& whichType)
     if (!Solver(scriptPubKey, whichType, vSolutions))
         return false;
 
-    if (whichType == TX_NONSTANDARD) {
+    if (whichType == TX_NONSTANDARD || whichType == TX_WITNESS_UNKNOWN) {
         return false;
     } else if (whichType == TX_MULTISIG) {
         unsigned char m = vSolutions.front()[0];
@@ -66,6 +72,12 @@ bool IsStandard(const CScript& scriptPubKey, txnouttype& whichType)
             return false;
         if (m < 1 || m > n)
             return false;
+    } else if (whichType == TX_HTLC) {
+        return false;
+    } else if (whichType == TX_CLTV) {
+             return true;  // CLTV Freeze are standard enable(disable)
+    } else if (whichType == TX_MULTISIG_CLTV) {
+        return false;
     } else if (whichType == TX_NULL_DATA &&
                (!fAcceptDatacarrier || scriptPubKey.size() > nMaxDatacarrierBytes)) {
           return false;
@@ -111,6 +123,7 @@ bool IsStandardTx(const CTransaction& tx, bool permit_bare_multisig, const CFeeR
     }
 
     unsigned int nDataOut = 0;
+    unsigned int nAssetDataOut = 0;
     txnouttype whichType;
     for (const CTxOut& txout : tx.vout) {
         if (!::IsStandard(txout.scriptPubKey, whichType)) {
@@ -118,12 +131,12 @@ bool IsStandardTx(const CTransaction& tx, bool permit_bare_multisig, const CFeeR
             return false;
         }
 
-        if (whichType == TX_NULL_DATA)
+        if (whichType == TX_NULL_DATA) {
             nDataOut++;
-        else if ((whichType == TX_MULTISIG) && (!permit_bare_multisig)) {
+        } else if ((whichType == TX_MULTISIG) && (!permit_bare_multisig)) {
             reason = "bare-multisig";
             return false;
-        } else if (IsDust(txout, dust_relay_fee)) {
+        } else if ((txout.nAsset.IsExplicit()) && IsDust(txout, dust_relay_fee)) {
             reason = "dust";
             return false;
         }
@@ -197,7 +210,7 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
     {
         // We don't care if witness for this input is empty, since it must not be bloated.
         // If the script is invalid without witness, it would be caught sooner or later during validation.
-        if (tx.vin[i].scriptWitness.IsNull())
+        if (tx.witness.vtxinwit.size() <= i || tx.witness.vtxinwit[i].scriptWitness.IsNull())
             continue;
 
         const CTxOut &prev = mapInputs.AccessCoin(tx.vin[i].prevout).out;
@@ -226,13 +239,14 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
 
         // Check P2WSH standard limits
         if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_SCRIPTHASH_SIZE) {
-            if (tx.vin[i].scriptWitness.stack.back().size() > MAX_STANDARD_P2WSH_SCRIPT_SIZE)
+            const CScriptWitness& scriptWitness = tx.witness.vtxinwit[i].scriptWitness;
+            if (scriptWitness.stack.back().size() > MAX_STANDARD_P2WSH_SCRIPT_SIZE)
                 return false;
-            size_t sizeWitnessStack = tx.vin[i].scriptWitness.stack.size() - 1;
+            size_t sizeWitnessStack = scriptWitness.stack.size() - 1;
             if (sizeWitnessStack > MAX_STANDARD_P2WSH_STACK_ITEMS)
                 return false;
             for (unsigned int j = 0; j < sizeWitnessStack; j++) {
-                if (tx.vin[i].scriptWitness.stack[j].size() > MAX_STANDARD_P2WSH_STACK_ITEM_SIZE)
+                if (scriptWitness.stack[j].size() > MAX_STANDARD_P2WSH_STACK_ITEM_SIZE)
                     return false;
             }
         }
@@ -240,17 +254,17 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
     return true;
 }
 
-int64_t GetVirtualTransactionSize(int64_t nWeight, int64_t nSigOpCost, unsigned int bytes_per_sigop)
+int64_t GetVirtualTransactionSize(int64_t nWeight, int64_t nSigOpCost)
 {
-    return (std::max(nWeight, nSigOpCost * bytes_per_sigop) + WITNESS_SCALE_FACTOR - 1) / WITNESS_SCALE_FACTOR;
+    return (std::max(nWeight, nSigOpCost * DEFAULT_BYTES_PER_SIGOP) + WITNESS_SCALE_FACTOR - 1) / WITNESS_SCALE_FACTOR;
 }
 
-int64_t GetVirtualTransactionSize(const CTransaction& tx, int64_t nSigOpCost, unsigned int bytes_per_sigop)
+int64_t GetVirtualTransactionSize(const CTransaction& tx, int64_t nSigOpCost)
 {
-    return GetVirtualTransactionSize(GetTransactionWeight(tx), nSigOpCost, bytes_per_sigop);
+    return GetVirtualTransactionSize(GetTransactionWeight(tx), nSigOpCost);
 }
 
-int64_t GetVirtualTransactionInputSize(const CTxIn& txin, int64_t nSigOpCost, unsigned int bytes_per_sigop)
+int64_t GetVirtualTransactionInputSize(const CTransaction& tx, const size_t nIn, int64_t nSigOpCost)
 {
-    return GetVirtualTransactionSize(GetTransactionInputWeight(txin), nSigOpCost, bytes_per_sigop);
+    return GetVirtualTransactionSize(GetTransactionInputWeight(tx, nIn), nSigOpCost);
 }

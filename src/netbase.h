@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -54,7 +54,7 @@ bool LookupSubNet(const char *pszName, CSubNet& subnet);
 bool ConnectSocket(const CService &addr, SOCKET& hSocketRet, int nTimeout, bool *outProxyConnectionFailed = 0);
 bool ConnectSocketByName(CService &addr, SOCKET& hSocketRet, const char *pszDest, int portDefault, int nTimeout, bool *outProxyConnectionFailed = 0);
 SOCKET CreateSocket(const CService &addrConnect);
-bool ConnectSocketDirectly(const CService &addrConnect, const SOCKET& hSocketRet, int nTimeout, bool manual_connection);
+bool ConnectSocketDirectly(const CService &addrConnect, const SOCKET& hSocketRet, int nTimeout);
 bool ConnectThroughProxy(const proxyType &proxy, const std::string& strDest, int port, const SOCKET& hSocketRet, int nTimeout, bool *outProxyConnectionFailed);
 /** Return readable error string for a network error code */
 std::string NetworkErrorString(int err);

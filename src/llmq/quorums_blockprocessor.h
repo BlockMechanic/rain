@@ -5,13 +5,13 @@
 #ifndef RAIN_QUORUMS_BLOCKPROCESSOR_H
 #define RAIN_QUORUMS_BLOCKPROCESSOR_H
 
-#include "llmq/quorums_commitment.h"
-#include "llmq/quorums_utils.h"
+#include <llmq/quorums_commitment.h>
+#include <llmq/quorums_utils.h>
 
-#include "consensus/params.h"
-#include "primitives/transaction.h"
-#include "saltedhasher.h"
-#include "sync.h"
+#include <consensus/params.h>
+#include <primitives/transaction.h>
+#include <saltedhasher.h>
+#include <sync.h>
 
 #include <map>
 #include <unordered_map>
@@ -28,14 +28,14 @@ private:
     CEvoDB& evoDb;
 
     // TODO cleanup
-    CCriticalSection minableCommitmentsCs;
+    RecursiveMutex minableCommitmentsCs;
     std::map<std::pair<Consensus::LLMQType, uint256>, uint256> minableCommitmentsByQuorum;
     std::map<uint256, CFinalCommitment> minableCommitments;
 
     std::unordered_map<std::pair<Consensus::LLMQType, uint256>, bool, StaticSaltedHasher> hasMinedCommitmentCache;
 
 public:
-    CQuorumBlockProcessor(CEvoDB& _evoDb) : evoDb(_evoDb) {}
+    explicit CQuorumBlockProcessor(CEvoDB& _evoDb) : evoDb(_evoDb) {}
 
     void UpgradeDB();
 

@@ -12,24 +12,7 @@ with no central authority: managing transactions and issuing money are carried
 out collectively by the network. Rain Core is the name of open source
 software which enables the use of this currency.
 
-Algorithm: X11
-
-Port: 23373
-
-RPC port: 23372
-
-Max Coin supply: 1,500,000,000
-
-Yearly interest: 200% Yearly interest following Block 1328350: 10% (until cap reached, enforced in latest release)
-
-Proof of Work Reward: Random?!
-
-Difficulty retarget: 1 minute
-
-Block reward reduced by 75% at block 37210
-
-
-For more information, as well as an immediately useable, binary version of
+For more information, as well as an immediately usable, binary version of
 the Rain Core software, see https://raincore.org/en/download/, or read the
 [original whitepaper](https://raincore.org/rain.pdf).
 
@@ -42,9 +25,14 @@ information or see https://opensource.org/licenses/MIT.
 Development Process
 -------------------
 
-The `master` branch is regularly built and tested, but is not guaranteed to be
+The `master` branch is regularly built (see `doc/build-*.md` for instructions) and tested, but it is not guaranteed to be
 completely stable. [Tags](https://github.com/rain/rain/tags) are created
-regularly to indicate new official, stable release versions of Rain Core.
+regularly from release branches to indicate new official, stable release versions of Rain Core.
+
+The https://github.com/rain-core/gui repository is used exclusively for the
+development of the GUI. Its master branch is identical in all monotree
+repositories. Release branches and tags do not exist, so please do not fork
+that repository unless it is for development reasons.
 
 The contribution workflow is described in [CONTRIBUTING.md](CONTRIBUTING.md)
 and useful hints for developers can be found in [doc/developer-notes.md](doc/developer-notes.md).

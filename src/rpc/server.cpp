@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,14 +14,13 @@
 #include <util/system.h>
 
 #include <boost/signals2/signal.hpp>
-#include <boost/algorithm/string/case_conv.hpp> // for to_upper()
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
 
 #include <memory> // for unique_ptr
 #include <unordered_map>
 
-static CCriticalSection cs_rpcWarmup;
+static RecursiveMutex cs_rpcWarmup;
 static std::atomic<bool> g_rpc_running{false};
 static bool fRPCInWarmup GUARDED_BY(cs_rpcWarmup) = true;
 static std::string rpcWarmupStatus GUARDED_BY(cs_rpcWarmup) = "RPC server started";
@@ -163,7 +162,7 @@ UniValue stop(const JSONRPCRequest& jsonRequest)
     if (jsonRequest.fHelp || jsonRequest.params.size() > 1)
         throw std::runtime_error(
             RPCHelpMan{"stop",
-                "\nStop Rain server.",
+                "\nRequest a graceful shutdown of Rain.",
                 {},
                 RPCResults{},
                 RPCExamples{""},
@@ -172,9 +171,9 @@ UniValue stop(const JSONRPCRequest& jsonRequest)
     // this reply will get back to the client.
     StartShutdown();
     if (jsonRequest.params[0].isNum()) {
-        MilliSleep(jsonRequest.params[0].get_int());
+        UninterruptibleSleep(std::chrono::milliseconds{jsonRequest.params[0].get_int()});
     }
-    return "Rain server stopping";
+    return  "Rain stopping";
 }
 
 static UniValue uptime(const JSONRPCRequest& jsonRequest)

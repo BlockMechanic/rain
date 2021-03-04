@@ -4,7 +4,6 @@
 
 #include <llmq/quorums.h>
 #include <llmq/quorums_chainlocks.h>
-#include <llmq/quorums_instantsend.h>
 #include <llmq/quorums_signing.h>
 #include <llmq/quorums_utils.h>
 
@@ -35,13 +34,19 @@ std::string CChainLockSig::ToString() const
     return strprintf("CChainLockSig(nHeight=%d, blockHash=%s)", nHeight, blockHash.ToString());
 }
 
-CChainLocksHandler::CChainLocksHandler(CScheduler* _scheduler) :
-    scheduler(_scheduler)
+CChainLocksHandler::CChainLocksHandler()
 {
+    scheduler = new CScheduler();
+    CScheduler::Function serviceLoop = boost::bind(&CScheduler::serviceQueue, scheduler);
+    scheduler_thread = new boost::thread(boost::bind(&TraceThread<CScheduler::Function>, "cl-scheduler", serviceLoop));
 }
 
 CChainLocksHandler::~CChainLocksHandler()
 {
+    scheduler_thread->interrupt();
+    scheduler_thread->join();
+    delete scheduler_thread;
+    delete scheduler;
 }
 
 void CChainLocksHandler::Start()
@@ -52,11 +57,12 @@ void CChainLocksHandler::Start()
         EnforceBestChainLock();
         // regularly retry signing the current chaintip as it might have failed before due to missing ixlocks
         TrySignChainTip();
-    }, 5000);
+    }, std::chrono::seconds{5});
 }
 
 void CChainLocksHandler::Stop()
 {
+    scheduler->stop();
     quorumSigningManager->UnregisterRecoveredSigsListener(this);
 }
 
@@ -103,9 +109,9 @@ void CChainLocksHandler::ProcessMessage(CNode* pfrom, const std::string& strComm
 
 void CChainLocksHandler::ProcessNewChainLock(NodeId from, const llmq::CChainLockSig& clsig, const uint256& hash)
 {
-    {
+    if (from != -1) {
         LOCK(cs_main);
-        g_connman->RemoveAskFor(hash);
+        EraseObjectRequest(from, CInv(MSG_CLSIG, hash));
     }
 
     {
@@ -123,7 +129,7 @@ void CChainLocksHandler::ProcessNewChainLock(NodeId from, const llmq::CChainLock
     uint256 requestId = ::SerializeHash(std::make_pair(CLSIG_REQUESTID_PREFIX, clsig.nHeight));
     uint256 msgHash = clsig.blockHash;
     if (!quorumSigningManager->VerifyRecoveredSig(Params().GetConsensus().llmqTypeChainLocks, clsig.nHeight, requestId, msgHash, clsig.sig)) {
-        LogPrintf("CChainLocksHandler::%s -- invalid CLSIG (%s), peer=%d\n", __func__, clsig.ToString(), from);
+        LogPrint(BCLog::CHAINLOCKS, "CChainLocksHandler::%s -- invalid CLSIG (%s), peer=%d\n", __func__, clsig.ToString(), from);
         if (from != -1) {
             LOCK(cs_main);
             Misbehaving(from, 10);
@@ -170,7 +176,7 @@ void CChainLocksHandler::ProcessNewChainLock(NodeId from, const llmq::CChainLock
     scheduler->scheduleFromNow([&]() {
         CheckActiveState();
         EnforceBestChainLock();
-    }, 0);
+    }, std::chrono::seconds{0});
 
     LogPrint(BCLog::CHAINLOCKS, "CChainLocksHandler::%s -- processed new CLSIG (%s), peer=%d\n",
               __func__, clsig.ToString(), from);
@@ -214,7 +220,7 @@ void CChainLocksHandler::UpdatedBlockTip(const CBlockIndex* pindexNew)
         TrySignChainTip();
         LOCK(cs);
         tryLockChainTipScheduled = false;
-    }, 0);
+    }, std::chrono::seconds{0});
 }
 
 void CChainLocksHandler::CheckActiveState()
@@ -222,15 +228,13 @@ void CChainLocksHandler::CheckActiveState()
     bool fDIP0008Active;
     {
         LOCK(cs_main);
-        fDIP0008Active = ::ChainActive().Height() > 2000000;
+        fDIP0008Active = ::ChainActive().Height() > 0;
     }
 
     LOCK(cs);
     bool oldIsEnforced = isEnforced;
     isSporkActive = sporkManager.IsSporkActive(SPORK_19_CHAINLOCKS_ENABLED);
-    // TODO remove this after DIP8 is active
-    bool fEnforcedBySpork = (Params().NetworkIDString() == CBaseChainParams::TESTNET) && (sporkManager.GetSporkValue(SPORK_19_CHAINLOCKS_ENABLED) == 1);
-    isEnforced = (fDIP0008Active && isSporkActive) || fEnforcedBySpork;
+    isEnforced = (fDIP0008Active && isSporkActive);
 
     if (!oldIsEnforced && isEnforced) {
         // ChainLocks got activated just recently, but it's possible that it was already running before, leaving
@@ -299,47 +303,6 @@ void CChainLocksHandler::TrySignChainTip()
     // considered safe when it is ixlocked or at least known since 10 minutes (from mempool or block). These checks are
     // performed for the tip (which we try to sign) and the previous 5 blocks. If a ChainLocked block is found on the
     // way down, we consider all TXs to be safe.
-    if (IsInstantSendEnabled() && sporkManager.IsSporkActive(SPORK_3_INSTANTSEND_BLOCK_FILTERING)) {
-        auto pindexWalk = pindex;
-        while (pindexWalk) {
-            if (pindex->nHeight - pindexWalk->nHeight > 5) {
-                // no need to check further down, 6 confs is safe to assume that TXs below this height won't be
-                // ixlocked anymore if they aren't already
-                LogPrint(BCLog::CHAINLOCKS, "CChainLocksHandler::%s -- tip and previous 5 blocks all safe\n", __func__);
-                break;
-            }
-            if (HasChainLock(pindexWalk->nHeight, pindexWalk->GetBlockHash())) {
-                // we don't care about ixlocks for TXs that are ChainLocked already
-                LogPrint(BCLog::CHAINLOCKS, "CChainLocksHandler::%s -- chainlock at height %d \n", __func__, pindexWalk->nHeight);
-                break;
-            }
-
-            auto txids = GetBlockTxs(pindexWalk->GetBlockHash());
-            if (!txids) {
-                pindexWalk = pindexWalk->pprev;
-                continue;
-            }
-
-            for (auto& txid : *txids) {
-                int64_t txAge = 0;
-                {
-                    LOCK(cs);
-                    auto it = txFirstSeenTime.find(txid);
-                    if (it != txFirstSeenTime.end()) {
-                        txAge = GetAdjustedTime() - it->second;
-                    }
-                }
-
-                if (txAge < WAIT_FOR_ISLOCK_TIMEOUT && !quorumInstantSendManager->IsLocked(txid)) {
-                    LogPrint(BCLog::CHAINLOCKS, "CChainLocksHandler::%s -- not signing block %s due to TX %s not being ixlocked and not old enough. age=%d\n", __func__,
-                              pindexWalk->GetBlockHash().ToString(), txid.ToString(), txAge);
-                    return;
-                }
-            }
-
-            pindexWalk = pindexWalk->pprev;
-        }
-    }
 
     uint256 requestId = ::SerializeHash(std::make_pair(CLSIG_REQUESTID_PREFIX, pindex->nHeight));
     uint256 msgHash = pindex->GetBlockHash();
@@ -461,9 +424,6 @@ bool CChainLocksHandler::IsTxSafeForMining(const uint256& txid)
     if (!sporkManager.IsSporkActive(SPORK_3_INSTANTSEND_BLOCK_FILTERING)) {
         return true;
     }
-    if (!IsInstantSendEnabled()) {
-        return true;
-    }
 
     int64_t txAge = 0;
     {
@@ -477,7 +437,7 @@ bool CChainLocksHandler::IsTxSafeForMining(const uint256& txid)
         }
     }
 
-    if (txAge < WAIT_FOR_ISLOCK_TIMEOUT && !quorumInstantSendManager->IsLocked(txid)) {
+    if (txAge < WAIT_FOR_ISLOCK_TIMEOUT) {
         return false;
     }
     return true;
@@ -522,7 +482,7 @@ void CChainLocksHandler::EnforceBestChainLock()
                 }
                 LogPrintf("CChainLocksHandler::%s -- CLSIG (%s) invalidates block %s\n",
                           __func__, clsig.ToString(), jt->second->GetBlockHash().ToString());
-                DoInvalidateBlock(jt->second, false);
+                DoInvalidateBlock(jt->second);
             }
 
             pindex = pindex->pprev;
@@ -585,27 +545,18 @@ void CChainLocksHandler::HandleNewRecoveredSig(const llmq::CRecoveredSig& recove
 }
 
 // WARNING, do not hold cs while calling this method as we'll otherwise run into a deadlock
-void CChainLocksHandler::DoInvalidateBlock(const CBlockIndex* pindex, bool activateBestChain)
+void CChainLocksHandler::DoInvalidateBlock(const CBlockIndex* pindex)
 {
+    LOCK(cs_main);
+
     auto& params = Params();
 
-    {
-        LOCK(cs_main);
-
-        // get the non-const pointer
-        CBlockIndex* pindex2 = mapBlockIndex[pindex->GetBlockHash()];
-
-        CValidationState state;
-        if (!InvalidateBlock(state, params, pindex2)) {
-            LogPrintf("CChainLocksHandler::%s -- InvalidateBlock failed: %s\n", __func__, FormatStateMessage(state));
-            // This should not have happened and we are in a state were it's not safe to continue anymore
-            assert(false);
-        }
-    }
+    // get the non-const pointer
+    CBlockIndex* pindex2 = mapBlockIndex[pindex->GetBlockHash()];
 
     CValidationState state;
-    if (activateBestChain && !ActivateBestChain(state, params)) {
-        LogPrintf("CChainLocksHandler::%s -- ActivateBestChain failed: %s\n", __func__, FormatStateMessage(state));
+    if (!InvalidateBlock(state, params, pindex2)) {
+        LogPrintf("CChainLocksHandler::%s -- InvalidateBlock failed: %s\n", __func__, FormatStateMessage(state));
         // This should not have happened and we are in a state were it's not safe to continue anymore
         assert(false);
     }

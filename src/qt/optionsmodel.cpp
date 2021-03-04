@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -22,8 +22,6 @@
 #ifdef ENABLE_WALLET
 #include <wallet/wallet.h>
 #include <wallet/walletdb.h>
-
-#include <privatesend/privatesend-client.h>
 #endif
 
 #include <QNetworkProxy>
@@ -76,7 +74,7 @@ void OptionsModel::Init(bool resetSettings)
 
     // Display
     if (!settings.contains("nDisplayUnit"))
-        settings.setValue("nDisplayUnit", RainUnits::RAIN);
+        settings.setValue("nDisplayUnit", RainUnits::COIN);
     nDisplayUnit = settings.value("nDisplayUnit").toInt();
 
     if (!settings.contains("strThirdPartyTxUrls"))
@@ -87,16 +85,10 @@ void OptionsModel::Init(bool resetSettings)
         settings.setValue("fCoinControlFeatures", false);
     fCoinControlFeatures = settings.value("fCoinControlFeatures", false).toBool();
 
-    // PrivateSend
-    if (!settings.contains("fShowAdvancedPSUI"))
-        settings.setValue("fShowAdvancedPSUI", false);
-    fShowAdvancedPSUI = settings.value("fShowAdvancedPSUI", false).toBool();
+    if (!settings.contains("fShowColdStakingScreen"))
+        settings.setValue("fShowColdStakingScreen", false);
+    showColdStakingScreen = settings.value("fShowColdStakingScreen", false).toBool();
 
-    if (!settings.contains("fShowPrivateSendPopups"))
-        settings.setValue("fShowPrivateSendPopups", true);
-
-    if (!settings.contains("fLowKeysWarning"))
-        settings.setValue("fLowKeysWarning", true);
 
     // These are shared with the core or have a command-line parameter
     // and we want command-line parameters to overwrite the GUI settings.
@@ -143,30 +135,6 @@ void OptionsModel::Init(bool resetSettings)
         settings.setValue("bSpendZeroConfChange", true);
     if (!m_node.softSetBoolArg("-spendzeroconfchange", settings.value("bSpendZeroConfChange").toBool()))
         addOverriddenOption("-spendzeroconfchange");
-
-    // PrivateSend
-    if (!settings.contains("nPrivateSendRounds"))
-        settings.setValue("nPrivateSendRounds", DEFAULT_PRIVATESEND_ROUNDS);
-    if (!gArgs.SoftSetArg("-privatesendrounds", settings.value("nPrivateSendRounds").toString().toStdString()))
-        addOverriddenOption("-privatesendrounds");
-    privateSendClient.nPrivateSendRounds = settings.value("nPrivateSendRounds").toInt();
-
-    if (!settings.contains("nPrivateSendAmount")) {
-        // for migration from old settings
-        if (!settings.contains("nAnonymizeRainAmount"))
-            settings.setValue("nPrivateSendAmount", DEFAULT_PRIVATESEND_AMOUNT);
-        else
-            settings.setValue("nPrivateSendAmount", settings.value("nAnonymizeRainAmount").toInt());
-    }
-    if (!gArgs.SoftSetArg("-privatesendamount", settings.value("nPrivateSendAmount").toString().toStdString()))
-        addOverriddenOption("-privatesendamount");
-    privateSendClient.nPrivateSendAmount = settings.value("nPrivateSendAmount").toInt();
-
-    if (!settings.contains("fPrivateSendMultiSession"))
-        settings.setValue("fPrivateSendMultiSession", DEFAULT_PRIVATESEND_MULTISESSION);
-    if (!gArgs.SoftSetBoolArg("-privatesendmultisession", settings.value("fPrivateSendMultiSession").toBool()))
-        addOverriddenOption("-privatesendmultisession");
-    privateSendClient.fPrivateSendMultiSession = settings.value("fPrivateSendMultiSession").toBool();
 #endif
 
     // Network
@@ -214,6 +182,11 @@ void OptionsModel::Init(bool resetSettings)
     language = settings.value("language").toString();
 }
 
+void OptionsModel::refreshDataView()
+{
+    Q_EMIT dataChanged(index(0), index(rowCount(QModelIndex()) - 1));
+}
+
 /** Helper function to copy contents from one QSettings to another.
  * By using allKeys this also covers nested settings in a hierarchy.
  */
@@ -232,6 +205,113 @@ static void BackupSettings(const fs::path& filename, const QSettings& src)
     dst.clear();
     CopySettings(dst, src);
 }
+
+void OptionsModel::setMainDefaultOptions(QSettings& settings, bool reset)
+{
+    // These are shared with the core or have a command-line parameter
+    // and we want command-line parameters to overwrite the GUI settings.
+    //
+    // If setting doesn't exist create it with defaults.
+    //
+    // If SoftSetArg() or SoftSetBoolArg() return false we were overridden
+    // by command-line and show this in the UI.
+    // Main
+    if (!settings.contains("nDatabaseCache") || reset)
+        settings.setValue("nDatabaseCache", (qint64)nDefaultDbCache);
+    if (!m_node.softSetArg("-dbcache", settings.value("nDatabaseCache").toString().toStdString()))
+        addOverriddenOption("-dbcache");
+
+    if (!settings.contains("nThreadsScriptVerif") || reset)
+        settings.setValue("nThreadsScriptVerif", DEFAULT_SCRIPTCHECK_THREADS);
+    if (!m_node.softSetArg("-par", settings.value("nThreadsScriptVerif").toString().toStdString()))
+        addOverriddenOption("-par");
+
+    if (reset) {
+        refreshDataView();
+    }
+}
+
+void OptionsModel::setWalletDefaultOptions(QSettings& settings, bool reset)
+{
+    if (!settings.contains("bSpendZeroConfChange") || reset)
+        settings.setValue("bSpendZeroConfChange", false);
+    if (!m_node.softSetBoolArg("-spendzeroconfchange", settings.value("bSpendZeroConfChange").toBool()))
+        addOverriddenOption("-spendzeroconfchange");
+    if (reset) {
+        setStakeSplitThreshold(DEFAULT_STAKE_SPLIT_THRESHOLD);
+        refreshDataView();
+    }
+}
+
+void OptionsModel::setNetworkDefaultOptions(QSettings& settings, bool reset)
+{
+    if (!settings.contains("fUseUPnP") || reset)
+        settings.setValue("fUseUPnP", DEFAULT_UPNP);
+    if (!m_node.softSetBoolArg("-upnp", settings.value("fUseUPnP").toBool()))
+        addOverriddenOption("-upnp");
+
+    if (!settings.contains("fListen") || reset)
+        settings.setValue("fListen", DEFAULT_LISTEN);
+    if (!m_node.softSetBoolArg("-listen", settings.value("fListen").toBool()))
+        addOverriddenOption("-listen");
+
+    if (!settings.contains("fUseProxy") || reset)
+        settings.setValue("fUseProxy", false);
+    if (!settings.contains("addrProxy") || reset)
+        settings.setValue("addrProxy", "127.0.0.1:9050");
+    // Only try to set -proxy, if user has enabled fUseProxy
+    if (settings.value("fUseProxy").toBool() && !m_node.softSetArg("-proxy", settings.value("addrProxy").toString().toStdString()))
+        addOverriddenOption("-proxy");
+    else if (!settings.value("fUseProxy").toBool() && !gArgs.GetArg("-proxy", "").empty())
+        addOverriddenOption("-proxy");
+
+    if (reset) {
+        refreshDataView();
+    }
+}
+
+void OptionsModel::setWindowDefaultOptions(QSettings& settings, bool reset)
+{
+    if (!settings.contains("fMinimizeToTray") || reset)
+        settings.setValue("fMinimizeToTray", false);
+    fMinimizeToTray = settings.value("fMinimizeToTray").toBool();
+
+    if (!settings.contains("fMinimizeOnClose") || reset)
+        settings.setValue("fMinimizeOnClose", false);
+    fMinimizeOnClose = settings.value("fMinimizeOnClose").toBool();
+
+    if (reset) {
+        refreshDataView();
+    }
+}
+
+void OptionsModel::setDisplayDefaultOptions(QSettings& settings, bool reset)
+{
+    if (!settings.contains("nDisplayUnit") || reset)
+        settings.setValue("nDisplayUnit", RainUnits::COIN);
+    nDisplayUnit = settings.value("nDisplayUnit").toInt();
+    if (!settings.contains("digits") || reset)
+        settings.setValue("digits", "2");
+    if (!settings.contains("theme") || reset)
+        settings.setValue("theme", "");
+    if (!settings.contains("fCSSexternal") || reset)
+        settings.setValue("fCSSexternal", false);
+    if (!settings.contains("language") || reset)
+        settings.setValue("language", "");
+    if (!m_node.softSetArg("-lang", settings.value("language").toString().toStdString()))
+        addOverriddenOption("-lang");
+
+    if (!settings.contains("strThirdPartyTxUrls") || reset)
+        settings.setValue("strThirdPartyTxUrls", "");
+    strThirdPartyTxUrls = settings.value("strThirdPartyTxUrls", "").toString();
+
+    fHideCharts = gArgs.GetBoolArg("-hidecharts", false);
+
+    if (reset) {
+        refreshDataView();
+    }
+}
+
 
 void OptionsModel::Reset()
 {
@@ -355,23 +435,19 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
             return settings.value("bSpendZeroConfChange");
         case ShowMasternodesTab:
             return settings.value("fShowMasternodesTab");
-        case ShowAdvancedPSUI:
-            return fShowAdvancedPSUI;
-        case ShowPrivateSendPopups:
-            return settings.value("fShowPrivateSendPopups");
-        case LowKeysWarning:
-            return settings.value("fLowKeysWarning");
-        case PrivateSendRounds:
-            return settings.value("nPrivateSendRounds");
-        case PrivateSendAmount:
-            return settings.value("nPrivateSendAmount");
-        case PrivateSendMultiSession:
-            return settings.value("fPrivateSendMultiSession");
+        case StakeSplitThreshold:
+        {
+            // Return CAmount/qlonglong as double
+            const CAmount nStakeSplitThreshold = pwalletMain()->GetStakeSplitThreshold();
+            return QVariant(static_cast<double>(nStakeSplitThreshold / static_cast<double>(COIN)));
+        }
 #endif
         case DisplayUnit:
             return nDisplayUnit;
         case ThirdPartyTxUrls:
             return strThirdPartyTxUrls;
+        case Digits:
+            return settings.value("digits");
         case Language:
             return settings.value("language");
         case CoinControlFeatures:
@@ -384,6 +460,10 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
             return settings.value("nDatabaseCache");
         case ThreadsScriptVerif:
             return settings.value("nThreadsScriptVerif");
+        case HideCharts:
+            return fHideCharts;
+        case HideZeroBalances:
+            return settings.value("fHideZeroBalances");
         case Listen:
             return settings.value("fListen");
         default:
@@ -488,41 +568,12 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
                 setRestartRequired(true);
             }
             break;
-        case ShowAdvancedPSUI:
-            fShowAdvancedPSUI = value.toBool();
-            settings.setValue("fShowAdvancedPSUI", fShowAdvancedPSUI);
-            Q_EMIT advancedPSUIChanged(fShowAdvancedPSUI);
-            break;
-        case ShowPrivateSendPopups:
-            settings.setValue("fShowPrivateSendPopups", value);
-            break;
-        case LowKeysWarning:
-            settings.setValue("fLowKeysWarning", value);
-            break;
-        case PrivateSendRounds:
-            if (settings.value("nPrivateSendRounds") != value)
-            {
-                privateSendClient.nPrivateSendRounds = value.toInt();
-                settings.setValue("nPrivateSendRounds", privateSendClient.nPrivateSendRounds);
-                Q_EMIT privateSendRoundsChanged();
-            }
-            break;
-        case PrivateSendAmount:
-            if (settings.value("nPrivateSendAmount") != value)
-            {
-                privateSendClient.nPrivateSendAmount = value.toInt();
-                settings.setValue("nPrivateSendAmount", privateSendClient.nPrivateSendAmount);
-                Q_EMIT privateSentAmountChanged();
-            }
-            break;
-        case PrivateSendMultiSession:
-            if (settings.value("fPrivateSendMultiSession") != value)
-            {
-                privateSendClient.fPrivateSendMultiSession = value.toBool();
-                settings.setValue("fPrivateSendMultiSession", privateSendClient.fPrivateSendMultiSession);
-            }
-            break;
 #endif
+        case StakeSplitThreshold:
+            // Write double as qlonglong/CAmount
+            setStakeSplitThreshold(static_cast<CAmount>(value.toDouble() * COIN));
+            setSSTChanged(true);
+            break;
         case DisplayUnit:
             setDisplayUnit(value);
             break;
@@ -533,16 +584,36 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
                 setRestartRequired(true);
             }
             break;
+        case Digits:
+            if (settings.value("digits") != value) {
+                settings.setValue("digits", value);
+                setRestartRequired(true);
+            }
+            break;
         case Language:
             if (settings.value("language") != value) {
                 settings.setValue("language", value);
                 setRestartRequired(true);
             }
             break;
+        case HideCharts:
+            fHideCharts = value.toBool();   // memory only
+            Q_EMIT hideChartsChanged(fHideCharts);
+            break;
+        case HideZeroBalances:
+            fHideZeroBalances = value.toBool();
+            settings.setValue("fHideZeroBalances", fHideZeroBalances);
+            Q_EMIT hideZeroBalancesChanged(fHideZeroBalances);
+            break;
         case CoinControlFeatures:
             fCoinControlFeatures = value.toBool();
             settings.setValue("fCoinControlFeatures", fCoinControlFeatures);
             Q_EMIT coinControlFeaturesChanged(fCoinControlFeatures);
+            break;
+        case ShowColdStakingScreen:
+            this->showColdStakingScreen = value.toBool();
+            settings.setValue("fShowColdStakingScreen", this->showColdStakingScreen);
+            Q_EMIT showHideColdStakingScreen(this->showColdStakingScreen);
             break;
         case Prune:
             if (settings.value("bPrune") != value) {
@@ -596,12 +667,26 @@ void OptionsModel::setDisplayUnit(const QVariant &value)
     }
 }
 
+/* Update StakeSplitThreshold's value in wallet */
+void OptionsModel::setStakeSplitThreshold(const CAmount nStakeSplitThreshold)
+{
+    if (pwalletMain() && pwalletMain()->GetStakeSplitThreshold() != nStakeSplitThreshold) {
+        WalletBatch walletdb(pwalletMain()->GetDBHandle());
+        LOCK(pwalletMain()->cs_wallet);
+        {
+            pwalletMain()->SetStakeSplitThreshold(nStakeSplitThreshold);
+            walletdb.WriteStakeSplitThreshold(nStakeSplitThreshold);
+        }
+    }
+}
+
+
 bool OptionsModel::getEnableMessageSendConf()
 {
     //return fEnableMessageSendConf;
     return true;
 }
-
+/*
 bool OptionsModel::getProxySettings(QNetworkProxy& proxy) const
 {
     // Directly query current base proxy, because
@@ -619,7 +704,7 @@ bool OptionsModel::getProxySettings(QNetworkProxy& proxy) const
 
     return false;
 }
-
+*/
 void OptionsModel::setRestartRequired(bool fRequired)
 {
     QSettings settings;
@@ -661,4 +746,16 @@ void OptionsModel::checkAndMigrate()
     if (settings.contains("addrSeparateProxyTor") && settings.value("addrSeparateProxyTor").toString().endsWith("%2")) {
         settings.setValue("addrSeparateProxyTor", GetDefaultProxyAddress());
     }
+}
+
+void OptionsModel::setSSTChanged(bool fChanged)
+{
+    QSettings settings;
+    return settings.setValue("fSSTChanged", fChanged);
+}
+
+bool OptionsModel::isSSTChanged()
+{
+    QSettings settings;
+    return settings.value("fSSTChanged", false).toBool();
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Copyright (c) 2017 The Zcash developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
@@ -12,25 +12,9 @@
 
 #include <secp256k1.h>
 #include <secp256k1_recovery.h>
-
-#include <openssl/bn.h>
-#include <openssl/ecdsa.h>
-#include <openssl/rand.h>
-#include <openssl/obj_mac.h>
-#include <openssl/opensslv.h>
+#include <secp256k1_ecdh.h>
 
 static secp256k1_context* secp256k1_context_sign = nullptr;
-
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-// Compatibility Layer for older versions of Open SSL
-void ECDSA_SIG_get0(const ECDSA_SIG *sig, const BIGNUM **pr, const BIGNUM **ps)
- {
-    if (pr != NULL)
-        *pr = sig->r;
-    if (ps != NULL)
-        *ps = sig->s;
- }
-#endif
 
 /** These functions are taken from the libsecp256k1 distribution and are very ugly. */
 
@@ -168,45 +152,6 @@ static int ec_privkey_export_der(const secp256k1_context *ctx, unsigned char *pr
     return 1;
 }
 
-const unsigned char vchOrder[32] = {
-    0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfe,0xba,0xae,0xdc,0xe6,0xaf,0x48,0xa0,0x3b,0xbf,0xd2,0x5e,0x8c,0xd0,0x36,0x41,0x41
-};
-
-const unsigned char vchHalfOrder[32] = {
-    0x7f,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x5d,0x57,0x6e,0x73,0x57,0xa4,0x50,0x1d,0xdf,0xe9,0x2f,0x46,0x68,0x1b,0x20,0xa0
-};
-
-bool EnsureLowS(std::vector<unsigned char>& vchSig) {
-    unsigned char *pos;
-
-    if (vchSig.empty())
-        return false;
-
-    pos = &vchSig[0];
-    ECDSA_SIG *sig = d2i_ECDSA_SIG(NULL, (const unsigned char **)&pos, vchSig.size());
-    if (sig == NULL)
-        return false;
-
-    BIGNUM *order = BN_bin2bn(vchOrder, sizeof(vchOrder), NULL);
-    BIGNUM *halforder = BN_bin2bn(vchHalfOrder, sizeof(vchHalfOrder), NULL);
-
-    BIGNUM *s = 0;
-    ECDSA_SIG_get0(sig, 0, (const BIGNUM **)&s);
-    if (BN_cmp(s, halforder) > 0) {
-        // enforce low S values, by negating the value (modulo the order) if above order/2.
-        BN_sub(s, order, s);
-    }
-
-    BN_free(halforder);
-    BN_free(order);
-
-    pos = &vchSig[0];
-    unsigned int nSize = i2d_ECDSA_SIG(sig, &pos);
-    ECDSA_SIG_free(sig);
-    vchSig.resize(nSize); // Shrink to fit actual size
-    return true;
-}
-
 bool CKey::Check(const unsigned char *vch) {
     return secp256k1_ec_seckey_verify(secp256k1_context_sign, vch);
 }
@@ -223,6 +168,14 @@ bool CKey::Negate()
 {
     assert(fValid);
     return secp256k1_ec_privkey_negate(secp256k1_context_sign, keydata.data());
+}
+
+uint256 CKey::GetPrivKey_256()
+{
+    void* key = keydata.data();
+    uint256* key_256 = (uint256*)key;
+
+    return *key_256;
 }
 
 CPrivKey CKey::GetPrivKey() const {
@@ -262,6 +215,15 @@ bool SigHasLowR(const secp256k1_ecdsa_signature* sig)
     // to a positive value by prepending a 0x00 byte so that the highest bit is 0. We can avoid this prepending by ensuring that
     // our highest bit is always 0, and thus we must check that the first byte is less than 0x80.
     return compact_sig[0] < 0x80;
+}
+
+uint256 CKey::ECDH(const CPubKey& pubkey) const {
+    assert(fValid);
+    uint256 result;
+    secp256k1_pubkey pkey;
+    assert(secp256k1_ec_pubkey_parse(secp256k1_context_sign, &pkey, pubkey.begin(), pubkey.size()));
+    assert(secp256k1_ecdh(secp256k1_context_sign, result.begin(), &pkey, begin(), NULL, NULL));
+    return result;
 }
 
 bool CKey::Sign(const uint256 &hash, std::vector<unsigned char>& vchSig, bool grind, uint32_t test_case) const {
@@ -327,7 +289,7 @@ bool CKey::Load(const CPrivKey &privkey, const CPubKey &vchPubKey, bool fSkipChe
     return VerifyPubKey(vchPubKey);
 }
 
-bool CKey::Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc) const {
+bool CKey::Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const ChainCode& cc, std::vector<unsigned char>* tweak) const {
     assert(IsValid());
     assert(IsCompressed());
     std::vector<unsigned char, secure_allocator<unsigned char>> vout(64);
@@ -338,6 +300,10 @@ bool CKey::Derive(CKey& keyChild, ChainCode &ccChild, unsigned int nChild, const
     } else {
         assert(size() == 32);
         BIP32Hash(cc, nChild, 0, begin(), vout.data());
+    }
+    if (tweak) {
+        tweak->clear();
+        *tweak = std::vector<unsigned char>(vout.data(), vout.data()+32);
     }
     memcpy(ccChild.begin(), vout.data()+32, 32);
     memcpy((unsigned char*)keyChild.begin(), begin(), 32);

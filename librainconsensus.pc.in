@@ -8,4 +8,3 @@ Description: Library for the Rain consensus protocol.
 Version: @PACKAGE_VERSION@
 Libs: -L${libdir} -lrainconsensus
 Cflags: -I${includedir}
-Requires.private: libcrypto

@@ -32,10 +32,10 @@ bool TransactionCanBeBumped(const CWallet* wallet, const uint256& txid);
 Result CreateTotalBumpTransaction(const CWallet* wallet,
                          const uint256& txid,
                          const CCoinControl& coin_control,
-                         CAmount total_fee,
+                         CAmountMap total_fee,
                          std::vector<std::string>& errors,
-                         CAmount& old_fee,
-                         CAmount& new_fee,
+                         CAmountMap& old_fee,
+                         CAmountMap& new_fee,
                          CMutableTransaction& mtx);
 
 //! Create bumpfee transaction based on feerate estimates.
@@ -43,8 +43,8 @@ Result CreateRateBumpTransaction(CWallet* wallet,
                          const uint256& txid,
                          const CCoinControl& coin_control,
                          std::vector<std::string>& errors,
-                         CAmount& old_fee,
-                         CAmount& new_fee,
+                         CAmountMap& old_fee,
+                         CAmountMap& new_fee,
                          CMutableTransaction& mtx);
 
 //! Sign the new transaction,

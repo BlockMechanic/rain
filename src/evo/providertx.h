@@ -5,16 +5,15 @@
 #ifndef RAIN_PROVIDERTX_H
 #define RAIN_PROVIDERTX_H
 
-#include "bls/bls.h"
-#include "consensus/validation.h"
-#include "primitives/transaction.h"
+#include <bls/bls.h>
+#include <consensus/validation.h>
+#include <primitives/transaction.h>
 
-#include "base58.h"
-#include "netaddress.h"
-#include "pubkey.h"
-#include "univalue.h"
-#include "key_io.h"
-
+#include <base58.h>
+#include <netaddress.h>
+#include <pubkey.h>
+#include <univalue.h>
+#include <key_io.h>
 class CBlockIndex;
 
 class CProRegTx
@@ -71,7 +70,7 @@ public:
         obj.pushKV("version", nVersion);
         obj.pushKV("collateralHash", collateralOutpoint.hash.ToString());
         obj.pushKV("collateralIndex", (int)collateralOutpoint.n);
-        obj.pushKV("service", addr.ToString(false));
+        obj.pushKV("service", addr.ToString());
         obj.pushKV("ownerAddress", EncodeDestination(PKHash(keyIDOwner)));
         obj.pushKV("votingAddress", EncodeDestination(PKHash(keyIDVoting)));
 
@@ -124,7 +123,7 @@ public:
         obj.setObject();
         obj.pushKV("version", nVersion);
         obj.pushKV("proTxHash", proTxHash.ToString());
-        obj.pushKV("service", addr.ToString(false));
+        obj.pushKV("service", addr.ToString());
         CTxDestination dest;
         if (ExtractDestination(scriptOperatorPayout, dest)) {
             obj.pushKV("operatorPayoutAddress", EncodeDestination(dest));
@@ -236,9 +235,9 @@ public:
 };
 
 
-bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
-bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
-bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
-bool CheckProUpRevTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
+bool CheckProRegTx(const CTransactionRef& tx, const CBlockIndex* pindexPrev, CValidationState& state);
+bool CheckProUpServTx(const CTransactionRef& tx, const CBlockIndex* pindexPrev, CValidationState& state);
+bool CheckProUpRegTx(const CTransactionRef& tx, const CBlockIndex* pindexPrev, CValidationState& state);
+bool CheckProUpRevTx(const CTransactionRef& tx, const CBlockIndex* pindexPrev, CValidationState& state);
 
 #endif //RAIN_PROVIDERTX_H

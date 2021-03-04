@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -98,19 +98,13 @@
 // Application startup time (used for uptime calculation)
 const int64_t nStartupTime = GetTime();
 
-//Rain only features
-bool fMasternodeMode = false;
-bool fLiteMode = false;
-/**
-    nWalletBackups:
-        1..10   - number of automatic backups to keep
-        0       - disabled by command-line
-        -1      - disabled because of some error during run-time
-        -2      - disabled because wallet was locked and we were not able to replenish keypool
-*/
-int nWalletBackups = 10;
-
 const char * const RAIN_CONF_FILENAME = "rain.conf";
+const char * const RAIN_MASTERNODE_CONF_FILENAME = "masternode.conf";
+// RAIN only features
+bool fMasternodeMode = false;
+bool fDisableGovernance = false;
+bool fLiteMode = false;
+int nWalletBackups = 10;
 
 ArgsManager gArgs;
 
@@ -847,6 +841,12 @@ fs::path GetConfigFile(const std::string& confPath)
     return AbsPathForConfigVal(fs::path(confPath), false);
 }
 
+fs::path GetMasternodeConfigFile()
+{
+    fs::path pathConfigFile(gArgs.GetArg("-mnconf", "masternode.conf"));
+    return AbsPathForConfigVal(pathConfigFile, false);
+}
+
 static std::string TrimString(const std::string& str, const std::string& pattern)
 {
     std::string::size_type front = str.find_first_not_of(pattern);
@@ -1231,7 +1231,7 @@ void RenameThreadPool(ctpl::thread_pool& tp, const char* baseName)
 
     do {
         // Always sleep to let all threads acquire locks
-        MilliSleep(10);
+        UninterruptibleSleep(std::chrono::milliseconds{10});
         // `doneCnt` should be at least `futures.size()` if tp size was increased (for whatever reason),
         // or at least `tp.size()` if tp size was decreased and queue was cleared
         // (which can happen on `stop()` if we were not fast enough to get all jobs to their threads).

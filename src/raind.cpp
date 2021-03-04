@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -47,7 +47,7 @@ static void WaitForShutdown()
 {
     while (!ShutdownRequested())
     {
-        MilliSleep(200);
+        UninterruptibleSleep(std::chrono::milliseconds{200});
     }
     Interrupt();
 }
@@ -77,7 +77,7 @@ static bool AppInit(int argc, char* argv[])
 
     // Process help and version before taking care about datadir
     if (HelpRequested(gArgs) || gArgs.IsArgSet("-version")) {
-        std::string strUsage = PACKAGE_NAME " Daemon version " + FormatFullVersion() + "\n";
+        std::string strUsage = PACKAGE_NAME " version " + FormatFullVersion() + "\n";
 
         if (gArgs.IsArgSet("-version"))
         {
@@ -142,7 +142,7 @@ static bool AppInit(int argc, char* argv[])
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
-            tfm::format(std::cout, PACKAGE_NAME " daemon starting\n");
+            tfm::format(std::cout, PACKAGE_NAME " starting\n");
 
             // Daemonize
             if (daemon(1, 0)) { // don't chdir (1), do close FDs (0)

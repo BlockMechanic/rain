@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,7 +10,7 @@
 #include <script/sign.h>
 #include <script/signingprovider.h>
 #include <wallet/wallet.h>
-
+#include <chain.h>
 typedef std::vector<unsigned char> valtype;
 
 namespace {
@@ -39,6 +39,9 @@ enum class IsMineResult
     WATCH_ONLY = 1, //!< Included in watch-only balance
     SPENDABLE = 2,  //!< Included in all balances
     INVALID = 3,    //!< Not spendable by anyone (uncompressed pubkey in segwit, P2SH inside P2SH or witness, witness inside witness)
+    COLD = 4,       //!< Cold balances
+    DELEGATED = 5,  //!< Delegated balances
+    WATCH_SOLVABLE = 6 //!< htlc
 };
 
 bool PermitsUncompressed(IsMineSigVersion sigversion)
@@ -58,11 +61,13 @@ bool HaveKeys(const std::vector<valtype>& pubkeys, const CWallet& keystore)
 IsMineResult IsMineInner(const CWallet& keystore, const CScript& scriptPubKey, IsMineSigVersion sigversion)
 {
     IsMineResult ret = IsMineResult::NO;
-
     std::vector<valtype> vSolutions;
     txnouttype whichType;
-    if(!Solver(scriptPubKey, whichType, vSolutions))
+    if(!Solver(scriptPubKey, whichType, vSolutions)) {
+        if (keystore.HaveWatchOnly(scriptPubKey))
+            ret = IsMineResult::WATCH_ONLY;
         return ret;
+    }
 
     CKeyID keyID;
     switch (whichType)
@@ -70,6 +75,7 @@ IsMineResult IsMineInner(const CWallet& keystore, const CScript& scriptPubKey, I
     case TX_NONSTANDARD:
     case TX_NULL_DATA:
     case TX_WITNESS_UNKNOWN:
+    case TX_FEE:
         break;
     case TX_PUBKEY:
         keyID = CPubKey(vSolutions[0]).GetID();
@@ -120,6 +126,20 @@ IsMineResult IsMineInner(const CWallet& keystore, const CScript& scriptPubKey, I
         }
         break;
     }
+    case TX_COLDSTAKE: {
+        CKeyID stakeKeyID = CKeyID(uint160(vSolutions[0]));
+        bool stakeKeyIsMine = keystore.HaveKey(stakeKeyID);
+        CKeyID ownerKeyID = CKeyID(uint160(vSolutions[1]));
+        bool spendKeyIsMine = keystore.HaveKey(ownerKeyID);
+
+        if (spendKeyIsMine && stakeKeyIsMine)
+            return IsMineResult::SPENDABLE;
+        else if (stakeKeyIsMine)
+            return IsMineResult::COLD;
+        else if (spendKeyIsMine)
+            return IsMineResult::DELEGATED;
+        break;
+    }
     case TX_WITNESS_V0_SCRIPTHASH:
     {
         if (sigversion == IsMineSigVersion::WITNESS_V0) {
@@ -139,7 +159,21 @@ IsMineResult IsMineInner(const CWallet& keystore, const CScript& scriptPubKey, I
         break;
     }
 
+    case TX_HTLC:
+    {
+        // Only consider HTLC's "mine" if we own ALL the keys
+        // involved.
+        std::vector<valtype> keys;
+        keys.push_back(vSolutions[1]);
+        keys.push_back(vSolutions[3]);
+        if (HaveKeys(keys, keystore) == keys.size()) {
+            return std::max(ret, IsMineResult::WATCH_SOLVABLE);
+        }
+        break;
+    }
+
     case TX_MULTISIG:
+    case TX_MULTISIG_CLTV:
     {
         // Never treat bare multisig outputs as ours (they can still be made watchonly-though)
         if (sigversion == IsMineSigVersion::TOP) {
@@ -164,6 +198,44 @@ IsMineResult IsMineInner(const CWallet& keystore, const CScript& scriptPubKey, I
         }
         break;
     }
+    case TX_CLTV:
+    {
+        keyID = CKeyID(uint160(vSolutions[1]));
+        if (keystore.HaveKey(keyID))
+        {
+			auto locked_chain = keystore.chain().lock();
+            CScriptNum nFreezeLockTime(vSolutions[0], true, 5);
+
+            LogPrintf("Found Freeze Have Key. nFreezeLockTime=%d \n", nFreezeLockTime.GetInt64());
+            if (nFreezeLockTime < LOCKTIME_THRESHOLD)
+            {
+                // locktime is a block
+                if (nFreezeLockTime > locked_chain->currentTip()->nHeight)
+                    ret = std::max(ret, IsMineResult::WATCH_SOLVABLE);
+                else
+                    ret = std::max(ret, IsMineResult::SPENDABLE);
+            }
+            else
+            {
+                // locktime is a time
+                if (nFreezeLockTime > locked_chain->currentTip()->GetMedianTimePast())
+                    ret = std::max(ret, IsMineResult::WATCH_SOLVABLE);
+                else
+                    ret = std::max(ret, IsMineResult::SPENDABLE);
+            }
+        }
+        else
+        {
+            LogPrintf("Found Freeze DONT HAVE KEY!! \n");
+            ret = IsMineResult::NO;
+        }
+        break;
+    }
+
+    case TX_TRUE:
+        if (Params().anyonecanspend_aremine) {
+            return IsMineResult::SPENDABLE;
+        }
     }
 
     if (ret == IsMineResult::NO && keystore.HaveWatchOnly(scriptPubKey)) {
@@ -184,6 +256,12 @@ isminetype IsMine(const CWallet& keystore, const CScript& scriptPubKey)
         return ISMINE_WATCH_ONLY;
     case IsMineResult::SPENDABLE:
         return ISMINE_SPENDABLE;
+    case IsMineResult::DELEGATED:
+        return ISMINE_SPENDABLE_DELEGATED;
+    case IsMineResult::COLD:
+        return ISMINE_COLD;
+    case IsMineResult::WATCH_SOLVABLE:
+        return ISMINE_WATCH_SOLVABLE;
     }
     assert(false);
 }

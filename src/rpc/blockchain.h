@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 The Rain Core developers
+// Copyright (c) 2017-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,7 +7,7 @@
 
 #include <amount.h>
 #include <sync.h>
-
+#include <primitives/asset.h>
 #include <stdint.h>
 #include <vector>
 
@@ -44,6 +44,6 @@ UniValue MempoolToJSON(const CTxMemPool& pool, bool verbose = false);
 UniValue blockheaderToJSON(const CBlockIndex* tip, const CBlockIndex* blockindex) LOCKS_EXCLUDED(cs_main);
 
 /** Used by getblockstats to get feerates at different percentiles by weight  */
-void CalculatePercentilesByWeight(CAmount result[NUM_GETBLOCKSTATS_PERCENTILES], std::vector<std::pair<CAmount, int64_t>>& scores, int64_t total_weight);
+void CalculatePercentilesByWeight(CAmount result[NUM_GETBLOCKSTATS_PERCENTILES], std::vector<std::pair<CAmountMap, int64_t>>& scores, int64_t total_weight);
 
 #endif

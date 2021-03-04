@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -12,7 +12,7 @@
 #include <functional>
 #include <memory>
 
-extern CCriticalSection cs_main;
+extern RecursiveMutex cs_main;
 class CBlock;
 class CBlockIndex;
 struct CBlockLocator;
@@ -30,7 +30,6 @@ enum class MemPoolRemovalReason;
 
 namespace llmq {
     class CChainLockSig;
-    class CInstantSendLock;
 } // namespace llmq
 
 // These functions dispatch to one or all registered wallets
@@ -145,11 +144,9 @@ protected:
      */
     virtual void ChainStateFlushed(const CBlockLocator &locator) {}
 
-    virtual void NotifyTransactionLock(const CTransaction &tx, const llmq::CInstantSendLock& islock) {}
     virtual void NotifyChainLock(const CBlockIndex* pindex, const llmq::CChainLockSig& clsig) {}
     virtual void NotifyGovernanceVote(const CGovernanceVote &vote) {}
     virtual void NotifyGovernanceObject(const CGovernanceObject &object) {}
-    virtual void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) {}
     virtual void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) {}
     /**
      * Notifies listeners of a block validation result.
@@ -202,18 +199,13 @@ public:
     void NotifyHeaderTip(const CBlockIndex *pindexNew, bool fInitialDownload);
     void UpdatedBlockTip(const CBlockIndex *, const CBlockIndex *, bool fInitialDownload);
     void TransactionAddedToMempool(const CTransactionRef &, int64_t);
-    void BlockConnected(const std::shared_ptr<const CBlock> &, const CBlockIndex *pindex, const std::vector<CTransactionRef> &);
     void BlockConnected(const std::shared_ptr<const CBlock> &, const CBlockIndex *pindex, const std::shared_ptr<const std::vector<CTransactionRef>> &);
     void BlockDisconnected(const std::shared_ptr<const CBlock> &, const CBlockIndex* pindexDisconnected);
     void ChainStateFlushed(const CBlockLocator &);
-    void NotifyTransactionLock(const CTransaction &tx, const llmq::CInstantSendLock& islock);
     void NotifyChainLock(const CBlockIndex* pindex, const llmq::CChainLockSig& clsig);
     void NotifyGovernanceVote(const CGovernanceVote &vote);
     void NotifyGovernanceObject(const CGovernanceObject &object);
-    void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx);
     void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff);
-
-
     void BlockChecked(const CBlock&, const CValidationState&);
     void NewPoWValidBlock(const CBlockIndex *, const std::shared_ptr<const CBlock>&);
     void ProcessPriorityRequest(const std::shared_ptr<const CBlock> &, const CBlockIndex *pindex);

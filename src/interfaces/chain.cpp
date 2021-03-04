@@ -7,7 +7,7 @@
 #include <chain.h>
 #include <chainparams.h>
 #include <index/txindex.h>
-
+#include <consensus/tx_verify.h>
 #include <interfaces/handler.h>
 #include <interfaces/wallet.h>
 #include <miner.h>
@@ -22,6 +22,7 @@
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <protocol.h>
+#include <pos.h>
 #include <rpc/protocol.h>
 #include <rpc/server.h>
 #include <shutdown.h>
@@ -39,8 +40,6 @@
 #include <validationinterface.h>
 #include <txdb.h>
 
-#include <privatesend/privatesend-client.h>
-#include <llmq/quorums_instantsend.h>
 #include <llmq/quorums_chainlocks.h>
 
 #include <memory>
@@ -49,11 +48,10 @@
 namespace interfaces {
 namespace {
 
-class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
+class LockImpl : public Chain::Lock, public UniqueLock<RecursiveMutex>
 {
     Optional<int> getHeight() override
     {
-        LockAssertion lock(::cs_main);
         int height = ::ChainActive().Height();
         if (height >= 0) {
             return height;
@@ -62,7 +60,6 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
     }
     Optional<int> getBlockHeight(const uint256& hash) override
     {
-        LockAssertion lock(::cs_main);
         CBlockIndex* block = LookupBlockIndex(hash);
         if (block && ::ChainActive().Contains(block)) {
             return block->nHeight;
@@ -77,60 +74,54 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
     }
     uint256 getBlockHash(int height) override
     {
-        LockAssertion lock(::cs_main);
         CBlockIndex* block = ::ChainActive()[height];
         assert(block != nullptr);
         return block->GetBlockHash();
     }
     int64_t getBlockTime(int height) override
     {
-        LockAssertion lock(::cs_main);
         CBlockIndex* block = ::ChainActive()[height];
         assert(block != nullptr);
         return block->GetBlockTime();
     }
     int64_t getBlockMedianTimePast(int height) override
     {
-        LockAssertion lock(::cs_main);
         CBlockIndex* block = ::ChainActive()[height];
         assert(block != nullptr);
         return block->GetMedianTimePast();
     }
     bool haveBlockOnDisk(int height) override
     {
-        LockAssertion lock(::cs_main);
         CBlockIndex* block = ::ChainActive()[height];
         return block && ((block->nStatus & BLOCK_HAVE_DATA) != 0) && block->nTx > 0;
     }
     CBlockIndex* currentTip() override
     {
-        LockAssertion lock(::cs_main);
         return ::ChainActive().Tip();
     }
     bool IsProofOfStake(int height) override
     {
-        LockAssertion lock(::cs_main);
         CBlockIndex* block = ::ChainActive()[height];
         return block && block->IsProofOfStake();
     }
 
     bool startStake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread)override{
-		::Stake(fStake, pwallet, stakeThread);
+        ::Stake(fStake, pwallet, stakeThread);
         return true;
 	}
-	bool checkKernel(CValidationState& state, unsigned int nBits, uint32_t nTimeBlock, const COutPoint& prevout) override {
-		return CheckKernel(state,nBits,nTimeBlock,prevout);		
+	bool checkKernel(unsigned int nBits, uint32_t nTimeBlock, const COutPoint& prevout) override {
+		return CheckKernel(nBits,nTimeBlock,prevout);		
 	}
     bool getPostx(const uint256 &hash, CDiskTxPos& postx, CBlockHeader& header, CTransactionRef& tx)override{
 
-		if (!g_txindex)
-			return error("getPostx : transaction index unavailable");
-       
+        if (!g_txindex)
+            return error("getPostx : transaction index unavailable");
+
         if (!pblocktree->ReadTxIndex(hash, postx))
             return false;
 
         // Read block header
-        CAutoFile file(OpenBlockFile(postx, true), SER_DISK, CLIENT_VERSION);		
+        CAutoFile file(OpenBlockFile(postx, true), SER_DISK, CLIENT_VERSION);
         try {
             file >> header;
             fseek(file.Get(), postx.nTxOffset, SEEK_CUR);
@@ -143,44 +134,23 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
             return error("%s() : txid mismatch in CheckProofOfStake()", __PRETTY_FUNCTION__);
 
         return true;
-	}
+    }
     bool getCoinAge(const CTransaction& tx, uint64_t& nCoinAge) override{
-		CCoinsViewCache view(pcoinsTip.get());
+        CCoinsViewCache view(pcoinsTip.get());
         return GetCoinAge(tx,view,nCoinAge);
-	}
-    int64_t getBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, uint256 prevHash, bool fProofofStake, int64_t nCoinAge, int64_t nFees, int64_t supply) override{
-		return GetBlockSubsidy(nHeight, consensusParams, prevHash, fProofofStake, nCoinAge, nFees, supply);
-	}
+    }
+    CAmountMap getBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, CAsset asset, bool fProofofStake, int64_t nCoinAge, CAmountMap& supply) override{
+	    return GetBlockSubsidy(nHeight, consensusParams, asset, fProofofStake, nCoinAge, supply);
+    }
 
 	int outputpriority(CTransactionRef tx, int i) override
 	{		
-		for (const auto& d : CPrivateSend::GetStandardDenominations()) {
-			// large denoms have lower value
-			if(tx->vout[i].nValue == d) return (float)COIN / d * 10000;
-		}
-		if(tx->vout[i].nValue < 1*COIN) return 20000;
+		if(tx->vout[i].nValue.GetAmount() < 1*COIN) return 20000;
 
 		//nondenom return largest first
-		return -(tx->vout[i].nValue/COIN);
+		return -(tx->vout[i].nValue.GetAmount()/COIN);
 	}
 	
-	std::vector<CAmount> privsenddenoms () override {	
-	    std::vector<CAmount> vecPrivateSendDenominations = CPrivateSend::GetStandardDenominations();	  
-	    return vecPrivateSendDenominations;	  
-    }
-    
-    bool isDenominatedAmount (CAmount amount) override {
-		return CPrivateSend::IsDenominatedAmount(amount);		
-	}
-
-    bool isCollateralAmount (CAmount amount) override {
-		return CPrivateSend::IsCollateralAmount(amount);		
-	}
-	
-	bool qourumISM_IsLocked(uint256 hash) override {
-		return llmq::quorumInstantSendManager->IsLocked(hash);
-	}
-
 	bool isChainLocked(uint256 hashBlock) 
 	{
 		AssertLockHeld(cs_main);
@@ -191,60 +161,35 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
 		return false;
 	}
 
-    CAmount getSmallestDenomination () override {
-		return CPrivateSend::GetSmallestDenomination();
-	}
-
-    CAmount getCollateralAmount () override {
-		return CPrivateSend::GetCollateralAmount();
-	}
-	
-	bool getDenominationsBits(int nDenom, std::vector<int>& vecBits) override {
-		return CPrivateSend::GetDenominationsBits(nDenom, vecBits);
-	}
-	
-	int psRounds() override{
-		return privateSendClient.nPrivateSendRounds;
-	}
-	
-	bool psEnabled () override {
-		return privateSendClient.fEnablePrivateSend;
-	}
-	
 	bool deterministicMNComp (CTransactionRef tx, uint256 hash, int i) override {
 		auto mnList = deterministicMNManager->GetListAtChainTip();
 	    return (deterministicMNManager->IsProTxWithCollateral(tx, i) || mnList.HasMNByCollateral(COutPoint(hash, i)));
 	}
-	
-	void psRemoveSkippedDenom (CAmount amount) override {
-		privateSendClient.RemoveSkippedDenom(amount);
-	}
 
-#ifdef ENABLE_SECURE_MESSAGING
     bool smsgStart() override{
         SecureMsgStart(true, true);
         return true;
     }
     void secureMsgWalletUnlocked()override{
-		SecureMsgWalletUnlocked();
-	}
+        SecureMsgWalletUnlocked();
+    }
     void secureMsgWalletKeyChanged(std::string sAddress, std::string sLabel, ChangeType mode) override{
-		SecureMsgWalletKeyChanged(sAddress, sLabel, mode);
-	}
-#endif
-    Optional<int> findFirstBlockWithTimeAndHeight(int64_t time, int height, uint256* hash) override
+        SecureMsgWalletKeyChanged(sAddress, sLabel, mode);
+    }
+
+    Optional<int> findFirstBlockWithTimeAndHeight(int64_t time, int height, uint256& hash) override
     {
-        LockAssertion lock(::cs_main);
         CBlockIndex* block = ::ChainActive().FindEarliestAtLeast(time, height);
+        LogPrintf("findFirstBlockWithTimeAndHeight = %s\n", block->ToString());
         if (block) {
-            if (hash) *hash = block->GetBlockHash();
+			uint256 thash = block->GetBlockHash();
+            hash = thash;
             return block->nHeight;
         }
         return nullopt;
     }
     Optional<int> findPruned(int start_height, Optional<int> stop_height) override
     {
-        LockAssertion lock(::cs_main);
         if (::fPruneMode) {
             CBlockIndex* block = stop_height ? ::ChainActive()[*stop_height] : ::ChainActive().Tip();
             while (block && block->nHeight >= start_height) {
@@ -258,7 +203,6 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
     }
     Optional<int> findFork(const uint256& hash, Optional<int>* height) override
     {
-        LockAssertion lock(::cs_main);
         const CBlockIndex* block = LookupBlockIndex(hash);
         const CBlockIndex* fork = block ? ::ChainActive().FindFork(block) : nullptr;
         if (height) {
@@ -275,12 +219,10 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
     }
     CBlockLocator getTipLocator() override
     {
-        LockAssertion lock(::cs_main);
         return ::ChainActive().GetLocator();
     }
     Optional<int> findLocatorFork(const CBlockLocator& locator) override
     {
-        LockAssertion lock(::cs_main);
         if (CBlockIndex* fork = FindForkInGlobalIndex(::ChainActive(), locator)) {
             return fork->nHeight;
         }
@@ -288,8 +230,12 @@ class LockImpl : public Chain::Lock, public UniqueLock<CCriticalSection>
     }
     bool checkFinalTx(const CTransaction& tx) override
     {
-        LockAssertion lock(::cs_main);
         return CheckFinalTx(tx);
+    }
+
+    bool isFinalTx(const CTransaction& tx, int& nBlockHeight, int64_t& nBlockTime) override
+    {
+        return IsFinalTx(tx, nBlockHeight, nBlockTime);
     }
 
     using UniqueLock::UniqueLock;
@@ -335,11 +281,6 @@ public:
         m_notifications->UpdatedBlockTip();
     }
 
-    void NotifyTransactionLock(const CTransaction &tx, const llmq::CInstantSendLock& islock) override
-    {
-        m_notifications->NotifyTransactionLock(tx,islock);
-    }
-
     void NotifyChainLock(const CBlockIndex* pindex, const llmq::CChainLockSig& clsig) override
     {
         m_notifications->NotifyChainLock(pindex,clsig);
@@ -353,11 +294,6 @@ public:
     void NotifyGovernanceObject(const CGovernanceObject &object) override
     {
         m_notifications->NotifyGovernanceObject(object);
-    }
-
-    void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) override
-    {
-        m_notifications->NotifyInstantSendDoubleSpendAttempt(currentTx, previousTx);
     }
 
     void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) override
@@ -422,7 +358,7 @@ public:
     }
     bool findBlock(const uint256& hash, CBlock* block, int64_t* time, int64_t* time_max) override
     {
-        CBlockIndex* index;
+        CBlockIndex* index = nullptr;
         {
             LOCK(cs_main);
             index = LookupBlockIndex(hash);
@@ -436,9 +372,9 @@ public:
                 *time_max = index->GetBlockTimeMax();
             }
         }
-        if (block && !ReadBlockFromDisk(*block, index, Params().GetConsensus())) {
+        if (block && !ReadBlockFromDisk(*block, index, Params().GetConsensus()))
             block->SetNull();
-        }
+        
         return true;
     }
     void findCoins(std::map<COutPoint, Coin>& coins) override { return FindCoins(coins); }
@@ -473,7 +409,7 @@ public:
     bool checkChainLimits(const CTransactionRef& tx) override
     {
         LockPoints lp;
-        CTxMemPoolEntry entry(tx, 0, 0, 0, false, 0, lp);
+        CTxMemPoolEntry entry(tx, CAmountMap(), 0, 0, false, 0, lp);
         CTxMemPool::setEntries ancestors;
         auto limit_ancestor_count = gArgs.GetArg("-limitancestorcount", DEFAULT_ANCESTOR_LIMIT);
         auto limit_ancestor_size = gArgs.GetArg("-limitancestorsize", DEFAULT_ANCESTOR_SIZE_LIMIT) * 1000;

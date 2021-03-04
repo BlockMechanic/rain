@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -117,13 +117,17 @@ enum
     // Making OP_CODESEPARATOR and FindAndDelete fail any non-segwit scripts
     //
     SCRIPT_VERIFY_CONST_SCRIPTCODE = (1U << 16),
+
+    // Signature checking assumes no sighash byte after the DER signature
+    //
+    SCRIPT_NO_SIGHASH_BYTE = (1U << 17),
 };
 
 bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned int flags, ScriptError* serror);
 
 struct PrecomputedTransactionData
 {
-    uint256 hashPrevouts, hashSequence, hashOutputs;
+    uint256 hashPrevouts, hashSequence, hashOutputs, hashIssuance;
     bool ready = false;
 
     template <class T>
@@ -141,7 +145,7 @@ static constexpr size_t WITNESS_V0_SCRIPTHASH_SIZE = 32;
 static constexpr size_t WITNESS_V0_KEYHASH_SIZE = 20;
 
 template <class T>
-uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int nHashType, const CAmount& amount, SigVersion sigversion, const PrecomputedTransactionData* cache = nullptr);
+uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int nHashType, const CConfidentialValue& amount, SigVersion sigversion, const PrecomputedTransactionData* cache = nullptr);
 
 class BaseSignatureChecker
 {
@@ -161,6 +165,11 @@ public:
          return false;
     }
 
+    virtual bool CheckColdStake(const CScript& script) const
+    {
+         return false;
+    }
+
     virtual ~BaseSignatureChecker() {}
 };
 
@@ -170,18 +179,21 @@ class GenericTransactionSignatureChecker : public BaseSignatureChecker
 private:
     const T* txTo;
     unsigned int nIn;
-    const CAmount amount;
+    const CConfidentialValue amount;
     const PrecomputedTransactionData* txdata;
 
 protected:
     virtual bool VerifySignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const;
 
 public:
-    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(nullptr) {}
-    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
+    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CConfidentialValue& amountIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(nullptr) {}
+    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CConfidentialValue& amountIn, const PrecomputedTransactionData& txdataIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
     bool CheckSig(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override;
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
     bool CheckSequence(const CScriptNum& nSequence) const override;
+    bool CheckColdStake(const CScript& script) const override {
+        return txTo->CheckColdStake(script);
+    }
 };
 
 using TransactionSignatureChecker = GenericTransactionSignatureChecker<CTransaction>;
@@ -194,10 +206,12 @@ size_t CountWitnessSigOps(const CScript& scriptSig, const CScript& scriptPubKey,
 
 int FindAndDelete(CScript& script, const CScript& b);
 
-bool IsLowDERSignature(const valtype &vchSig, ScriptError* serror = NULL, bool haveHashType = true);
+bool IsLowDERSignature(const valtype &vchSig, ScriptError* serror = nullptr, bool haveHashType = true);
 
-bool IsDERSignature(const valtype &vchSig, ScriptError* serror = NULL, bool haveHashType = true);
+bool IsDERSignature(const valtype &vchSig, ScriptError* serror = nullptr, bool haveHashType = true);
 
 bool IsCompressedOrUncompressedPubKey(const valtype &vchPubKey);
+
+bool CheckMinimalPush(const std::vector<unsigned char>& data, opcodetype opcode);
 
 #endif // RAIN_SCRIPT_INTERPRETER_H

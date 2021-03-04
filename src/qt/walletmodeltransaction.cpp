@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -8,7 +8,10 @@
 
 #include <qt/walletmodeltransaction.h>
 
+#include <interfaces/node.h>
 #include <policy/policy.h>
+
+#define SendCoinsRecipient SendAssetsRecipient
 
 WalletModelTransaction::WalletModelTransaction(const QList<SendCoinsRecipient> &_recipients) :
     recipients(_recipients),
@@ -19,6 +22,11 @@ WalletModelTransaction::WalletModelTransaction(const QList<SendCoinsRecipient> &
 QList<SendCoinsRecipient> WalletModelTransaction::getRecipients() const
 {
     return recipients;
+}
+
+std::string WalletModelTransaction::getstrTxComment()
+{
+    return strTxComment;
 }
 
 CTransactionRef& WalletModelTransaction::getWtx()
@@ -41,29 +49,29 @@ void WalletModelTransaction::setTransactionFee(const CAmount& newFee)
     fee = newFee;
 }
 
-void WalletModelTransaction::reassignAmounts(int nChangePosRet)
+void WalletModelTransaction::reassignAmounts(const std::vector<CAmount>& outAmounts, int nChangePosRet)
 {
     const CTransaction* walletTransaction = wtx.get();
     int i = 0;
-    for (QList<SendCoinsRecipient>::iterator it = recipients.begin(); it != recipients.end(); ++it)
+    for (auto it = recipients.begin(); it != recipients.end(); ++it)
     {
-        SendCoinsRecipient& rcp = (*it);
+        auto& rcp = (*it);
 
         {
             if (i == nChangePosRet)
                 i++;
-            rcp.amount = walletTransaction->vout[i].nValue;
+            rcp.asset_amount = outAmounts[i];
             i++;
         }
     }
 }
 
-CAmount WalletModelTransaction::getTotalTransactionAmount() const
+CAmountMap WalletModelTransaction::getTotalTransactionAmount() const
 {
-    CAmount totalTransactionAmount = 0;
-    for (const SendCoinsRecipient &rcp : recipients)
+    CAmountMap totalTransactionAmount;
+    for (const auto &rcp : recipients)
     {
-        totalTransactionAmount += rcp.amount;
+        totalTransactionAmount[rcp.asset] += rcp.asset_amount;
     }
     return totalTransactionAmount;
 }

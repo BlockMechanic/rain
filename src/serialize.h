@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,7 +9,7 @@
 #include <compat/endian.h>
 
 #include <algorithm>
-#include <assert.h>
+#include <cstring>
 #include <ios>
 #include <limits>
 #include <list>
@@ -28,6 +28,9 @@
 #include <span.h>
 
 static const unsigned int MAX_SIZE = 0x02000000;
+
+/** Maximum amount of memory (in bytes) to allocate at once when deserializing vectors. */
+static const unsigned int MAX_VECTOR_ALLOCATE = 5000000;
 
 /**
  * Dummy data type to identify deserializing constructors.
@@ -140,27 +143,31 @@ template<typename Stream> inline uint64_t ser_readdata64(Stream &s)
 }
 inline uint64_t ser_double_to_uint64(double x)
 {
-    union { double x; uint64_t y; } tmp;
-    tmp.x = x;
-    return tmp.y;
+    uint64_t tmp;
+    std::memcpy(&tmp, &x, sizeof(x));
+    static_assert(sizeof(tmp) == sizeof(x), "double and uint64_t assumed to have the same size");
+    return tmp;
 }
 inline uint32_t ser_float_to_uint32(float x)
 {
-    union { float x; uint32_t y; } tmp;
-    tmp.x = x;
-    return tmp.y;
+    uint32_t tmp;
+    std::memcpy(&tmp, &x, sizeof(x));
+    static_assert(sizeof(tmp) == sizeof(x), "float and uint32_t assumed to have the same size");
+    return tmp;
 }
 inline double ser_uint64_to_double(uint64_t y)
 {
-    union { double x; uint64_t y; } tmp;
-    tmp.y = y;
-    return tmp.x;
+    double tmp;
+    std::memcpy(&tmp, &y, sizeof(y));
+    static_assert(sizeof(tmp) == sizeof(y), "double and uint64_t assumed to have the same size");
+    return tmp;
 }
 inline float ser_uint32_to_float(uint32_t y)
 {
-    union { float x; uint32_t y; } tmp;
-    tmp.y = y;
-    return tmp.x;
+    float tmp;
+    std::memcpy(&tmp, &y, sizeof(y));
+    static_assert(sizeof(tmp) == sizeof(y), "float and uint32_t assumed to have the same size");
+    return tmp;
 }
 
 
@@ -178,8 +185,6 @@ enum
     SER_NETWORK         = (1 << 0),
     SER_DISK            = (1 << 1),
     SER_GETHASH         = (1 << 2),
-
-    SER_POSMARKER       = (1 << 18),  // peercoin: for sending block headers with PoS marker, to allow headers-first syncronization
 };
 
 //! Convert the reference base type to X, without changing constness or reference type.
@@ -223,8 +228,9 @@ template<typename Stream, int N> inline void Serialize(Stream& s, const unsigned
 template<typename Stream> inline void Serialize(Stream& s, const Span<const unsigned char>& span) { s.write(CharCast(span.data()), span.size()); }
 template<typename Stream> inline void Serialize(Stream& s, const Span<unsigned char>& span) { s.write(CharCast(span.data()), span.size()); }
 
-
+#ifndef CHAR_EQUALS_INT8
 template<typename Stream> inline void Unserialize(Stream& s, char& a    ) { a = ser_readdata8(s); } // TODO Get rid of bare char
+#endif
 template<typename Stream> inline void Unserialize(Stream& s, int8_t& a  ) { a = ser_readdata8(s); }
 template<typename Stream> inline void Unserialize(Stream& s, uint8_t& a ) { a = ser_readdata8(s); }
 template<typename Stream> inline void Unserialize(Stream& s, int16_t& a ) { a = ser_readdata16(s); }
@@ -429,7 +435,7 @@ I ReadVarInt(Stream& is)
 #define AUTOBITSET(obj, size) REF(CAutoBitSet(REF(obj), (size)))
 #define VARINT(obj) REF(WrapVarInt(REF(obj)))
 #define COMPACTSIZE(obj) REF(CCompactSize(REF(obj)))
-#define LIMITED_STRING(obj,n) REF(LimitedString< n >(REF(obj)))
+#define LIMITED_STRING(obj,n) LimitedString< n >(REF(obj))
 
 
 template<typename I>
@@ -709,7 +715,7 @@ class LimitedString
 protected:
     std::string& string;
 public:
-    LimitedString(std::string& _string) : string(_string) {}
+    explicit LimitedString(std::string& _string) : string(_string) {}
 
     template<typename Stream>
     void Unserialize(Stream& s)
@@ -761,6 +767,7 @@ template<typename Stream, unsigned int N, typename T> inline void Unserialize(St
  * vectors of unsigned char are a special case and are intended to be serialized as a single opaque blob.
  */
 template<typename Stream, typename T, typename A> void Serialize_impl(Stream& os, const std::vector<T, A>& v, const unsigned char&);
+template<typename Stream, typename T, typename A> void Serialize_impl(Stream& os, const std::vector<T, A>& v, const bool&);
 template<typename Stream, typename T, typename A, typename V> void Serialize_impl(Stream& os, const std::vector<T, A>& v, const V&);
 template<typename Stream, typename T, typename A> inline void Serialize(Stream& os, const std::vector<T, A>& v);
 template<typename Stream, typename T, typename A> void Unserialize_impl(Stream& is, std::vector<T, A>& v, const unsigned char&);
@@ -798,8 +805,8 @@ template<typename Stream, typename K, typename Hash, typename Pred, typename A> 
 /**
  * shared_ptr
  */
-template<typename Stream, typename T> void Serialize(Stream& os, const std::shared_ptr<T>& p);
-template<typename Stream, typename T> void Unserialize(Stream& os, std::shared_ptr<T>& p);
+template<typename Stream, typename T> void Serialize(Stream& os, const std::shared_ptr<const T>& p);
+template<typename Stream, typename T> void Unserialize(Stream& os, std::shared_ptr<const T>& p);
 
 /**
  * unique_ptr
@@ -958,6 +965,18 @@ void Serialize_impl(Stream& os, const std::vector<T, A>& v, const unsigned char&
     WriteCompactSize(os, v.size());
     if (!v.empty())
         os.write((char*)v.data(), v.size() * sizeof(T));
+}
+
+template<typename Stream, typename T, typename A>
+void Serialize_impl(Stream& os, const std::vector<T, A>& v, const bool&)
+{
+    // A special case for std::vector<bool>, as dereferencing
+    // std::vector<bool>::const_iterator does not result in a const bool&
+    // due to std::vector's special casing for bool arguments.
+    WriteCompactSize(os, v.size());
+    for (bool elem : v) {
+        ::Serialize(os, elem);
+    }
 }
 
 template<typename Stream, typename T, typename A, typename V>
@@ -1206,8 +1225,6 @@ void Unserialize(Stream& is, std::list<T, A>& l)
     }
 }
 
-
-
 /**
  * unique_ptr
  */
@@ -1229,6 +1246,18 @@ void Unserialize(Stream& is, std::unique_ptr<const T>& p)
  * shared_ptr
  */
 template<typename Stream, typename T> void
+Serialize(Stream& os, const std::shared_ptr<const T>& p)
+{
+    Serialize(os, *p);
+}
+
+template<typename Stream, typename T>
+void Unserialize(Stream& is, std::shared_ptr<const T>& p)
+{
+    p = std::make_shared<const T>(deserialize, is);
+}
+
+template<typename Stream, typename T> void
 Serialize(Stream& os, const std::shared_ptr<T>& p)
 {
     Serialize(os, *p);
@@ -1239,8 +1268,6 @@ void Unserialize(Stream& is, std::shared_ptr<T>& p)
 {
     p = std::make_shared<T>(deserialize, is);
 }
-
-
 
 /**
  * Support for ADD_SERIALIZE_METHODS and READWRITE macro
@@ -1268,12 +1295,6 @@ inline void SerReadWrite(Stream& s, T& obj, CSerActionUnserialize ser_action)
 
 
 
-
-
-
-
-
-
 /* ::GetSerializeSize implementations
  *
  * Computing the serialized size of objects is done through a special stream
@@ -1293,7 +1314,7 @@ protected:
     const int nType;
     const int nVersion;
 public:
-    CSizeComputer(int nTypeIn, int nVersionIn) : nSize(0), nType(nTypeIn), nVersion(nVersionIn) {}
+    explicit CSizeComputer(int nTypeIn, int nVersionIn) : nSize(0), nType(nTypeIn), nVersion(nVersionIn) {}
 
     void write(const char *psz, size_t _nSize)
     {
@@ -1333,10 +1354,10 @@ void SerializeMany(Stream& s, Arg&& arg)
 }
 
 template<typename Stream, typename Arg, typename... Args>
-void SerializeMany(Stream& s, Arg&& arg, Args&&... args)
+void SerializeMany(Stream& s, const Arg& arg, const Args&... args)
 {
-    ::Serialize(s, std::forward<Arg>(arg));
-    ::SerializeMany(s, std::forward<Args>(args)...);
+    ::Serialize(s, arg);
+    ::SerializeMany(s, args...);
 }
 
 template<typename Stream>
@@ -1351,20 +1372,20 @@ inline void UnserializeMany(Stream& s, Arg& arg)
 }
 
 template<typename Stream, typename Arg, typename... Args>
-inline void UnserializeMany(Stream& s, Arg& arg, Args&... args)
+inline void UnserializeMany(Stream& s, Arg&& arg, Args&&... args)
 {
     ::Unserialize(s, arg);
     ::UnserializeMany(s, args...);
 }
 
 template<typename Stream, typename... Args>
-inline void SerReadWriteMany(Stream& s, CSerActionSerialize ser_action, Args&&... args)
+inline void SerReadWriteMany(Stream& s, CSerActionSerialize ser_action, const Args&... args)
 {
-    ::SerializeMany(s, std::forward<Args>(args)...);
+    ::SerializeMany(s, args...);
 }
 
 template<typename Stream, typename... Args>
-inline void SerReadWriteMany(Stream& s, CSerActionUnserialize ser_action, Args&... args)
+inline void SerReadWriteMany(Stream& s, CSerActionUnserialize ser_action, Args&&... args)
 {
     ::UnserializeMany(s, args...);
 }

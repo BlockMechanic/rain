@@ -2,20 +2,20 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include "deterministicmns.h"
-#include "providertx.h"
-#include "specialtx.h"
+#include <evo/deterministicmns.h>
+#include <evo/providertx.h>
+#include <evo/specialtx.h>
 
-#include "base58.h"
-#include "chainparams.h"
-#include "clientversion.h"
-#include "core_io.h"
-#include "hash.h"
-#include "messagesigner.h"
-#include "script/standard.h"
-#include "streams.h"
-#include "univalue.h"
-#include "validation.h"
+#include <base58.h>
+#include <chainparams.h>
+#include <clientversion.h>
+#include <core_io.h>
+#include <hash.h>
+#include <messagesigner.h>
+#include <script/standard.h>
+#include <streams.h>
+#include <univalue.h>
+#include <validation.h>
 
 template <typename ProTx>
 static bool CheckService(const uint256& proTxHash, const ProTx& proTx, CValidationState& state)
@@ -30,7 +30,7 @@ static bool CheckService(const uint256& proTxHash, const ProTx& proTx, CValidati
     static int mainnetDefaultPort = CreateChainParams(CBaseChainParams::MAIN)->GetDefaultPort();
     if (Params().NetworkIDString() == CBaseChainParams::MAIN) {
         if (proTx.addr.GetPort() != mainnetDefaultPort) {
-            return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-ipaddr-port");
+            return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, strprintf("bad-protx-ipaddr-port %d vs %d",proTx.addr.GetPort(), mainnetDefaultPort));
         }
     } else if (proTx.addr.GetPort() == mainnetDefaultPort) {
         return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-ipaddr-port");
@@ -83,14 +83,14 @@ static bool CheckInputsHash(const CTransaction& tx, const ProTx& proTx, CValidat
     return true;
 }
 
-bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckProRegTx(const CTransactionRef& tx, const CBlockIndex* pindexPrev, CValidationState& state)
 {
-    if (tx.nType != TRANSACTION_PROVIDER_REGISTER) {
+    if (tx->nType != TRANSACTION_PROVIDER_REGISTER) {
         return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-type");
     }
 
     CProRegTx ptx;
-    if (!GetTxPayload(tx, ptx)) {
+    if (!GetTxPayload(CTransaction(*tx), ptx)) {
         return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-payload");
     }
 
@@ -123,7 +123,8 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
 
     // It's allowed to set addr to 0, which will put the MN into PoSe-banned state and require a ProUpServTx to be issues later
     // If any of both is set, it must be valid however
-    if (ptx.addr != CService() && !CheckService(tx.GetHash(), ptx, state)) {
+    if (ptx.addr != CService() && !CheckService(tx->GetHash(), ptx, state)) {
+        // pass the state returned by the function above
         return false;
     }
 
@@ -137,7 +138,7 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
 
     if (!ptx.collateralOutpoint.hash.IsNull()) {
         Coin coin;
-        if (!GetUTXOCoin(ptx.collateralOutpoint, coin) || coin.out.nValue != 2000000 * COIN) {
+        if (!GetUTXOCoin(ptx.collateralOutpoint, coin) || coin.out.nValue.GetAmount() != Params().MasternodeCollateral() || coin.out.nAsset.GetAsset() != Params().GetConsensus().masternode_asset) {
             return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-collateral");
         }
 
@@ -147,24 +148,28 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
 
         // Extract key from collateral. This only works for P2PK and P2PKH collaterals and will fail for P2SH.
         // Issuer of this ProRegTx must prove ownership with this key by signing the ProRegTx
-		if (auto id = boost::get<PKHash>(&collateralTxDest)) {
-			keyForPayloadSig = CKeyID(*id);
-		}
+		keyForPayloadSig = CKeyID(*boost::get<PKHash>(&collateralTxDest));
+
+        if (keyForPayloadSig.IsNull()) {
+            return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-collateral-pkh");
+        }
 
         collateralOutpoint = ptx.collateralOutpoint;
     } else {
-        if (ptx.collateralOutpoint.n >= tx.vout.size()) {
+        if (ptx.collateralOutpoint.n >= tx->vout.size()) {
             return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-collateral-index");
         }
-        if (tx.vout[ptx.collateralOutpoint.n].nValue != 2000000 * COIN) {
+        if (tx->vout[ptx.collateralOutpoint.n].nValue.GetAmount() != Params().MasternodeCollateral()) {
             return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-collateral");
         }
-
-        if (!ExtractDestination(tx.vout[ptx.collateralOutpoint.n].scriptPubKey, collateralTxDest)) {
+        if (tx->vout[ptx.collateralOutpoint.n].nAsset.GetAsset() != Params().GetConsensus().masternode_asset){
+            return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-collateral-asset");
+        }
+        if (!ExtractDestination(tx->vout[ptx.collateralOutpoint.n].scriptPubKey, collateralTxDest)) {
             return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-collateral-dest");
         }
 
-        collateralOutpoint = COutPoint(tx.GetHash(), ptx.collateralOutpoint.n);
+        collateralOutpoint = COutPoint(tx->GetHash(), ptx.collateralOutpoint.n);
     }
 
     // don't allow reuse of collateral key for other keys (don't allow people to put the collateral key onto an online server)
@@ -193,7 +198,7 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
         }
     }
 
-    if (!CheckInputsHash(tx, ptx, state)) {
+    if (!CheckInputsHash(CTransaction(*tx), ptx, state)) {
         return false;
     }
 
@@ -212,14 +217,14 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
     return true;
 }
 
-bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckProUpServTx(const CTransactionRef& tx, const CBlockIndex* pindexPrev, CValidationState& state)
 {
-    if (tx.nType != TRANSACTION_PROVIDER_UPDATE_SERVICE) {
+    if (tx->nType != TRANSACTION_PROVIDER_UPDATE_SERVICE) {
         return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-type");
     }
 
     CProUpServTx ptx;
-    if (!GetTxPayload(tx, ptx)) {
+    if (!GetTxPayload(CTransaction(*tx), ptx)) {
         return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-payload");
     }
 
@@ -228,6 +233,7 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
     }
 
     if (!CheckService(ptx.proTxHash, ptx, state)) {
+        // pass the state returned by the function above
         return false;
     }
 
@@ -254,10 +260,12 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
         }
 
         // we can only check the signature if pindexPrev != nullptr and the MN is known
-        if (!CheckInputsHash(tx, ptx, state)) {
+        if (!CheckInputsHash(CTransaction(*tx), ptx, state)) {
+            // pass the state returned by the function above
             return false;
         }
         if (!CheckHashSig(ptx, mn->pdmnState->pubKeyOperator.Get(), state)) {
+            // pass the state returned by the function above
             return false;
         }
     }
@@ -265,14 +273,14 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
     return true;
 }
 
-bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckProUpRegTx(const CTransactionRef& tx, const CBlockIndex* pindexPrev, CValidationState& state)
 {
-    if (tx.nType != TRANSACTION_PROVIDER_UPDATE_REGISTRAR) {
+    if (tx->nType != TRANSACTION_PROVIDER_UPDATE_REGISTRAR) {
         return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-type");
     }
 
     CProUpRegTx ptx;
-    if (!GetTxPayload(tx, ptx)) {
+    if (!GetTxPayload(CTransaction(*tx), ptx)) {
         return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-payload");
     }
 
@@ -336,10 +344,12 @@ bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVal
             }
         }
 
-        if (!CheckInputsHash(tx, ptx, state)) {
+        if (!CheckInputsHash(CTransaction(*tx), ptx, state)) {
+            // pass the state returned by the function above
             return false;
         }
         if (!CheckHashSig(ptx, dmn->pdmnState->keyIDOwner, state)) {
+            // pass the state returned by the function above
             return false;
         }
     }
@@ -347,14 +357,14 @@ bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVal
     return true;
 }
 
-bool CheckProUpRevTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckProUpRevTx(const CTransactionRef& tx, const CBlockIndex* pindexPrev, CValidationState& state)
 {
-    if (tx.nType != TRANSACTION_PROVIDER_UPDATE_REVOKE) {
+    if (tx->nType != TRANSACTION_PROVIDER_UPDATE_REVOKE) {
         return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-type");
     }
 
     CProUpRevTx ptx;
-    if (!GetTxPayload(tx, ptx)) {
+    if (!GetTxPayload(CTransaction(*tx), ptx)) {
         return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-payload");
     }
 
@@ -374,10 +384,14 @@ bool CheckProUpRevTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVal
         if (!dmn)
             return state.Invalid(ValidationInvalidReason::BADPROTX, false, REJECT_INVALID, "bad-protx-hash");
 
-        if (!CheckInputsHash(tx, ptx, state))
+        if (!CheckInputsHash(CTransaction(*tx), ptx, state)) {
+            // pass the state returned by the function above
             return false;
-        if (!CheckHashSig(ptx, dmn->pdmnState->pubKeyOperator.Get(), state))
+        }
+        if (!CheckHashSig(ptx, dmn->pdmnState->pubKeyOperator.Get(), state)) {
+            // pass the state returned by the function above
             return false;
+        }
     }
 
     return true;
@@ -390,7 +404,6 @@ std::string CProRegTx::MakeSignString() const
     // We only include the important stuff in the string form...
 
     CTxDestination destPayout;
-    //CRainAddress addrPayout;
     std::string strPayout;
     if (ExtractDestination(scriptPayout, destPayout)) {
         strPayout = EncodeDestination(destPayout);

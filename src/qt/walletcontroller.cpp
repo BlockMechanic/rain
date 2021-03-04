@@ -119,7 +119,8 @@ WalletModel* WalletController::getOrCreateWallet(std::unique_ptr<interfaces::Wal
     });
 
     // Re-emit coinsSent signal from wallet model.
-    connect(wallet_model, &WalletModel::coinsSent, this, &WalletController::coinsSent);
+    //TODO(stevenroose) fix
+    //connect(wallet_model, &WalletModel::coinsSent, this, &WalletController::coinsSent);
 
     // Notify walletAdded signal on the GUI thread.
     Q_EMIT walletAdded(wallet_model);

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -11,7 +11,7 @@
 #include <util/translation.h>
 #include <wallet/wallet.h>
 #include <miner.h>
-#include <net_processing.h>
+
 
 bool VerifyWallets(interfaces::Chain& chain, const std::vector<std::string>& wallet_files)
 {
@@ -107,8 +107,8 @@ void StartWallets(CScheduler& scheduler)
     }
 
     // Schedule periodic wallet flushes and tx rebroadcasts
-    scheduler.scheduleEvery(MaybeCompactWalletDB, 500);
-    scheduler.scheduleEvery(MaybeResendWalletTxs, 1000);
+    scheduler.scheduleEvery(MaybeCompactWalletDB, std::chrono::milliseconds{500});
+    scheduler.scheduleEvery(MaybeResendWalletTxs, std::chrono::milliseconds{1000});
 }
 
 void FlushWallets()

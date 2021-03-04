@@ -10,11 +10,11 @@
 
 void CIbtp::LoadMsgStart()
 {
-	//need to find a dynamic method of adding supported networks
-    vChains.push_back(SChain("rain", "RAIN", 0x47, 0x24, 0xa1, 0xb6, 23373));
-    vChains.push_back(SChain("talk", "TALK", 0xf7, 0xba, 0xd4, 0xa8, 8372));
+    //need to find a dynamic method of adding supported networks
+    vChains.push_back(SChain("Litecoin", "LTC", 0xfb, 0xc0, 0xb6, 0xdb, 23373));
+    vChains.push_back(SChain("Bitcoin", "BTC", 0xf9, 0xbe, 0xb4, 0xd9, 8372));
     vChains.push_back(SChain("bzedge", "BZE", 0x24, 0xe9, 0x27, 0x64, 1990));
-    vChains.push_back(SChain("Codex", "CDX", 0xf7, 0xba, 0xd4, 0xaa, 8384));
+    vChains.push_back(SChain("Rain", "XQM", 0xf7, 0xba, 0xd4, 0xaa, 8384));
 }
 
 bool CIbtp::IsIbtpChain(const unsigned char msgStart[], std::string& chainName)

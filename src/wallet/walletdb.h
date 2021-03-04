@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -239,6 +239,13 @@ public:
     bool ReadNonValidationBestBlock(CBlockLocator& locator);
 
     bool WriteOrderPosNext(int64_t nOrderPosNext);
+    bool WriteStakeSplitThreshold(const CAmount& nStakeSplitThreshold);
+    bool WriteMultiSend(std::vector<std::pair<std::string, int> > vMultiSend);
+    bool EraseMultiSend(std::vector<std::pair<std::string, int> > vMultiSend);
+    bool WriteMSettings(bool fMultiSendStake, bool fMultiSendMasternode, int nLastMultiSendHeight);
+    bool WriteMSDisabledAddresses(std::vector<std::string> vDisabledAddresses);
+    bool EraseMSDisabledAddresses(std::vector<std::string> vDisabledAddresses);
+    bool WriteAutoCombineSettings(bool fEnable, CAmount nCombineThreshold);
 
     bool ReadPool(int64_t nPool, CKeyPool& keypool);
     bool WritePool(int64_t nPool, const CKeyPool& keypool);
@@ -250,6 +257,9 @@ public:
     bool WriteDestData(const std::string &address, const std::string &key, const std::string &value);
     /// Erase destination data tuple from wallet database
     bool EraseDestData(const std::string &address, const std::string &key);
+
+    bool WriteBlindingDerivationKey(const uint256& key);
+    bool WriteSpecificBlindingKey(const uint160& scriptid, const uint256& key);
 
     DBErrors LoadWallet(CWallet* pwallet);
     DBErrors FindWalletTx(std::vector<uint256>& vTxHash, std::vector<CWalletTx>& vWtx);

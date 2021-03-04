@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2019 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,8 +7,6 @@
 #endif
 
 #include <qt/rpcconsole.h>
-#include <qt/forms/ui_debugwindow.h>
-
 #include <qt/bantablemodel.h>
 #include <qt/clientmodel.h>
 #include <qt/platformstyle.h>
@@ -16,8 +14,7 @@
 #include <chainparams.h>
 #include <interfaces/node.h>
 #include <netbase.h>
-#include <rpc/server.h>
-#include <rpc/client.h>
+
 #include <util/strencodings.h>
 #include <util/system.h>
 
@@ -36,7 +33,6 @@
 #include <QScreen>
 #include <QSettings>
 #include <QTime>
-#include <QTimer>
 #include <QStringList>
 
 // TODO: add a scrollback limit, as there is currently none
@@ -73,58 +69,6 @@ const QStringList historyFilter = QStringList()
     << "encryptwallet";
 
 }
-
-/* Object for executing console RPC commands in a separate thread.
-*/
-class RPCExecutor : public QObject
-{
-    Q_OBJECT
-public:
-    explicit RPCExecutor(interfaces::Node& node) : m_node(node) {}
-
-public Q_SLOTS:
-    void request(const QString &command, const WalletModel* wallet_model);
-
-Q_SIGNALS:
-    void reply(int category, const QString &command);
-
-private:
-    interfaces::Node& m_node;
-};
-
-/** Class for handling RPC timers
- * (used for e.g. re-locking the wallet after a timeout)
- */
-class QtRPCTimerBase: public QObject, public RPCTimerBase
-{
-    Q_OBJECT
-public:
-    QtRPCTimerBase(std::function<void()>& _func, int64_t millis):
-        func(_func)
-    {
-        timer.setSingleShot(true);
-        connect(&timer, &QTimer::timeout, [this]{ func(); });
-        timer.start(millis);
-    }
-    ~QtRPCTimerBase() {}
-private:
-    QTimer timer;
-    std::function<void()> func;
-};
-
-class QtRPCTimerInterface: public RPCTimerInterface
-{
-public:
-    ~QtRPCTimerInterface() {}
-    const char *Name() { return "Qt"; }
-    RPCTimerBase* NewTimer(std::function<void()>& func, int64_t millis)
-    {
-        return new QtRPCTimerBase(func, millis);
-    }
-};
-
-
-#include <qt/rpcconsole.moc>
 
 /**
  * Split shell command line into a list of arguments and optionally execute the command(s).
@@ -443,55 +387,19 @@ void RPCExecutor::request(const QString &command, const WalletModel* wallet_mode
 
 RPCConsole::RPCConsole(const PlatformStyle *_platformStyle, QWidget *parent) :
     QWidget(parent),
-    ui(new Ui::RPCConsole),
     platformStyle(_platformStyle)
 {
-    ui->setupUi(this);
+
     QSettings settings;
     if (!restoreGeometry(settings.value("RPCConsoleWindowGeometry").toByteArray())) {
         // Restore failed (perhaps missing setting), center the window
-        move(QGuiApplication::primaryScreen()->availableGeometry().center() - frameGeometry().center());
     }
 
     QChar nonbreaking_hyphen(8209);
-    ui->dataDir->setToolTip(ui->dataDir->toolTip().arg(QString(nonbreaking_hyphen) + "datadir"));
-    ui->blocksDir->setToolTip(ui->blocksDir->toolTip().arg(QString(nonbreaking_hyphen) + "blocksdir"));
-    ui->openDebugLogfileButton->setToolTip(ui->openDebugLogfileButton->toolTip().arg("Rain"));
 
-    if (platformStyle->getImagesOnButtons()) {
-        ui->openDebugLogfileButton->setIcon(platformStyle->SingleColorIcon(":/icons/export"));
-    }
-    ui->clearButton->setIcon(platformStyle->SingleColorIcon(":/icons/remove"));
-    ui->fontBiggerButton->setIcon(platformStyle->SingleColorIcon(":/icons/fontbigger"));
-    ui->fontSmallerButton->setIcon(platformStyle->SingleColorIcon(":/icons/fontsmaller"));
 
-    // Install event filter for up and down arrow
-    ui->lineEdit->installEventFilter(this);
-    ui->messagesWidget->installEventFilter(this);
-
-    connect(ui->clearButton, &QPushButton::clicked, this, &RPCConsole::clear);
-    connect(ui->fontBiggerButton, &QPushButton::clicked, this, &RPCConsole::fontBigger);
-    connect(ui->fontSmallerButton, &QPushButton::clicked, this, &RPCConsole::fontSmaller);
-    connect(ui->btnClearTrafficGraph, &QPushButton::clicked, ui->trafficGraph, &TrafficGraphWidget::clear);
-
-    // disable the wallet selector by default
-    ui->WalletSelector->setVisible(false);
-    ui->WalletSelectorLabel->setVisible(false);
-
-    // set library version labels
-#ifdef ENABLE_WALLET
-    ui->berkeleyDBVersion->setText(DbEnv::version(nullptr, nullptr, nullptr));
-#else
-    ui->label_berkeleyDBVersion->hide();
-    ui->berkeleyDBVersion->hide();
-#endif
     // Register RPC timer interface
     rpcTimerInterface = new QtRPCTimerInterface();
-
-    setTrafficGraphRange(INITIAL_TRAFFIC_GRAPH_MINS);
-
-    ui->detailWidget->hide();
-    ui->peerHeading->setText(tr("Select a peer to view detailed information."));
 
     consoleFontSize = settings.value(fontSizeSettingsKey, QFontInfo(QFont()).pointSize()).toInt();
     clear();
@@ -503,7 +411,7 @@ RPCConsole::~RPCConsole()
     settings.setValue("RPCConsoleWindowGeometry", saveGeometry());
     clientModel->node().rpcUnsetTimerInterface(rpcTimerInterface);
     delete rpcTimerInterface;
-    delete ui;
+//    delete ui;
 }
 
 bool RPCConsole::eventFilter(QObject* obj, QEvent *event)
@@ -515,37 +423,21 @@ bool RPCConsole::eventFilter(QObject* obj, QEvent *event)
         Qt::KeyboardModifiers mod = keyevt->modifiers();
         switch(key)
         {
-        case Qt::Key_Up: if(obj == ui->lineEdit) { browseHistory(-1); return true; } break;
-        case Qt::Key_Down: if(obj == ui->lineEdit) { browseHistory(1); return true; } break;
         case Qt::Key_PageUp: /* pass paging keys to messages widget */
-        case Qt::Key_PageDown:
-            if(obj == ui->lineEdit)
-            {
-                QApplication::postEvent(ui->messagesWidget, new QKeyEvent(*keyevt));
-                return true;
-            }
-            break;
+
         case Qt::Key_Return:
         case Qt::Key_Enter:
             // forward these events to lineEdit
             if(obj == autoCompleter->popup()) {
-                QApplication::postEvent(ui->lineEdit, new QKeyEvent(*keyevt));
+                //QApplication::postEvent(ui->lineEdit, new QKeyEvent(*keyevt));
                 autoCompleter->popup()->hide();
                 return true;
             }
             break;
         default:
+            break;
             // Typing in messages widget brings focus to line edit, and redirects key there
             // Exclude most combinations and keys that emit no text, except paste shortcuts
-            if(obj == ui->messagesWidget && (
-                  (!mod && !keyevt->text().isEmpty() && key != Qt::Key_Tab) ||
-                  ((mod & Qt::ControlModifier) && key == Qt::Key_V) ||
-                  ((mod & Qt::ShiftModifier) && key == Qt::Key_Insert)))
-            {
-                ui->lineEdit->setFocus();
-                QApplication::postEvent(ui->lineEdit, new QKeyEvent(*keyevt));
-                return true;
-            }
         }
     }
     return QWidget::eventFilter(obj, event);
@@ -563,41 +455,12 @@ void RPCConsole::setClientModel(ClientModel *model)
 #ifdef ENABLE_WALLET
     wallet_enabled = WalletModel::isWalletEnabled();
 #endif // ENABLE_WALLET
-    if (model && !wallet_enabled) {
-        // Show warning, for example if this is a prerelease version
-        connect(model, &ClientModel::alertsChanged, this, &RPCConsole::updateAlerts);
-        updateAlerts(model->getStatusBarWarnings());
-    }
 
-    ui->trafficGraph->setClientModel(model);
+
     if (model && clientModel->getPeerTableModel() && clientModel->getBanTableModel()) {
         // Keep up to date with client
-        setNumConnections(model->getNumConnections());
-        connect(model, &ClientModel::numConnectionsChanged, this, &RPCConsole::setNumConnections);
 
         interfaces::Node& node = clientModel->node();
-        setNumBlocks(node.getNumBlocks(), QDateTime::fromTime_t(node.getLastBlockTime()), node.getVerificationProgress(), false);
-        connect(model, &ClientModel::numBlocksChanged, this, &RPCConsole::setNumBlocks);
-
-        updateNetworkState();
-        connect(model, &ClientModel::networkActiveChanged, this, &RPCConsole::setNetworkActive);
-
-        updateTrafficStats(node.getTotalBytesRecv(), node.getTotalBytesSent());
-        connect(model, &ClientModel::bytesChanged, this, &RPCConsole::updateTrafficStats);
-
-        connect(model, &ClientModel::mempoolSizeChanged, this, &RPCConsole::setMempoolSize);
-
-        // set up peer table
-        ui->peerWidget->setModel(model->getPeerTableModel());
-        ui->peerWidget->verticalHeader()->hide();
-        ui->peerWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
-        ui->peerWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
-        ui->peerWidget->setSelectionMode(QAbstractItemView::ExtendedSelection);
-        ui->peerWidget->setContextMenuPolicy(Qt::CustomContextMenu);
-        ui->peerWidget->setColumnWidth(PeerTableModel::Address, ADDRESS_COLUMN_WIDTH);
-        ui->peerWidget->setColumnWidth(PeerTableModel::Subversion, SUBVERSION_COLUMN_WIDTH);
-        ui->peerWidget->setColumnWidth(PeerTableModel::Ping, PING_COLUMN_WIDTH);
-        ui->peerWidget->horizontalHeader()->setStretchLastSection(true);
 
         // create peer table context menu actions
         QAction* disconnectAction = new QAction(tr("&Disconnect"), this);
@@ -614,57 +477,12 @@ void RPCConsole::setClientModel(ClientModel *model)
         peersTableContextMenu->addAction(banAction7d);
         peersTableContextMenu->addAction(banAction365d);
 
-        connect(banAction1h, &QAction::triggered, [this] { banSelectedNode(60 * 60); });
-        connect(banAction24h, &QAction::triggered, [this] { banSelectedNode(60 * 60 * 24); });
-        connect(banAction7d, &QAction::triggered, [this] { banSelectedNode(60 * 60 * 24 * 7); });
-        connect(banAction365d, &QAction::triggered, [this] { banSelectedNode(60 * 60 * 24 * 365); });
-
-        // peer table context menu signals
-        connect(ui->peerWidget, &QTableView::customContextMenuRequested, this, &RPCConsole::showPeersTableContextMenu);
-        connect(disconnectAction, &QAction::triggered, this, &RPCConsole::disconnectSelectedNode);
-
-        // peer table signal handling - update peer details when selecting new node
-        connect(ui->peerWidget->selectionModel(), &QItemSelectionModel::selectionChanged, this, &RPCConsole::peerSelected);
-        // peer table signal handling - update peer details when new nodes are added to the model
-        connect(model->getPeerTableModel(), &PeerTableModel::layoutChanged, this, &RPCConsole::peerLayoutChanged);
-        // peer table signal handling - cache selected node ids
-        connect(model->getPeerTableModel(), &PeerTableModel::layoutAboutToBeChanged, this, &RPCConsole::peerLayoutAboutToChange);
-
-        // set up ban table
-        ui->banlistWidget->setModel(model->getBanTableModel());
-        ui->banlistWidget->verticalHeader()->hide();
-        ui->banlistWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
-        ui->banlistWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
-        ui->banlistWidget->setSelectionMode(QAbstractItemView::SingleSelection);
-        ui->banlistWidget->setContextMenuPolicy(Qt::CustomContextMenu);
-        ui->banlistWidget->setColumnWidth(BanTableModel::Address, BANSUBNET_COLUMN_WIDTH);
-        ui->banlistWidget->setColumnWidth(BanTableModel::Bantime, BANTIME_COLUMN_WIDTH);
-        ui->banlistWidget->horizontalHeader()->setStretchLastSection(true);
-
         // create ban table context menu action
         QAction* unbanAction = new QAction(tr("&Unban"), this);
 
         // create ban table context menu
         banTableContextMenu = new QMenu(this);
         banTableContextMenu->addAction(unbanAction);
-
-        // ban table context menu signals
-        connect(ui->banlistWidget, &QTableView::customContextMenuRequested, this, &RPCConsole::showBanTableContextMenu);
-        connect(unbanAction, &QAction::triggered, this, &RPCConsole::unbanSelectedNode);
-
-        // ban table signal handling - clear peer details when clicking a peer in the ban table
-        connect(ui->banlistWidget, &QTableView::clicked, this, &RPCConsole::clearSelectedNode);
-        // ban table signal handling - ensure ban table is shown or hidden (if empty)
-        connect(model->getBanTableModel(), &BanTableModel::layoutChanged, this, &RPCConsole::showOrHideBanTableIfRequired);
-        showOrHideBanTableIfRequired();
-
-        // Provide initial values
-        ui->clientVersion->setText(model->formatFullVersion());
-        ui->clientUserAgent->setText(model->formatSubVersion());
-        ui->dataDir->setText(model->dataDir());
-        ui->blocksDir->setText(model->blocksDir());
-        ui->startupTime->setText(model->formatClientStartupTime());
-        ui->networkName->setText(QString::fromStdString(Params().NetworkIDString()));
 
         //Setup autocomplete and attach it
         QStringList wordList;
@@ -679,10 +497,7 @@ void RPCConsole::setClientModel(ClientModel *model)
         wordList.sort();
         autoCompleter = new QCompleter(wordList, this);
         autoCompleter->setModelSorting(QCompleter::CaseSensitivelySortedModel);
-        // ui->lineEdit is initially disabled because running commands is only
-        // possible from now on.
-        ui->lineEdit->setEnabled(true);
-        ui->lineEdit->setCompleter(autoCompleter);
+
         autoCompleter->popup()->installEventFilter(this);
         // Start thread to execute RPC commands.
         startExecutor();
@@ -697,25 +512,13 @@ void RPCConsole::setClientModel(ClientModel *model)
 #ifdef ENABLE_WALLET
 void RPCConsole::addWallet(WalletModel * const walletModel)
 {
-    // use name for text and wallet model for internal data object (to allow to move to a wallet id later)
-    ui->WalletSelector->addItem(walletModel->getDisplayName(), QVariant::fromValue(walletModel));
-    if (ui->WalletSelector->count() == 2 && !isVisible()) {
-        // First wallet added, set to default so long as the window isn't presently visible (and potentially in use)
-        ui->WalletSelector->setCurrentIndex(1);
-    }
-    if (ui->WalletSelector->count() > 2) {
-        ui->WalletSelector->setVisible(true);
-        ui->WalletSelectorLabel->setVisible(true);
-    }
+
+
 }
 
 void RPCConsole::removeWallet(WalletModel * const walletModel)
 {
-    ui->WalletSelector->removeItem(ui->WalletSelector->findData(QVariant::fromValue(walletModel)));
-    if (ui->WalletSelector->count() == 2) {
-        ui->WalletSelector->setVisible(false);
-        ui->WalletSelectorLabel->setVisible(false);
-    }
+
 }
 #endif
 
@@ -744,61 +547,27 @@ void RPCConsole::setFontSize(int newSize)
 {
     QSettings settings;
 
-    //don't allow an insane font size
-    if (newSize < FONT_RANGE.width() || newSize > FONT_RANGE.height())
-        return;
 
-    // temp. store the console content
-    QString str = ui->messagesWidget->toHtml();
-
-    // replace font tags size in current content
-    str.replace(QString("font-size:%1pt").arg(consoleFontSize), QString("font-size:%1pt").arg(newSize));
-
-    // store the new font size
-    consoleFontSize = newSize;
-    settings.setValue(fontSizeSettingsKey, consoleFontSize);
-
-    // clear console (reset icon sizes, default stylesheet) and re-add the content
-    float oldPosFactor = 1.0 / ui->messagesWidget->verticalScrollBar()->maximum() * ui->messagesWidget->verticalScrollBar()->value();
-    clear(false);
-    ui->messagesWidget->setHtml(str);
-    ui->messagesWidget->verticalScrollBar()->setValue(oldPosFactor * ui->messagesWidget->verticalScrollBar()->maximum());
 }
 
 void RPCConsole::clear(bool clearHistory)
 {
-    ui->messagesWidget->clear();
     if(clearHistory)
     {
         history.clear();
         historyPtr = 0;
     }
-    ui->lineEdit->clear();
-    ui->lineEdit->setFocus();
+
 
     // Add smoothly scaled icon images.
     // (when using width/height on an img, Qt uses nearest instead of linear interpolation)
     for(int i=0; ICON_MAPPING[i].url; ++i)
     {
-        ui->messagesWidget->document()->addResource(
-                    QTextDocument::ImageResource,
-                    QUrl(ICON_MAPPING[i].url),
-                    platformStyle->SingleColorImage(ICON_MAPPING[i].source).scaled(QSize(consoleFontSize*2, consoleFontSize*2), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
     }
 
     // Set default style sheet
     QFontInfo fixedFontInfo(GUIUtil::fixedPitchFont());
-    ui->messagesWidget->document()->setDefaultStyleSheet(
-        QString(
-                "table { }"
-                "td.time { color: #808080; font-size: %2; padding-top: 3px; } "
-                "td.message { font-family: %1; font-size: %2; white-space:pre-wrap; } "
-                "td.cmd-request { color: #006060; } "
-                "td.cmd-error { color: red; } "
-                ".secwarning { color: red; }"
-                "b { color: #006060; } "
-            ).arg(fixedFontInfo.family(), QString("%1pt").arg(consoleFontSize))
-        );
+
 
 #ifdef Q_OS_MAC
     QString clsKey = "(⌘)-L";
@@ -837,117 +606,13 @@ void RPCConsole::message(int category, const QString &message, bool html)
     else
         out += GUIUtil::HtmlEscape(message, false);
     out += "</td></tr></table>";
-    ui->messagesWidget->append(out);
-}
-
-void RPCConsole::updateNetworkState()
-{
-    QString connections = QString::number(clientModel->getNumConnections()) + " (";
-    connections += tr("In:") + " " + QString::number(clientModel->getNumConnections(CONNECTIONS_IN)) + " / ";
-    connections += tr("Out:") + " " + QString::number(clientModel->getNumConnections(CONNECTIONS_OUT)) + ")";
-
-    if(!clientModel->node().getNetworkActive()) {
-        connections += " (" + tr("Network activity disabled") + ")";
-    }
-
-    ui->numberOfConnections->setText(connections);
-}
-
-void RPCConsole::setNumConnections(int count)
-{
-    if (!clientModel)
-        return;
-
-    updateNetworkState();
-}
-
-void RPCConsole::setNetworkActive(bool networkActive)
-{
-    updateNetworkState();
-}
-
-void RPCConsole::setNumBlocks(int count, const QDateTime& blockDate, double nVerificationProgress, bool headers)
-{
-    if (!headers) {
-        ui->numberOfBlocks->setText(QString::number(count));
-        ui->lastBlockTime->setText(blockDate.toString());
-    }
-}
-
-void RPCConsole::setMempoolSize(long numberOfTxs, size_t dynUsage)
-{
-    ui->mempoolNumberTxs->setText(QString::number(numberOfTxs));
-
-    if (dynUsage < 1000000)
-        ui->mempoolSize->setText(QString::number(dynUsage/1000.0, 'f', 2) + " KB");
-    else
-        ui->mempoolSize->setText(QString::number(dynUsage/1000000.0, 'f', 2) + " MB");
-}
-
-void RPCConsole::on_lineEdit_returnPressed()
-{
-    QString cmd = ui->lineEdit->text();
-
-    if(!cmd.isEmpty())
-    {
-        std::string strFilteredCmd;
-        try {
-            std::string dummy;
-            if (!RPCParseCommandLine(nullptr, dummy, cmd.toStdString(), false, &strFilteredCmd)) {
-                // Failed to parse command, so we cannot even filter it for the history
-                throw std::runtime_error("Invalid command line");
-            }
-        } catch (const std::exception& e) {
-            QMessageBox::critical(this, "Error", QString("Error: ") + QString::fromStdString(e.what()));
-            return;
-        }
-
-        ui->lineEdit->clear();
-
-        cmdBeforeBrowsing = QString();
-
-        WalletModel* wallet_model{nullptr};
-#ifdef ENABLE_WALLET
-        const int wallet_index = ui->WalletSelector->currentIndex();
-        if (wallet_index > 0) {
-            wallet_model = ui->WalletSelector->itemData(wallet_index).value<WalletModel*>();
-        }
-
-        if (m_last_wallet_model != wallet_model) {
-            if (wallet_model) {
-                message(CMD_REQUEST, tr("Executing command using \"%1\" wallet").arg(wallet_model->getWalletName()));
-            } else {
-                message(CMD_REQUEST, tr("Executing command without any wallet"));
-            }
-            m_last_wallet_model = wallet_model;
-        }
-#endif
-
-        message(CMD_REQUEST, QString::fromStdString(strFilteredCmd));
-        Q_EMIT cmdRequest(cmd, m_last_wallet_model);
-
-        cmd = QString::fromStdString(strFilteredCmd);
-
-        // Remove command, if already in history
-        history.removeOne(cmd);
-        // Append command to history
-        history.append(cmd);
-        // Enforce maximum history size
-        while(history.size() > CONSOLE_HISTORY)
-            history.removeFirst();
-        // Set pointer to end of history
-        historyPtr = history.size();
-
-        // Scroll console view to end
-        scrollToEnd();
-    }
 }
 
 void RPCConsole::browseHistory(int offset)
 {
     // store current text when start browsing through the history
     if (historyPtr == history.size()) {
-        cmdBeforeBrowsing = ui->lineEdit->text();
+        //cmdBeforeBrowsing = ui->lineEdit->text();
     }
 
     historyPtr += offset;
@@ -961,7 +626,6 @@ void RPCConsole::browseHistory(int offset)
     else if (!cmdBeforeBrowsing.isNull()) {
         cmd = cmdBeforeBrowsing;
     }
-    ui->lineEdit->setText(cmd);
 }
 
 void RPCConsole::startExecutor()
@@ -983,302 +647,3 @@ void RPCConsole::startExecutor()
     thread.start();
 }
 
-void RPCConsole::on_tabWidget_currentChanged(int index)
-{
-    if (ui->tabWidget->widget(index) == ui->tab_console) {
-        ui->lineEdit->setFocus();
-    }
-}
-
-void RPCConsole::on_openDebugLogfileButton_clicked()
-{
-    GUIUtil::openDebugLogfile();
-}
-
-void RPCConsole::scrollToEnd()
-{
-    QScrollBar *scrollbar = ui->messagesWidget->verticalScrollBar();
-    scrollbar->setValue(scrollbar->maximum());
-}
-
-void RPCConsole::on_sldGraphRange_valueChanged(int value)
-{
-    const int multiplier = 5; // each position on the slider represents 5 min
-    int mins = value * multiplier;
-    setTrafficGraphRange(mins);
-}
-
-void RPCConsole::setTrafficGraphRange(int mins)
-{
-    ui->trafficGraph->setGraphRangeMins(mins);
-    ui->lblGraphRange->setText(GUIUtil::formatDurationStr(mins * 60));
-}
-
-void RPCConsole::updateTrafficStats(quint64 totalBytesIn, quint64 totalBytesOut)
-{
-    ui->lblBytesIn->setText(GUIUtil::formatBytes(totalBytesIn));
-    ui->lblBytesOut->setText(GUIUtil::formatBytes(totalBytesOut));
-}
-
-void RPCConsole::peerSelected(const QItemSelection &selected, const QItemSelection &deselected)
-{
-    Q_UNUSED(deselected);
-
-    if (!clientModel || !clientModel->getPeerTableModel() || selected.indexes().isEmpty())
-        return;
-
-    const CNodeCombinedStats *stats = clientModel->getPeerTableModel()->getNodeStats(selected.indexes().first().row());
-    if (stats)
-        updateNodeDetail(stats);
-}
-
-void RPCConsole::peerLayoutAboutToChange()
-{
-    QModelIndexList selected = ui->peerWidget->selectionModel()->selectedIndexes();
-    cachedNodeids.clear();
-    for(int i = 0; i < selected.size(); i++)
-    {
-        const CNodeCombinedStats *stats = clientModel->getPeerTableModel()->getNodeStats(selected.at(i).row());
-        cachedNodeids.append(stats->nodeStats.nodeid);
-    }
-}
-
-void RPCConsole::peerLayoutChanged()
-{
-    if (!clientModel || !clientModel->getPeerTableModel())
-        return;
-
-    const CNodeCombinedStats *stats = nullptr;
-    bool fUnselect = false;
-    bool fReselect = false;
-
-    if (cachedNodeids.empty()) // no node selected yet
-        return;
-
-    // find the currently selected row
-    int selectedRow = -1;
-    QModelIndexList selectedModelIndex = ui->peerWidget->selectionModel()->selectedIndexes();
-    if (!selectedModelIndex.isEmpty()) {
-        selectedRow = selectedModelIndex.first().row();
-    }
-
-    // check if our detail node has a row in the table (it may not necessarily
-    // be at selectedRow since its position can change after a layout change)
-    int detailNodeRow = clientModel->getPeerTableModel()->getRowByNodeId(cachedNodeids.first());
-
-    if (detailNodeRow < 0)
-    {
-        // detail node disappeared from table (node disconnected)
-        fUnselect = true;
-    }
-    else
-    {
-        if (detailNodeRow != selectedRow)
-        {
-            // detail node moved position
-            fUnselect = true;
-            fReselect = true;
-        }
-
-        // get fresh stats on the detail node.
-        stats = clientModel->getPeerTableModel()->getNodeStats(detailNodeRow);
-    }
-
-    if (fUnselect && selectedRow >= 0) {
-        clearSelectedNode();
-    }
-
-    if (fReselect)
-    {
-        for(int i = 0; i < cachedNodeids.size(); i++)
-        {
-            ui->peerWidget->selectRow(clientModel->getPeerTableModel()->getRowByNodeId(cachedNodeids.at(i)));
-        }
-    }
-
-    if (stats)
-        updateNodeDetail(stats);
-}
-
-void RPCConsole::updateNodeDetail(const CNodeCombinedStats *stats)
-{
-    // update the detail ui with latest node information
-    QString peerAddrDetails(QString::fromStdString(stats->nodeStats.addrName) + " ");
-    peerAddrDetails += tr("(node id: %1)").arg(QString::number(stats->nodeStats.nodeid));
-    if (!stats->nodeStats.addrLocal.empty())
-        peerAddrDetails += "<br />" + tr("via %1").arg(QString::fromStdString(stats->nodeStats.addrLocal));
-    ui->peerHeading->setText(peerAddrDetails);
-    ui->peerServices->setText(GUIUtil::formatServicesStr(stats->nodeStats.nServices));
-    ui->peerLastSend->setText(stats->nodeStats.nLastSend ? GUIUtil::formatDurationStr(GetSystemTimeInSeconds() - stats->nodeStats.nLastSend) : tr("never"));
-    ui->peerLastRecv->setText(stats->nodeStats.nLastRecv ? GUIUtil::formatDurationStr(GetSystemTimeInSeconds() - stats->nodeStats.nLastRecv) : tr("never"));
-    ui->peerBytesSent->setText(GUIUtil::formatBytes(stats->nodeStats.nSendBytes));
-    ui->peerBytesRecv->setText(GUIUtil::formatBytes(stats->nodeStats.nRecvBytes));
-    ui->peerConnTime->setText(GUIUtil::formatDurationStr(GetSystemTimeInSeconds() - stats->nodeStats.nTimeConnected));
-    ui->peerPingTime->setText(GUIUtil::formatPingTime(stats->nodeStats.dPingTime));
-    ui->peerPingWait->setText(GUIUtil::formatPingTime(stats->nodeStats.dPingWait));
-    ui->peerMinPing->setText(GUIUtil::formatPingTime(stats->nodeStats.dMinPing));
-    ui->timeoffset->setText(GUIUtil::formatTimeOffset(stats->nodeStats.nTimeOffset));
-    ui->peerVersion->setText(QString("%1").arg(QString::number(stats->nodeStats.nVersion)));
-    ui->peerSubversion->setText(QString::fromStdString(stats->nodeStats.cleanSubVer));
-    ui->peerDirection->setText(stats->nodeStats.fInbound ? tr("Inbound") : tr("Outbound"));
-    ui->peerHeight->setText(QString("%1").arg(QString::number(stats->nodeStats.nStartingHeight)));
-    ui->peerWhitelisted->setText(stats->nodeStats.m_legacyWhitelisted ? tr("Yes") : tr("No"));
-
-    // This check fails for example if the lock was busy and
-    // nodeStateStats couldn't be fetched.
-    if (stats->fNodeStateStatsAvailable) {
-        // Ban score is init to 0
-        ui->peerBanScore->setText(QString("%1").arg(stats->nodeStateStats.nMisbehavior));
-
-        // Sync height is init to -1
-        if (stats->nodeStateStats.nSyncHeight > -1)
-            ui->peerSyncHeight->setText(QString("%1").arg(stats->nodeStateStats.nSyncHeight));
-        else
-            ui->peerSyncHeight->setText(tr("Unknown"));
-
-        // Common height is init to -1
-        if (stats->nodeStateStats.nCommonHeight > -1)
-            ui->peerCommonHeight->setText(QString("%1").arg(stats->nodeStateStats.nCommonHeight));
-        else
-            ui->peerCommonHeight->setText(tr("Unknown"));
-    }
-
-    ui->detailWidget->show();
-}
-
-void RPCConsole::resizeEvent(QResizeEvent *event)
-{
-    QWidget::resizeEvent(event);
-}
-
-void RPCConsole::showEvent(QShowEvent *event)
-{
-    QWidget::showEvent(event);
-
-    if (!clientModel || !clientModel->getPeerTableModel())
-        return;
-
-    // start PeerTableModel auto refresh
-    clientModel->getPeerTableModel()->startAutoRefresh();
-}
-
-void RPCConsole::hideEvent(QHideEvent *event)
-{
-    QWidget::hideEvent(event);
-
-    if (!clientModel || !clientModel->getPeerTableModel())
-        return;
-
-    // stop PeerTableModel auto refresh
-    clientModel->getPeerTableModel()->stopAutoRefresh();
-}
-
-void RPCConsole::showPeersTableContextMenu(const QPoint& point)
-{
-    QModelIndex index = ui->peerWidget->indexAt(point);
-    if (index.isValid())
-        peersTableContextMenu->exec(QCursor::pos());
-}
-
-void RPCConsole::showBanTableContextMenu(const QPoint& point)
-{
-    QModelIndex index = ui->banlistWidget->indexAt(point);
-    if (index.isValid())
-        banTableContextMenu->exec(QCursor::pos());
-}
-
-void RPCConsole::disconnectSelectedNode()
-{
-    // Get selected peer addresses
-    QList<QModelIndex> nodes = GUIUtil::getEntryData(ui->peerWidget, PeerTableModel::NetNodeId);
-    for(int i = 0; i < nodes.count(); i++)
-    {
-        // Get currently selected peer address
-        NodeId id = nodes.at(i).data().toLongLong();
-        // Find the node, disconnect it and clear the selected node
-        if(clientModel->node().disconnect(id))
-            clearSelectedNode();
-    }
-}
-
-void RPCConsole::banSelectedNode(int bantime)
-{
-    if (!clientModel)
-        return;
-
-    // Get selected peer addresses
-    QList<QModelIndex> nodes = GUIUtil::getEntryData(ui->peerWidget, PeerTableModel::NetNodeId);
-    for(int i = 0; i < nodes.count(); i++)
-    {
-        // Get currently selected peer address
-        NodeId id = nodes.at(i).data().toLongLong();
-
-        // Get currently selected peer address
-        int detailNodeRow = clientModel->getPeerTableModel()->getRowByNodeId(id);
-        if (detailNodeRow < 0) return;
-
-        // Find possible nodes, ban it and clear the selected node
-        const CNodeCombinedStats *stats = clientModel->getPeerTableModel()->getNodeStats(detailNodeRow);
-        if (stats) {
-            clientModel->node().ban(stats->nodeStats.addr, BanReasonManuallyAdded, bantime);
-            clientModel->node().disconnect(stats->nodeStats.addr);
-        }
-    }
-    clearSelectedNode();
-    clientModel->getBanTableModel()->refresh();
-}
-
-void RPCConsole::unbanSelectedNode()
-{
-    if (!clientModel)
-        return;
-
-    // Get selected ban addresses
-    QList<QModelIndex> nodes = GUIUtil::getEntryData(ui->banlistWidget, BanTableModel::Address);
-    for(int i = 0; i < nodes.count(); i++)
-    {
-        // Get currently selected ban address
-        QString strNode = nodes.at(i).data().toString();
-        CSubNet possibleSubnet;
-
-        LookupSubNet(strNode.toStdString().c_str(), possibleSubnet);
-        if (possibleSubnet.IsValid() && clientModel->node().unban(possibleSubnet))
-        {
-            clientModel->getBanTableModel()->refresh();
-        }
-    }
-}
-
-void RPCConsole::clearSelectedNode()
-{
-    ui->peerWidget->selectionModel()->clearSelection();
-    cachedNodeids.clear();
-    ui->detailWidget->hide();
-    ui->peerHeading->setText(tr("Select a peer to view detailed information."));
-}
-
-void RPCConsole::showOrHideBanTableIfRequired()
-{
-    if (!clientModel)
-        return;
-
-    bool visible = clientModel->getBanTableModel()->shouldShow();
-    ui->banlistWidget->setVisible(visible);
-    ui->banHeading->setVisible(visible);
-}
-
-void RPCConsole::setTabFocus(enum TabTypes tabType)
-{
-    ui->tabWidget->setCurrentIndex(tabType);
-}
-
-QString RPCConsole::tabTitle(TabTypes tab_type) const
-{
-    return ui->tabWidget->tabText(tab_type);
-}
-
-void RPCConsole::updateAlerts(const QString& warnings)
-{
-//    this->ui->label_alerts->setVisible(!warnings.isEmpty());
-//    this->ui->label_alerts->setText(warnings);
-}

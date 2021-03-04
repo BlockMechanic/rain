@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -41,8 +41,22 @@ public:
     unsigned int fCoinBase : 1;
     unsigned int fCoinStake : 1;
 
+    //! version of the CTransaction; accesses to this value should probably check for nHeight as well,
+    //! as new tx version will probably only be introduced at certain heights
+    int nVersion;
+
     // peercoin: transaction timestamp
     unsigned int nTime;
+
+    void FromTx(const CTransaction &tx, int nHeightIn) {
+        fCoinBase = tx.IsCoinBase();
+        fCoinStake = tx.IsCoinStake();
+        // Within an asset definition transaction, the asset being defined is identified with a 0.
+
+        nHeight = nHeightIn;
+        nVersion = tx.nVersion;
+        nTime = tx.nTime;
+    }
 
     //! construct a Coin from a CTxOut and height/coinbase information.
     Coin(CTxOut&& outIn, int nHeightIn, bool fCoinBaseIn, bool fCoinStakeIn, int nTimeIn) : out(std::move(outIn)), nHeight(nHeightIn), fCoinBase(fCoinBaseIn), fCoinStake(fCoinStakeIn), nTime(nTimeIn) {}
@@ -111,8 +125,16 @@ public:
      * This *must* return size_t. With Boost 1.46 on 32-bit systems the
      * unordered_map will behave unpredictably if the custom hasher returns a
      * uint64_t, resulting in failures when syncing the chain (#4634).
+     *
+     * Having the hash noexcept allows libstdc++'s unordered_map to recalculate
+     * the hash during rehash, so it does not have to cache the value. This
+     * reduces node's memory by sizeof(size_t). The required recalculation has
+     * a slight performance penalty (around 1.6%), but this is compensated by
+     * memory savings of about 9% which allow for a larger dbcache setting.
+     *
+     * @see https://gcc.gnu.org/onlinedocs/gcc-9.2.0/libstdc++/manual/manual/unordered_associative.html
      */
-    size_t operator()(const COutPoint& id) const {
+    size_t operator()(const COutPoint& id) const noexcept {
         return SipHashUint256Extra(k0, k1, id.hash, id.n);
     }
 };
@@ -306,9 +328,16 @@ public:
      * @return  Sum of value of all inputs (scriptSigs)
      */
     CAmount GetValueIn(const CTransaction& tx) const;
+    CAmountMap GetValueInMap(const CTransaction& tx) const;
 
     //! Check whether all prevouts of the transaction are present in the UTXO set represented by this view
     bool HaveInputs(const CTransaction& tx) const;
+
+    /*
+     * Return the depth of a coin at height nHeight, or -1 if not found
+     */
+    int GetCoinDepthAtHeight(const COutPoint& output, int nHeight) const;
+
 
 private:
     /**

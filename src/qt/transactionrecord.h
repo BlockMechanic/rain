@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -6,6 +6,8 @@
 #define RAIN_QT_TRANSACTIONRECORD_H
 
 #include <amount.h>
+#include <primitives/asset.h>
+#include "script/script.h"
 #include <uint256.h>
 #include <key_io.h>
 
@@ -46,10 +48,6 @@ public:
     /// Transaction counts towards available balance
     bool countsForBalance;
     /// Sorting key based on status
-    bool lockedByInstantSend;
-    /// Transaction was locked via ChainLocks
-    bool lockedByChainLocks;
-    /// Sorting key based on status
     std::string sortKey;
     /// Label
     QString label;
@@ -70,9 +68,6 @@ public:
 
     /** Current number of blocks (to know whether cached status is still valid) */
     int cur_num_blocks;
-
-    //** Know when to update transaction for chainlocks **/
-    int cachedChainLockHeight;
 
     /** Current number of blocks based on the headers chain */
     int cur_num_blocks_headers_chain;
@@ -97,36 +92,40 @@ public:
         SendToAddress,
         SendToOther,
         RecvWithAddress,
+        MNReward,
         RecvFromOther,
         SendToSelf,
-        RecvWithPrivateSend,
-        PrivateSendDenominate,
-        PrivateSendCollateralPayment,
-        PrivateSendMakeCollaterals,
-        PrivateSendCreateDenominations,
-        PrivateSend
+        Fee,
+        IssuedAsset,
+        StakeDelegated, // Received cold stake (owner)
+        StakeHot, // Staked via a delegated P2CS.
+        P2CSDelegation, // Non-spendable P2CS, staker side.
+        P2CSDelegationSent, // Non-spendable P2CS delegated utxo. (coin-owner transferred ownership to external wallet)
+        P2CSDelegationSentOwner, // Spendable P2CS delegated utxo. (coin-owner)
+        P2CSUnlockOwner, // Coin-owner spent the delegated utxo
+        P2CSUnlockStaker // Staker watching the owner spent the delegated utxo
     };
 
     /** Number of confirmation recommended for accepting a transaction */
     static const int RecommendedNumConfirmations = 6;
 
     TransactionRecord():
-            hash(), time(0), type(Other), address(""), debit(0), credit(0), idx(0)
+            hash(), time(0), type(Other), address(""), debit(CAmountMap()), credit(CAmountMap()), idx(0)
     {
         txDest = DecodeDestination(address);
     }
 
     TransactionRecord(uint256 _hash, qint64 _time):
-            hash(_hash), time(_time), type(Other), address(""), debit(0),
-            credit(0), idx(0)
+            hash(_hash), time(_time), type(Other), address(""), debit(CAmountMap()), credit(CAmountMap()), idx(0)
     {
         txDest = DecodeDestination(address);
     }
 
     TransactionRecord(uint256 _hash, qint64 _time,
                 Type _type, const std::string &_address,
-                const CAmount& _debit, const CAmount& _credit):
+                const CAmountMap& _debit, const CAmountMap& _credit, const CAsset& _asset):
             hash(_hash), time(_time), type(_type), address(_address), debit(_debit), credit(_credit),
+            asset(_asset),
             idx(0)
     {
         txDest = DecodeDestination(address);
@@ -135,7 +134,13 @@ public:
     /** Decompose CWallet transaction to model transaction records.
      */
     static bool showTransaction();
-    static QList<TransactionRecord> decomposeTransaction(const interfaces::WalletTx& wtx);
+    static QList<TransactionRecord> decomposeTransaction(const interfaces::WalletTx& wtx, interfaces::Wallet& wallet);
+
+    /// Helpers
+    static bool ExtractAddress(const CScript& scriptPubKey, bool fColdStake, std::string& addressStr);
+    static void loadHotOrColdStakeOrContract(interfaces::Wallet& wallet, const interfaces::WalletTx& wtx,
+                                            TransactionRecord& record, bool isContract = false);
+    static void loadUnlockColdStake(interfaces::Wallet& wallet, const interfaces::WalletTx& wtx, TransactionRecord& record);
 
     /** @name Immutable transaction attributes
       @{*/
@@ -144,8 +149,11 @@ public:
     Type type;
     std::string address;
     CTxDestination txDest;
-    CAmount debit;
-    CAmount credit;
+    CAmountMap debit;
+    CAmountMap credit;
+    CAsset asset;
+    std::string txcomment;
+    unsigned int size;
     /**@}*/
 
     /** Subtransaction index, for sort key */
@@ -170,6 +178,22 @@ public:
     /** Return whether a status update is needed.
      */
     bool statusUpdateNeeded(int numBlocks) const;
+    /** Return transaction status
+     */
+    std::string statusToString();
+
+    /** Return true if the tx is a coinstake
+     */
+    bool isCoinStake() const;
+
+    /** Return true if the tx is a any cold staking type tx.
+     */
+    bool isAnyColdStakingType() const;
+
+    /** Return true if the tx hash is null and/or if the size is 0
+     */
+    bool isNull() const;
+
 };
 
 #endif // RAIN_QT_TRANSACTIONRECORD_H

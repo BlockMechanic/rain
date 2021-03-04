@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -24,7 +24,6 @@
 #include <index/blockfilterindex.h>
 #include <index/txindex.h>
 #include <interfaces/chain.h>
-#include <index/txindex.h>
 #include <key.h>
 #include <miner.h>
 #include <net.h>
@@ -68,21 +67,14 @@
 #include <dsnotificationinterface.h>
 #include "flat-database.h"
 #include <governance/governance.h>
-#ifdef ENABLE_WALLET
-#include <keepass.h>
-#endif
+
 #include <masternode/masternode-meta.h>
 #include <masternode/masternode-payments.h>
 #include <masternode/masternode-sync.h>
 #include <masternode/masternode-utils.h>
 #include <messagesigner.h>
 #include <netfulfilledman.h>
-#ifdef ENABLE_WALLET
-#include <privatesend/privatesend-client.h>
-#endif // ENABLE_WALLET
-#include <privatesend/privatesend-server.h>
 #include <spork.h>
-#include <warnings.h>
 
 #include <evo/deterministicmns.h>
 #include <llmq/quorums_init.h>
@@ -91,7 +83,6 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <memory>
 
 #include <bls/bls.h>
 #include <bls/bls_worker.h>
@@ -107,8 +98,6 @@
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/split.hpp>
-#include <boost/bind.hpp>
-#include <boost/interprocess/sync/file_lock.hpp>
 #include <boost/thread.hpp>
 
 #if ENABLE_ZMQ
@@ -120,11 +109,10 @@
 static bool fFeeEstimatesInitialized = false;
 static const bool DEFAULT_PROXYRANDOMIZE = true;
 static const bool DEFAULT_REST_ENABLE = false;
-static const bool DEFAULT_DISABLE_SAFEMODE = false;
 static const bool DEFAULT_STOPAFTERBLOCKIMPORT = false;
 
 // Dump addresses to banlist.dat every 15 minutes (900s)
-static constexpr int DUMP_BANS_INTERVAL = 60 * 15;
+static constexpr std::chrono::minutes DUMP_BANS_INTERVAL{15};
 
 std::unique_ptr<CConnman> g_connman;
 std::unique_ptr<PeerLogicValidation> peerLogic;
@@ -206,6 +194,7 @@ void Interrupt()
     InterruptRPC();
     InterruptREST();
     InterruptTorControl();
+    llmq::InterruptLLMQSystem();
     InterruptMapPort();
     if (g_connman)
         g_connman->Interrupt();
@@ -218,7 +207,7 @@ void Interrupt()
 void Shutdown(InitInterfaces& interfaces)
 {
     LogPrintf("%s: In progress...\n", __func__);
-    static CCriticalSection cs_Shutdown;
+    static RecursiveMutex cs_Shutdown;
     TRY_LOCK(cs_Shutdown, lockShutdown);
     if (!lockShutdown)
         return;
@@ -229,9 +218,8 @@ void Shutdown(InitInterfaces& interfaces)
     /// module was initialized.
     util::ThreadRename("shutoff");
     mempool.AddTransactionsUpdated(1);
-#ifdef ENABLE_SECURE_MESSAGING
     SecureMsgStop();
-#endif
+
 #ifdef ENABLE_WALLET
     GenerateRains(false, 0, NULL);
 #endif
@@ -245,14 +233,6 @@ void Shutdown(InitInterfaces& interfaces)
     // before a shutdown request was received
     std::string statusmessage;
     bool fRPCInWarmup = RPCIsInWarmup(&statusmessage);
-
-#ifdef ENABLE_WALLET
-    if (privateSendClient.fEnablePrivateSend && !fRPCInWarmup) {
-        // Stop PrivateSend, release keys
-        privateSendClient.fPrivateSendRunning = false;
-        privateSendClient.ResetPool();
-    }
-#endif
 
     for (const auto& client : interfaces.chain_clients) {
         client->flush();
@@ -268,30 +248,35 @@ void Shutdown(InitInterfaces& interfaces)
 
     StopTorControl();
 
+    DumpAssets();
     // After everything has been shut down, but before things get flushed, stop the
     // CScheduler/checkqueue threadGroup
+    scheduler.stop();
     threadGroup.interrupt_all();
     threadGroup.join_all();
 
     // After the threads that potentially access these pointers have been stopped,
     // destruct and reset all to nullptr.
-    peerLogic.reset();
-    g_connman.reset();
-    g_banman.reset();
-    g_txindex.reset();
-    DestroyAllBlockFilterIndexes();
 
     if (!fLiteMode && !fRPCInWarmup) {
         // STORE DATA CACHES INTO SERIALIZED DAT FILES
         CFlatDB<CMasternodeMetaMan> flatdb1("mncache.dat", "magicMasternodeCache");
         flatdb1.Dump(mmetaman);
-        CFlatDB<CGovernanceManager> flatdb3("governance.dat", "magicGovernanceCache");
-        flatdb3.Dump(governance);
         CFlatDB<CNetFulfilledRequestManager> flatdb4("netfulfilled.dat", "magicFulfilledCache");
         flatdb4.Dump(netfulfilledman);
         CFlatDB<CSporkManager> flatdb6("sporks.dat", "magicSporkCache");
         flatdb6.Dump(sporkManager);
+        if (!fDisableGovernance) {
+            CFlatDB<CGovernanceManager> flatdb3("governance.dat", "magicGovernanceCache");
+            flatdb3.Dump(governance);
+        }
     }
+
+    peerLogic.reset();
+    g_connman.reset();
+    g_banman.reset();
+    g_txindex.reset();
+    DestroyAllBlockFilterIndexes();
 
     if (::mempool.IsLoaded() && gArgs.GetArg("-persistmempool", DEFAULT_PERSIST_MEMPOOL)) {
         DumpMempool(::mempool);
@@ -333,11 +318,12 @@ void Shutdown(InitInterfaces& interfaces)
         pcoinscatcher.reset();
         pcoinsdbview.reset();
         pblocktree.reset();
+        passetsdb.reset();
+        delete passetsCache;
+        passetsCache = nullptr;
         llmq::DestroyLLMQSystem();
-        delete deterministicMNManager;
-        deterministicMNManager = nullptr;
-        delete evoDb;
-        evoDb = nullptr;
+        deterministicMNManager.reset();
+        evoDb.reset();
     }
     for (const auto& client : interfaces.chain_clients) {
         client->stop();
@@ -364,7 +350,6 @@ void Shutdown(InitInterfaces& interfaces)
     activeMasternodeInfo.blsKeyOperator.reset();
     activeMasternodeInfo.blsPubKeyOperator.reset();
 
-#ifndef WIN32
     try {
         if (!fs::remove(GetPidFile())) {
             LogPrintf("%s: Unable to remove PID file: File does not exist\n", __func__);
@@ -372,7 +357,6 @@ void Shutdown(InitInterfaces& interfaces)
     } catch (const fs::filesystem_error& e) {
         LogPrintf("%s: Unable to remove PID file: %s\n", __func__, fsbridge::get_filesystem_error_message(e));
     }
-#endif
     interfaces.chain_clients.clear();
     UnregisterAllValidationInterfaces();
     GetMainSignals().UnregisterBackgroundSignalScheduler();
@@ -487,12 +471,7 @@ void SetupServerArgs()
 #else
     hidden_args.emplace_back("-sysperms");
 #endif
-    gArgs.AddArg("-txindex", strprintf("Maintain a full transaction index, used by the getrawtransaction rpc call (default: %u)", DEFAULT_TXINDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-
-    gArgs.AddArg("-addressindex", strprintf("Maintain a full address index, used to query for the balance, txids and unspent outputs for addresses (default: %u)", DEFAULT_ADDRESSINDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    gArgs.AddArg("-timestampindex", strprintf("Maintain a timestamp index for block hashes, used to query blocks hashes by a range of timestamps (default: %u)", DEFAULT_TIMESTAMPINDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    gArgs.AddArg("-spentindex", strprintf("Maintain a full spent index, used to query the spending txid and input index for an outpoint (default: %u)", DEFAULT_SPENTINDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-
+    gArgs.AddArg("-txindex", strprintf("Maintain a full transaction index, this includes address, timestamp and unspent indexes, used by the getrawtransaction rpc call (default: %u)", DEFAULT_TXINDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 
     gArgs.AddArg("-blockfilterindex=<type>",
                  strprintf("Maintain an index of compact filters by block (default: %s, values: %s).", DEFAULT_BLOCKFILTERINDEX, ListBlockFilterTypes()) +
@@ -521,7 +500,7 @@ void SetupServerArgs()
     gArgs.AddArg("-onlynet=<net>", "Make outgoing connections only through network <net> (ipv4, ipv6 or onion). Incoming connections are not affected by this option. This option can be specified multiple times to allow multiple networks.", ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     gArgs.AddArg("-peerbloomfilters", strprintf("Support filtering of blocks and transaction with bloom filters (default: %u)", DEFAULT_PEERBLOOMFILTERS), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     gArgs.AddArg("-permitbaremultisig", strprintf("Relay non-P2SH multisig (default: %u)", DEFAULT_PERMIT_BAREMULTISIG), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
-    gArgs.AddArg("-port=<port>", strprintf("Listen for connections on <port> (default: %u, testnet: %u, regtest: %u)", defaultChainParams->GetDefaultPort(), testnetChainParams->GetDefaultPort(), regtestChainParams->GetDefaultPort()), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
+    gArgs.AddArg("-port=<port>", strprintf("Listen for connections on <port> (default: %u, testnet: %u, regtest: %u)", 2013, 12013, 12013), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::CONNECTION);
     gArgs.AddArg("-proxy=<ip:port>", "Connect through SOCKS5 proxy, set -noproxy to disable (default: disabled)", ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     gArgs.AddArg("-proxyrandomize", strprintf("Randomize credentials for every proxy connection. This enables Tor stream isolation (default: %u)", DEFAULT_PROXYRANDOMIZE), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     gArgs.AddArg("-seednode=<ip>", "Connect to a node to retrieve peer addresses, and disconnect. This option can be specified multiple times to connect to multiple nodes.", ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
@@ -573,8 +552,8 @@ void SetupServerArgs()
         "and level 4 tries to reconnect the blocks, "
         "each level includes the checks of the previous levels "
         "(0-4, default: %u)", DEFAULT_CHECKLEVEL), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
-    gArgs.AddArg("-checkblockindex", strprintf("Do a full consistency check for the block tree, setBlockIndexCandidates, ::ChainActive() and mapBlocksUnlinked occasionally. (default: %u, regtest: %u)", defaultChainParams->DefaultConsistencyChecks(), regtestChainParams->DefaultConsistencyChecks()), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
-    gArgs.AddArg("-checkmempool=<n>", strprintf("Run checks every <n> transactions (default: %u, regtest: %u)", defaultChainParams->DefaultConsistencyChecks(), regtestChainParams->DefaultConsistencyChecks()), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
+    gArgs.AddArg("-checkblockindex", strprintf("Do a full consistency check for the block tree, setBlockIndexCandidates, ::ChainActive() and mapBlocksUnlinked occasionally. (default: %u, regtest: %u)", false, true), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
+    gArgs.AddArg("-checkmempool=<n>", strprintf("Run checks every <n> transactions (default: %u, regtest: %u)", false, true), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
     gArgs.AddArg("-checkpoints", strprintf("Disable expensive verification for known chain history (default: %u)", DEFAULT_CHECKPOINTS_ENABLED), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
     gArgs.AddArg("-deprecatedrpc=<method>", "Allows deprecated RPC method(s) to be used", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
     gArgs.AddArg("-dropmessagestest=<n>", "Randomly drop 1 of every <n> network messages", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
@@ -614,31 +593,24 @@ void SetupServerArgs()
     gArgs.AddArg("-whitelistrelay", strprintf("Accept relayed transactions received from whitelisted inbound peers even when not relaying transactions (default: %d)", DEFAULT_WHITELISTRELAY), ArgsManager::ALLOW_ANY, OptionsCategory::NODE_RELAY);
 
 
-    gArgs.AddArg("-blockmaxweight=<n>", strprintf("Set maximum BIP141 block weight (default: %d)", DEFAULT_BLOCK_MAX_WEIGHT), ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
+    gArgs.AddArg("-blockmaxsize=<n>", strprintf("Set maximum BIP141 block weight (default: %d)", DEFAULT_BLOCK_MAX_WEIGHT), ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
     gArgs.AddArg("-blockmintxfee=<amt>", strprintf("Set lowest fee rate (in %s/kB) for transactions to be included in block creation. (default: %s)", CURRENCY_UNIT, FormatMoney(DEFAULT_BLOCK_MIN_TX_FEE)), ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
     gArgs.AddArg("-blockversion=<n>", "Override block version to test forking scenarios", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::BLOCK_CREATION);
-    gArgs.AddArg("-aggressive-staking", "Check more often to publish immediately when valid block is found.", false, OptionsCategory::BLOCK_CREATION);
+    gArgs.AddArg("-aggressive-staking", "Check more often to publish immediately when valid block is found.", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
 
     gArgs.AddArg("-debugstake", "debug stake", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
     gArgs.AddArg("-printcoinage", "print coinage", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
+    gArgs.AddArg("-printcreation", "print new coins", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
+    gArgs.AddArg("-staking", "enable stake", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
+    gArgs.AddArg("-emergencystaking", "enable emergencystaking", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
+    gArgs.AddArg("-stake", "enable stake", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
+    gArgs.AddArg("-assetkey", "signassets", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
 
     gArgs.AddArg("-litemode", strprintf("Disable all Rain specific functionality (Masternodes, PrivateSend, InstantSend, Governance) (0-1, default: %u)", 0), ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE);
     gArgs.AddArg("-sporkaddr=<rainaddress>", "Override spork address. Only useful for regtest and devnet. Using this on mainnet or testnet will ban you.", ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE);
     gArgs.AddArg("-minsporkkeys=<n>", "Overrides minimum spork signers to change spork value. Only useful for regtest and devnet. Using this on mainnet or testnet will ban you.", ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE);
 
     gArgs.AddArg("-masternodeblsprivkey=<hex>", "Set the masternode BLS private key and enable the client to act as a masternode", ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE);
-
-#ifdef ENABLE_WALLET
-    gArgs.AddArg("-enableprivatesend", strprintf("Enable use of PrivateSend for funds stored in this wallet (0-1, default: %u)", 0), ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE);
-    gArgs.AddArg("-privatesendautostart", strprintf("Start PrivateSend automatically (0-1, default: %u)", DEFAULT_PRIVATESEND_AUTOSTART), ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE);
-    gArgs.AddArg("-privatesendmultisession", strprintf("Enable multiple PrivateSend mixing sessions per block, experimental (0-1, default: %u)", DEFAULT_PRIVATESEND_MULTISESSION), ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE);
-    gArgs.AddArg("-privatesendsessions=<n>", strprintf("Use N separate masternodes in parallel to mix funds (%u-%u, default: %u)", MIN_PRIVATESEND_SESSIONS, MAX_PRIVATESEND_SESSIONS, DEFAULT_PRIVATESEND_SESSIONS), ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE);
-    gArgs.AddArg("-privatesendrounds=<n>", strprintf("Use N separate masternodes for each denominated input to mix funds (%u-%u, default: %u)", MIN_PRIVATESEND_ROUNDS, MAX_PRIVATESEND_ROUNDS, DEFAULT_PRIVATESEND_ROUNDS), ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE);
-    gArgs.AddArg("-privatesendamount=<n>", strprintf("Target PrivateSend balance (%u-%u, default: %u)", MIN_PRIVATESEND_AMOUNT, MAX_PRIVATESEND_AMOUNT, DEFAULT_PRIVATESEND_AMOUNT), ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE);
-    gArgs.AddArg("-privatesenddenoms=<n>", strprintf("Create up to N inputs of each denominated amount (%u-%u, default: %u)", MIN_PRIVATESEND_DENOMS, MAX_PRIVATESEND_DENOMS, DEFAULT_PRIVATESEND_DENOMS), ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE);
-#endif // ENABLE_WALLET
-
-    gArgs.AddArg("-instantsendnotify=<cmd>", "Execute command when a wallet InstantSend transaction is successfully locked (%s in cmd is replaced by TxID)", ArgsManager::ALLOW_ANY, OptionsCategory::MASTERNODE );
 
     gArgs.AddArg("-rest", strprintf("Accept public REST requests (default: %u)", DEFAULT_REST_ENABLE), ArgsManager::ALLOW_ANY, OptionsCategory::RPC);
     gArgs.AddArg("-rpcallowip=<ip>", "Allow JSON-RPC connections from specified source. Valid for <ip> are a single IP (e.g. 1.2.3.4), a network/netmask (e.g. 1.2.3.4/255.255.255.0) or a network/CIDR (e.g. 1.2.3.4/24). This option can be specified multiple times", ArgsManager::ALLOW_ANY, OptionsCategory::RPC);
@@ -671,12 +643,9 @@ std::string LicenseInfo()
 
     return CopyrightHolders(strprintf(_("Copyright (C) %i-%i").translated, 2009, COPYRIGHT_YEAR) + " ") + "\n" +
            "\n" +
-           strprintf(_("Please contribute if you find %s useful. "
-                       "Visit %s for further information about the software.").translated,
-               "Rain", URL_WEBSITE) +
+           strprintf(_("Please contribute if you find %s useful. Visit %s for further information about the software.").translated,  "Rain", URL_WEBSITE) +
            "\n" +
-           strprintf(_("The source code is available from %s.").translated,
-               URL_SOURCE_CODE) +
+           strprintf(_("The source code is available from %s.").translated, URL_SOURCE_CODE) +
            "\n" +
            "\n" +
            _("This is experimental software.").translated + "\n" +
@@ -862,7 +831,12 @@ static void ThreadImport(std::vector<fs::path> vImportFiles)
 
     if (fMasternodeMode) {
         assert(activeMasternodeManager);
-        activeMasternodeManager->Init();
+        const CBlockIndex* pindexTip;
+        {
+            LOCK(cs_main);
+            pindexTip = ::ChainActive().Tip();
+        }
+        activeMasternodeManager->Init(pindexTip);
     }
 
 #ifdef ENABLE_WALLET
@@ -932,23 +906,6 @@ void InitParameterInteraction()
             LogPrintf("%s: parameter interaction: -whitebind set -> setting -listen=1\n", __func__);
     }
 
-    if (gArgs.IsArgSet("-masternodeblsprivkey")) {
-        // masternodes MUST accept connections from outside
-        gArgs.ForceSetArg("-listen", "1");
-        LogPrintf("%s: parameter interaction: -masternodeblsprivkey=... -> setting -listen=1\n", __func__);
-#ifdef ENABLE_WALLET
-        // masternode should not have wallet enabled
-        gArgs.ForceSetArg("-disablewallet", "1");
-        LogPrintf("%s: parameter interaction: -masternodeblsprivkey=... -> setting -disablewallet=1\n", __func__);
-#endif // ENABLE_WALLET
-        if (gArgs.GetArg("-maxconnections", DEFAULT_MAX_PEER_CONNECTIONS) < DEFAULT_MAX_PEER_CONNECTIONS) {
-            // masternodes MUST be able to handle at least DEFAULT_MAX_PEER_CONNECTIONS connections
-            gArgs.ForceSetArg("-maxconnections", itostr(DEFAULT_MAX_PEER_CONNECTIONS));
-            LogPrintf("%s: parameter interaction: -masternodeblsprivkey=... -> setting -maxconnections=%d instead of specified -maxconnections=%d\n",
-                    __func__, DEFAULT_MAX_PEER_CONNECTIONS, gArgs.GetArg("-maxconnections", DEFAULT_MAX_PEER_CONNECTIONS));
-        }
-    }
-
     if (gArgs.IsArgSet("-connect")) {
         // when only connecting to trusted nodes, do not seed via DNS, or listen by default
         if (gArgs.SoftSetBoolArg("-dnsseed", false))
@@ -997,18 +954,6 @@ void InitParameterInteraction()
         if (gArgs.SoftSetBoolArg("-whitelistrelay", true))
             LogPrintf("%s: parameter interaction: -whitelistforcerelay=1 -> setting -whitelistrelay=1\n", __func__);
     }
-
-    // Make sure additional indexes are recalculated correctly in VerifyDB
-    // (we must reconnect blocks whenever we disconnect them for these indexes to work)
-    bool fAdditionalIndexes =
-        gArgs.GetBoolArg("-addressindex", DEFAULT_ADDRESSINDEX) ||
-        gArgs.GetBoolArg("-spentindex", DEFAULT_SPENTINDEX) ||
-        gArgs.GetBoolArg("-timestampindex", DEFAULT_TIMESTAMPINDEX);
-
-    if (fAdditionalIndexes && gArgs.GetArg("-checklevel", DEFAULT_CHECKLEVEL) < 4) {
-        gArgs.ForceSetArg("-checklevel", "4");
-        LogPrintf("%s: parameter interaction: additional indexes -> setting -checklevel=4\n", __func__);
-    }
 }
 
 /**
@@ -1044,7 +989,7 @@ int nUserMaxConnections;
 int nFD;
 ServiceFlags nLocalServices = ServiceFlags(NODE_NETWORK | NODE_NETWORK_LIMITED);
 int64_t peer_connect_timeout;
-std::vector<BlockFilterType> g_enabled_filter_types;
+std::set<BlockFilterType> g_enabled_filter_types;
 
 } // namespace
 
@@ -1132,13 +1077,12 @@ bool AppInitParameterInteraction()
         g_enabled_filter_types = AllBlockFilterTypes();
     } else if (blockfilterindex_value != "0") {
         const std::vector<std::string> names = gArgs.GetArgs("-blockfilterindex");
-        g_enabled_filter_types.reserve(names.size());
         for (const auto& name : names) {
             BlockFilterType filter_type;
             if (!BlockFilterTypeByName(name, filter_type)) {
                 return InitError(strprintf(_("Unknown -blockfilterindex value %s.").translated, name));
             }
-            g_enabled_filter_types.push_back(filter_type);
+            g_enabled_filter_types.insert(filter_type);
         }
     }
 
@@ -1241,7 +1185,7 @@ bool AppInitParameterInteraction()
         CAmount n = 0;
         if (!ParseMoney(gArgs.GetArg("-incrementalrelayfee", ""), n))
             return InitError(AmountErrMsg("incrementalrelayfee", gArgs.GetArg("-incrementalrelayfee", "")));
-        incrementalRelayFee = CFeeRate(n);
+        incrementalRelayFee = CFeeRate(populateMap(n));
     }
 
     // -par=0 means autodetect, but nScriptCheckThreads==0 means no concurrency
@@ -1287,7 +1231,7 @@ bool AppInitParameterInteraction()
             return InitError(AmountErrMsg("minrelaytxfee", gArgs.GetArg("-minrelaytxfee", "")));
         }
         // High fee check is done afterward in WalletParameterInteraction()
-        ::minRelayTxFee = CFeeRate(n);
+        ::minRelayTxFee = CFeeRate(populateMap(n));
     } else if (incrementalRelayFee > ::minRelayTxFee) {
         // Allow only setting incrementalRelayFee to control both
         ::minRelayTxFee = incrementalRelayFee;
@@ -1310,7 +1254,7 @@ bool AppInitParameterInteraction()
         CAmount n = 0;
         if (!ParseMoney(gArgs.GetArg("-dustrelayfee", ""), n))
             return InitError(AmountErrMsg("dustrelayfee", gArgs.GetArg("-dustrelayfee", "")));
-        dustRelayFee = CFeeRate(n);
+        dustRelayFee = CFeeRate(populateMap(n));
     }
 
     fRequireStandard = !gArgs.GetBoolArg("-acceptnonstdtxn", !chainparams.RequireStandard());
@@ -1338,6 +1282,35 @@ bool AppInitParameterInteraction()
         return InitError("unknown rpcserialversion requested.");
 
     nMaxTipAge = gArgs.GetArg("-maxtipage", DEFAULT_MAX_TIP_AGE);
+
+    if (gArgs.IsArgSet("-masternode")) {
+        InitWarning("-masternode option is deprecated and ignored, specifying -masternodeblsprivkey is enough to start this node as a masternode.");
+    }
+
+    if (gArgs.IsArgSet("-masternodeblsprivkey")) {
+        if (!gArgs.GetBoolArg("-listen", DEFAULT_LISTEN) && Params().RequireRoutableExternalIP()) {
+            return InitError("Masternode must accept connections from outside, set -listen=1");
+        }
+        if (!gArgs.GetBoolArg("-peerbloomfilters", DEFAULT_PEERBLOOMFILTERS)) {
+            return InitError("Masternode must have bloom filters enabled, set -peerbloomfilters=1");
+        }
+        if (gArgs.GetArg("-prune", 0) > 0) {
+            return InitError("Masternode must have no pruning enabled, set -prune=0");
+        }
+        if (gArgs.GetArg("-maxconnections", DEFAULT_MAX_PEER_CONNECTIONS) < DEFAULT_MAX_PEER_CONNECTIONS) {
+            return InitError(strprintf("Masternode must be able to handle at least %d connections, set -maxconnections=%d", DEFAULT_MAX_PEER_CONNECTIONS, DEFAULT_MAX_PEER_CONNECTIONS));
+        }
+        if (gArgs.GetBoolArg("-disablegovernance", false)) {
+            return InitError("You can not disable governance validation on a masternode.");
+        }
+    }
+
+    fDisableGovernance = gArgs.GetBoolArg("-disablegovernance", false);
+    LogPrintf("fDisableGovernance %d\n", fDisableGovernance);
+
+    if (fDisableGovernance) {
+        InitWarning(_("You are starting with governance validation disabled.").translated);
+    }
 
     return true;
 }
@@ -1513,6 +1486,8 @@ bool AppInitMain(InitInterfaces& interfaces)
         }
     }
 
+   // if(!g_wallet_init_interface.InitAutoBackup()) return false;
+
     // ********************************************************* Step 6: network initialization
     // Note that we absolutely cannot open any actual connections
     // until the very end ("start node") as the UTXO/block state
@@ -1641,17 +1616,10 @@ bool AppInitMain(InitInterfaces& interfaces)
         InitWarning(_("You are starting in lite mode, most Rain-specific functionality is disabled.").translated);
     }
 
-    if((!fLiteMode && fTxIndex == false)
-       && chainparams.NetworkIDString() != CBaseChainParams::REGTEST) { // TODO remove this when pruning is fixed. See https://github.com/rainpay/rain/pull/1817 and https://github.com/rainpay/rain/pull/1743
-        return InitError(_("Transaction index can't be disabled in full mode. Either start with -litemode command line switch or enable transaction index.").translated);
-    }
-
-    if (!fLiteMode) {
-        uiInterface.InitMessage(_("Loading sporks cache...").translated);
-        CFlatDB<CSporkManager> flatdb6("sporks.dat", "magicSporkCache");
-        if (!flatdb6.Load(sporkManager)) {
-            return InitError("Failed to load sporks cache from "  + (GetDataDir() / "sporks.dat").string());
-        }
+    uiInterface.InitMessage(_("Loading sporks cache...").translated);
+    CFlatDB<CSporkManager> flatdb6("sporks.dat", "magicSporkCache");
+    if (!flatdb6.Load(sporkManager)) {
+        return InitError("Failed to load sporks cache from "  + (GetDataDir() / "sporks.dat").string());
     }
 
     // ********************************************************* Step 7b: load block chain
@@ -1713,13 +1681,29 @@ bool AppInitMain(InitInterfaces& interfaces)
                 pblocktree.reset();
                 pblocktree.reset(new CBlockTreeDB(nBlockTreeDBCache, false, fReset));
 
-                llmq::DestroyLLMQSystem();
-                delete deterministicMNManager;
-                delete evoDb;
+                passetsdb.reset();
+                passetsdb.reset(new CAssetsDB(nBlockTreeDBCache, false, fReset));
+                delete passetsCache;
+                passetsCache = new CLRUCache<std::string, CDatabasedAssetData>(MAX_CACHE_ASSETS_SIZE);
 
-                evoDb = new CEvoDB(nEvoDbCache, false, fReset || fReindexChainState);
-                deterministicMNManager = new CDeterministicMNManager(*evoDb);
-                llmq::InitLLMQSystem(*evoDb, &scheduler, false, fReset || fReindexChainState);
+                // Read for fAssetIndex to make sure that we only load asset address balances if it if true
+                //pblocktree->ReadFlag("assetindex", fAssetIndex);
+                // Need to load assets before we verify the database
+                if (!passetsdb->LoadAssets()) {
+                    strLoadError = _("Failed to load Assets Database").translated;
+                    break;
+                }
+
+                LogPrintf("Loaded Assets from database without error\nCache of assets size: %d\n", passetsCache->Size());
+
+                llmq::DestroyLLMQSystem();
+                // Same logic as above with pblocktree
+                evoDb.reset();
+                evoDb.reset(new CEvoDB(nEvoDbCache, false, fReset || fReindexChainState));
+                deterministicMNManager.reset();
+                deterministicMNManager.reset(new CDeterministicMNManager(*evoDb));
+
+                llmq::InitLLMQSystem(*evoDb, false, fReset || fReindexChainState);
 
                 if (fReset) {
                     pblocktree->WriteReindexing(true);
@@ -1744,24 +1728,6 @@ bool AppInitMain(InitInterfaces& interfaces)
                 // (we're likely using a testnet datadir, or the other way around).
                 if (!mapBlockIndex.empty() && !LookupBlockIndex(chainparams.GetConsensus().hashGenesisBlock)) {
                     return InitError(_("Incorrect or no genesis block found. Wrong datadir for network?").translated);
-                }
-
-                // Check for changed -addressindex state
-                if (fAddressIndex != gArgs.GetBoolArg("-addressindex", DEFAULT_ADDRESSINDEX)) {
-                    strLoadError = _("You need to rebuild the database using -reindex to change -addressindex").translated;
-                    break;
-                }
-
-                // Check for changed -timestampindex state
-                if (fTimestampIndex != gArgs.GetBoolArg("-timestampindex", DEFAULT_TIMESTAMPINDEX)) {
-                    strLoadError = _("You need to rebuild the database using -reindex to change -timestampindex").translated;
-                    break;
-                }
-
-                // Check for changed -spentindex state
-                if (fSpentIndex != gArgs.GetBoolArg("-spentindex", DEFAULT_SPENTINDEX)) {
-                    strLoadError = _("You need to rebuild the database using -reindex to change -spentindex").translated;
-                    break;
                 }
 
                 // Check for changed -prune state.  What we are concerned about is a user who has pruned blocks
@@ -1802,6 +1768,12 @@ bool AppInitMain(InitInterfaces& interfaces)
                 // The on-disk coinsdb is now in a good state, create the cache
                 pcoinsTip.reset(new CCoinsViewCache(pcoinscatcher.get()));
 
+                // flush evodb
+                if (!evoDb->CommitRootTransaction()) {
+                    strLoadError = _("Failed to commit EvoDB").translated;
+                    break;
+                }
+
                 is_coinsview_empty = fReset || fReindexChainState || pcoinsTip->GetBestBlock().IsNull();
                 if (!is_coinsview_empty) {
                     // LoadChainTip sets ::ChainActive() based on pcoinsTip's best block
@@ -1828,7 +1800,10 @@ bool AppInitMain(InitInterfaces& interfaces)
                 }
             }
 
-                deterministicMNManager->UpgradeDBIfNeeded();
+                if (!deterministicMNManager->UpgradeDBIfNeeded()) {
+                    strLoadError = _("Error upgrading evo database").translated;
+                    break;
+                }
 
             try {
                 LOCK(cs_main);
@@ -1930,12 +1905,9 @@ bool AppInitMain(InitInterfaces& interfaces)
         }
     }
 
-    if (chainparams.GetConsensus().vDeployments[Consensus::DEPLOYMENT_SEGWIT].nTimeout != 0) {
-        // Only advertise witness capabilities if they have a reasonable start time.
-        // This allows us to have the code merged without a defined softfork, by setting its
-        // end time to 0.
-        // Note that setting NODE_WITNESS is never required: the only downside from not
-        // doing so is that after activation, no upgraded nodes will fetch from you.
+    if (chainparams.GetConsensus().SegwitHeight != std::numeric_limits<int>::max()) {
+        // Advertise witness capabilities.
+        // The option to not set NODE_WITNESS is only used in the tests and should be removed.
         nLocalServices = ServiceFlags(nLocalServices | NODE_WITNESS);
     }
 
@@ -1956,17 +1928,7 @@ bool AppInitMain(InitInterfaces& interfaces)
         LogPrintf("  blsPubKeyOperator: %s\n", keyOperator.GetPublicKey().ToString());
     }
 
-    if(fLiteMode && fMasternodeMode) {
-        return InitError(_("You can not start a masternode in lite mode.").translated);
-    }
-
     if(fMasternodeMode) {
-#ifdef ENABLE_WALLET
-
-        if (!GetWallets().empty()) {
-            return InitError(_("You can not start a masternode with wallet enabled.").translated);
-        }
-#endif //ENABLE_WALLET
         // Create and register activeMasternodeManager, will init later in ThreadImport
         activeMasternodeManager = new CActiveMasternodeManager();
         RegisterValidationInterface(activeMasternodeManager);
@@ -1981,31 +1943,6 @@ bool AppInitMain(InitInterfaces& interfaces)
 
     // ********************************************************* Step 10b: setup PrivateSend
 
-#ifdef ENABLE_WALLET
-    int nMaxRounds = MAX_PRIVATESEND_ROUNDS;
-
-    if (GetWallets().empty()) {
-        privateSendClient.fEnablePrivateSend = privateSendClient.fPrivateSendRunning = false;
-    } else {
-        privateSendClient.fEnablePrivateSend = gArgs.GetBoolArg("-enableprivatesend", !fLiteMode);
-        privateSendClient.fPrivateSendRunning = GetWallets()[0]->IsLocked() ? false : gArgs.GetBoolArg("-privatesendautostart", DEFAULT_PRIVATESEND_AUTOSTART);
-    }
-    privateSendClient.fPrivateSendMultiSession = gArgs.GetBoolArg("-privatesendmultisession", DEFAULT_PRIVATESEND_MULTISESSION);
-    privateSendClient.nPrivateSendSessions = std::min(std::max((int)gArgs.GetArg("-privatesendsessions", DEFAULT_PRIVATESEND_SESSIONS), MIN_PRIVATESEND_SESSIONS), MAX_PRIVATESEND_SESSIONS);
-    privateSendClient.nPrivateSendRounds = std::min(std::max((int)gArgs.GetArg("-privatesendrounds", DEFAULT_PRIVATESEND_ROUNDS), MIN_PRIVATESEND_ROUNDS), nMaxRounds);
-    privateSendClient.nPrivateSendAmount = std::min(std::max((int)gArgs.GetArg("-privatesendamount", DEFAULT_PRIVATESEND_AMOUNT), MIN_PRIVATESEND_AMOUNT), MAX_PRIVATESEND_AMOUNT);
-    privateSendClient.nPrivateSendDenoms = std::min(std::max((int)gArgs.GetArg("-privatesenddenoms", DEFAULT_PRIVATESEND_DENOMS), MIN_PRIVATESEND_DENOMS), MAX_PRIVATESEND_DENOMS);
-
-    if (privateSendClient.fEnablePrivateSend) {
-        LogPrintf("PrivateSend: autostart=%d, multisession=%d, "
-            "sessions=%d, rounds=%d, amount=%d, denoms=%d\n",
-            privateSendClient.fPrivateSendRunning, privateSendClient.fPrivateSendMultiSession,
-            privateSendClient.nPrivateSendSessions, privateSendClient.nPrivateSendRounds,
-            privateSendClient.nPrivateSendAmount, privateSendClient.nPrivateSendDenoms);
-    }
-#endif // ENABLE_WALLET
-
-    CPrivateSend::InitStandardDenominations();
 
     // ********************************************************* Step 10b: Load cache data
 
@@ -2039,7 +1976,7 @@ bool AppInitMain(InitInterfaces& interfaces)
     strDBName = "governance.dat";
     uiInterface.InitMessage(_("Loading governance cache...").translated);
     CFlatDB<CGovernanceManager> flatdb3(strDBName, "magicGovernanceCache");
-    if (fLoadCacheFiles) {
+    if (fLoadCacheFiles && !fDisableGovernance) {
         if(!flatdb3.Load(governance)) {
             return InitError(("Failed to load governance cache from") + (pathDB / strDBName).string());
         }
@@ -2067,21 +2004,15 @@ bool AppInitMain(InitInterfaces& interfaces)
 
     // ********************************************************* Step 10c: schedule Rain-specific tasks
 
-    if (!fLiteMode) {
-        scheduler.scheduleEvery(boost::bind(&CNetFulfilledRequestManager::DoMaintenance, boost::ref(netfulfilledman)), 60 * 1000);
-        scheduler.scheduleEvery(boost::bind(&CMasternodeSync::DoMaintenance, boost::ref(masternodeSync), boost::ref(*g_connman)), 1 * 1000);
+   //scheduler.scheduleEvery([this] { DumpAddresses(); }, DUMP_PEERS_INTERVAL);
+   //    scheduler.scheduleEvery([]{g_banman->DumpBanlist();}, DUMP_BANS_INTERVAL);
+    
+    scheduler.scheduleEvery([] { netfulfilledman.DoMaintenance(); }, std::chrono::milliseconds{60 * 1000});
+    scheduler.scheduleEvery([] { masternodeSync.DoMaintenance(*g_connman); }, std::chrono::milliseconds{6 * 1000});
+    scheduler.scheduleEvery([] { CMasternodeUtils::DoMaintenance(*g_connman); }, std::chrono::milliseconds{6 * 1000});
 
-        scheduler.scheduleEvery(boost::bind(&CGovernanceManager::DoMaintenance, boost::ref(governance), boost::ref(*g_connman)), 60 * 5 * 1000);
-    }
-
-    scheduler.scheduleEvery(boost::bind(&CMasternodeUtils::DoMaintenance, boost::ref(*g_connman)), 1 * 1000);
-
-    if (fMasternodeMode) {
-        scheduler.scheduleEvery(boost::bind(&CPrivateSendServer::DoMaintenance, boost::ref(privateSendServer), boost::ref(*g_connman)), 1 * 1000);
-#ifdef ENABLE_WALLET
-    } else if (privateSendClient.fEnablePrivateSend) {
-        scheduler.scheduleEvery(boost::bind(&CPrivateSendClientManager::DoMaintenance, boost::ref(privateSendClient), boost::ref(*g_connman)), 1 * 1000);
-#endif // ENABLE_WALLET
+    if (!fDisableGovernance) {
+        scheduler.scheduleEvery([] { governance.DoMaintenance(*g_connman); }, std::chrono::milliseconds{60 * 5 * 1000});
     }
 
     llmq::StartLLMQSystem();
@@ -2146,16 +2077,15 @@ bool AppInitMain(InitInterfaces& interfaces)
     }
     LogPrintf("nBestHeight = %d\n", chain_active_height);
 
-    if (gArgs.GetBoolArg("-listenonion", DEFAULT_LISTEN_ONION)){
+    if (gArgs.GetBoolArg("-listenonion", DEFAULT_LISTEN_ONION))
         StartTorControl();
-	}
 
     if (gArgs.GetBoolArg("-spv", DEFAULT_USE_SPV))
-	{
-		// don't download blocks for validating before we have all headers
-		// allow to first request auxiliary blocks for SPV
-		fFetchBlocksWhileFetchingHeaders = false;
-	}
+    {
+        // don't download blocks for validating before we have all headers
+        // allow to first request auxiliary blocks for SPV
+        fFetchBlocksWhileFetchingHeaders = false;
+    }
 
     Discover();
 
@@ -2167,7 +2097,8 @@ bool AppInitMain(InitInterfaces& interfaces)
     CConnman::Options connOptions;
     connOptions.nLocalServices = nLocalServices;
     connOptions.nMaxConnections = nMaxConnections;
-    connOptions.nMaxOutbound = std::min(MAX_OUTBOUND_CONNECTIONS, connOptions.nMaxConnections);
+    connOptions.m_max_outbound_full_relay = std::min(MAX_OUTBOUND_FULL_RELAY_CONNECTIONS, connOptions.nMaxConnections);
+    connOptions.m_max_outbound_block_relay = std::min(MAX_BLOCKS_ONLY_CONNECTIONS, connOptions.nMaxConnections-connOptions.m_max_outbound_full_relay);
     connOptions.nMaxAddnode = MAX_ADDNODE_CONNECTIONS;
     connOptions.nMaxFeeler = 1;
     connOptions.nBestHeight = chain_active_height;
@@ -2218,7 +2149,16 @@ bool AppInitMain(InitInterfaces& interfaces)
     }
 
 #ifdef ENABLE_WALLET
-        GenerateRains(gArgs.GetBoolArg("-gen", false), gArgs.GetArg("-genproclimit", 1) ,NULL);
+    GenerateRains(gArgs.GetBoolArg("-gen", false), gArgs.GetArg("-genproclimit", 1) ,NULL);
+    // Mine proof-of-stake blocks in the background
+/*    if (!gArgs.GetBoolArg("-staking", DEFAULT_STAKE)) {
+        LogPrintf("Staking disabled\n");
+    }
+    else {
+        for (const std::shared_ptr<CWallet>& pwallet : GetWallets()) {
+            threadGroup.create_thread(std::bind(&ThreadStakeMiner, pwallet));
+        }
+    }*/
 #endif
 
     // ********************************************************* Step 13: finished
@@ -2232,9 +2172,11 @@ bool AppInitMain(InitInterfaces& interfaces)
 
     scheduler.scheduleEvery([]{
         g_banman->DumpBanlist();
-    }, DUMP_BANS_INTERVAL * 1000);
+    }, DUMP_BANS_INTERVAL);
 
+    LogPrintf("Setting up services \n");
     SecureMsgStart(gArgs.GetBoolArg("-securemessaging", true), gArgs.GetBoolArg("-smsgscanchain", false));
+    nLocalServices = ServiceFlags(nLocalServices | SMSG_RELAY);
 
     return true;
 }

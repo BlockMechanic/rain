@@ -13,6 +13,7 @@
 #include <QClipboard>
 #include <QMessageBox>
 #include <QMenu>
+#include <QFontDatabase>
 
 MessagePage::MessagePage(const PlatformStyle *_platformStyle, QWidget *parent) :
     QWidget(parent),
@@ -25,6 +26,13 @@ MessagePage::MessagePage(const PlatformStyle *_platformStyle, QWidget *parent) :
 #ifdef Q_OS_MAC // Icons on push buttons are very uncommon on Mac
     ui->deleteButton->setIcon(QIcon());
 #endif
+
+	//int id = QFontDatabase::addApplicationFont(":/fonts/TwitterEmoji");
+	//QString family = QFontDatabase::applicationFontFamilies(id).at(0);
+	//QFont monospace(family);
+	
+	QFont font(":/fonts/TwitterEmoji");
+	ui->tableView->setFont(font);
 
     // Context menu actions
     replyAction           = new QAction(ui->replyButton->text(),           this);
@@ -74,11 +82,9 @@ void MessagePage::setModel(MessageModel *model)
     // Set column widths
     ui->tableView->horizontalHeader()->resizeSection(MessageModel::Type,             100);
     ui->tableView->horizontalHeader()->resizeSection(MessageModel::Label,            100);
-#if QT_VERSION < 0x050000
-    ui->tableView->horizontalHeader()->setResizeMode(MessageModel::Label,            QHeaderView::Stretch);
-#else
+
     ui->tableView->horizontalHeader()->setSectionResizeMode(MessageModel::Label,     QHeaderView::Stretch);
-#endif
+
     ui->tableView->horizontalHeader()->resizeSection(MessageModel::FromAddress,      320);
     ui->tableView->horizontalHeader()->resizeSection(MessageModel::ToAddress,        320);
     ui->tableView->horizontalHeader()->resizeSection(MessageModel::SentDateTime,     170);

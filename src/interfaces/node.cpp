@@ -13,6 +13,7 @@
 #include <interfaces/chain.h>
 #include <interfaces/handler.h>
 #include <interfaces/wallet.h>
+#include <miner.h>
 #include <net.h>
 #include <net_processing.h>
 #include <netaddress.h>
@@ -192,7 +193,11 @@ public:
         }
         return Params().GenesisBlock().GetBlockTime(); // Genesis block's time of current network
     }
-
+    CAmountMap getMoneySupply() override
+    {
+        LOCK(::cs_main);
+        return ::ChainActive().Tip()->nMoneySupply;
+    }
     uint256 getBlockHash(int blockNumber) override
     {
         LOCK(::cs_main);
@@ -206,6 +211,11 @@ public:
         return index ? index->GetBlockTime() : 0;
     }
 
+    int64_t lastCoinStakeSearchTime() override
+    {
+        return nLastCoinStakeSearchTime;
+    }
+    
     double getVerificationProgress() override
     {
         const CBlockIndex* tip;
@@ -226,6 +236,7 @@ public:
         }
     }
     bool getNetworkActive() override { return g_connman && g_connman->GetNetworkActive(); }
+    CAmount getMaxTxFee() override { return COIN / 10; }
     CFeeRate estimateSmartFee(int num_blocks, bool conservative, int* returned_target = nullptr) override
     {
         FeeCalculation fee_calc;
@@ -327,7 +338,13 @@ public:
                     GuessVerificationProgress(Params().TxData(), block));
             }));
     }
-
+    std::unique_ptr<Handler> handleAuxiliaryBlockRequestProgress(AuxiliaryBlockRequestProgress fn) override
+    {
+        return MakeHandler(
+            ::uiInterface.NotifyAuxiliaryBlockRequestProgress_connect([fn](int64_t time, size_t blockssize, size_t blocks, size_t uptosize) {
+                fn(time, blockssize, blocks, uptosize);
+            }));
+    }
     std::unique_ptr<Handler> handleNotifyMasternodeListChanged(NotifyMasternodeListChangedFn fn) override
     {
         return MakeHandler(::uiInterface.NotifyMasternodeListChanged_connect(fn));
@@ -336,8 +353,6 @@ public:
     {
         return MakeHandler(::uiInterface.NotifyAdditionalDataSyncProgressChanged_connect(fn));
     }
-
-
     InitInterfaces m_interfaces;
 };
 

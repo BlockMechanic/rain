@@ -90,26 +90,6 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_success)
     BOOST_CHECK_EQUAL(whichType, TX_NULL_DATA);
     BOOST_CHECK_EQUAL(solutions.size(), 0U);
 
-    // TX_WITNESS_V0_KEYHASH
-    s.clear();
-    s << OP_0 << ToByteVector(pubkeys[0].GetID());
-    BOOST_CHECK(Solver(s, whichType, solutions));
-    BOOST_CHECK_EQUAL(whichType, TX_WITNESS_V0_KEYHASH);
-    BOOST_CHECK_EQUAL(solutions.size(), 1U);
-    BOOST_CHECK(solutions[0] == ToByteVector(pubkeys[0].GetID()));
-
-    // TX_WITNESS_V0_SCRIPTHASH
-    uint256 scriptHash;
-    CSHA256().Write(&redeemScript[0], redeemScript.size())
-        .Finalize(scriptHash.begin());
-
-    s.clear();
-    s << OP_0 << ToByteVector(scriptHash);
-    BOOST_CHECK(Solver(s, whichType, solutions));
-    BOOST_CHECK_EQUAL(whichType, TX_WITNESS_V0_SCRIPTHASH);
-    BOOST_CHECK_EQUAL(solutions.size(), 1U);
-    BOOST_CHECK(solutions[0] == ToByteVector(scriptHash));
-
     // TX_NONSTANDARD
     s.clear();
     s << OP_9 << OP_ADD << OP_11 << OP_EQUAL;
@@ -169,10 +149,6 @@ BOOST_AUTO_TEST_CASE(script_standard_Solver_failure)
     s << OP_RETURN << std::vector<unsigned char>({75}) << OP_ADD;
     BOOST_CHECK(!Solver(s, whichType, solutions));
 
-    // TX_WITNESS with incorrect program size
-    s.clear();
-    s << OP_0 << std::vector<unsigned char>(19, 0x01);
-    BOOST_CHECK(!Solver(s, whichType, solutions));
 }
 
 BOOST_AUTO_TEST_CASE(script_standard_ExtractDestination)
@@ -217,31 +193,6 @@ BOOST_AUTO_TEST_CASE(script_standard_ExtractDestination)
     s << OP_RETURN << std::vector<unsigned char>({75});
     BOOST_CHECK(!ExtractDestination(s, address));
 
-    // TX_WITNESS_V0_KEYHASH
-    s.clear();
-    s << OP_0 << ToByteVector(pubkey.GetID());
-    BOOST_CHECK(ExtractDestination(s, address));
-    WitnessV0KeyHash keyhash;
-    CHash160().Write(pubkey.begin(), pubkey.size()).Finalize(keyhash.begin());
-    BOOST_CHECK(boost::get<WitnessV0KeyHash>(&address) && *boost::get<WitnessV0KeyHash>(&address) == keyhash);
-
-    // TX_WITNESS_V0_SCRIPTHASH
-    s.clear();
-    WitnessV0ScriptHash scripthash;
-    CSHA256().Write(redeemScript.data(), redeemScript.size()).Finalize(scripthash.begin());
-    s << OP_0 << ToByteVector(scripthash);
-    BOOST_CHECK(ExtractDestination(s, address));
-    BOOST_CHECK(boost::get<WitnessV0ScriptHash>(&address) && *boost::get<WitnessV0ScriptHash>(&address) == scripthash);
-
-    // TX_WITNESS with unknown version
-    s.clear();
-    s << OP_1 << ToByteVector(pubkey);
-    BOOST_CHECK(ExtractDestination(s, address));
-    WitnessUnknown unk;
-    unk.length = 33;
-    unk.version = 1;
-    std::copy(pubkey.begin(), pubkey.end(), unk.program);
-    BOOST_CHECK(boost::get<WitnessUnknown>(&address) && *boost::get<WitnessUnknown>(&address) == unk);
 }
 
 BOOST_AUTO_TEST_CASE(script_standard_ExtractDestinations)
@@ -355,31 +306,6 @@ BOOST_AUTO_TEST_CASE(script_standard_GetScriptFor_)
     result = GetScriptForMultisig(2, std::vector<CPubKey>(pubkeys, pubkeys + 3));
     BOOST_CHECK(result == expected);
 
-    // GetScriptForWitness
-    CScript witnessScript;
-
-    witnessScript << ToByteVector(pubkeys[0]) << OP_CHECKSIG;
-    expected.clear();
-    expected << OP_0 << ToByteVector(pubkeys[0].GetID());
-    result = GetScriptForWitness(witnessScript);
-    BOOST_CHECK(result == expected);
-
-    witnessScript.clear();
-    witnessScript << OP_DUP << OP_HASH160 << ToByteVector(pubkeys[0].GetID()) << OP_EQUALVERIFY << OP_CHECKSIG;
-    result = GetScriptForWitness(witnessScript);
-    BOOST_CHECK(result == expected);
-
-    witnessScript.clear();
-    witnessScript << OP_1 << ToByteVector(pubkeys[0]) << OP_1 << OP_CHECKMULTISIG;
-
-    uint256 scriptHash;
-    CSHA256().Write(&witnessScript[0], witnessScript.size())
-        .Finalize(scriptHash.begin());
-
-    expected.clear();
-    expected << OP_0 << ToByteVector(scriptHash);
-    result = GetScriptForWitness(witnessScript);
-    BOOST_CHECK(result == expected);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

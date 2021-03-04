@@ -29,7 +29,7 @@
 
 
 static inline std::string GetTimeString(int64_t time) {
-    return DateTimeStrFormat("%Y-%m-%d %H:%M:%S", time);
+    return FormatISO8601Date(time);
 }
 
 UniValue smsgenable(const JSONRPCRequest& request) {

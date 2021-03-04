@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,6 +9,7 @@
 #include <qt/qvalidatedlineedit.h>
 #include <qt/walletmodel.h>
 
+#include <primitives/asset.h>
 #include <base58.h>
 #include <chainparams.h>
 #include <interfaces/node.h>
@@ -52,7 +53,12 @@
 #include <QStandardPaths>
 #include <QTextDocument> // for Qt::mightBeRichText
 #include <QThread>
+#include <QPainter>
 #include <QUrlQuery>
+
+#include <QGraphicsDropShadowEffect>
+#include "guiconstants.h"
+#include "platformstyle.h"
 
 #if defined(Q_OS_MAC)
 #pragma GCC diagnostic push
@@ -66,73 +72,75 @@ void ForceActivation();
 
 namespace GUIUtil {
 
-// The theme to set by default if settings are missing or incorrect
-static const QString lightTheme = "Light";
-// The prefix a theme name should have if we want to apply dark colors and styles to it
-static const QString darkThemePrefix = "Dark";
-
-static const std::map<ThemedColor, QColor> themedColors = {
-    { ThemedColor::DEFAULT, QColor(0, 0, 0) },
-    { ThemedColor::UNCONFIRMED, QColor(128, 128, 128) },
-    { ThemedColor::NEGATIVE, QColor(255, 0, 0) },
-    { ThemedColor::BAREADDRESS, QColor(140, 140, 140) },
-    { ThemedColor::TX_STATUS_OPENUNTILDATE, QColor(64, 64, 255) },
-    { ThemedColor::TX_STATUS_OFFLINE, QColor(192, 192, 192) },
-    { ThemedColor::TX_STATUS_DANGER, QColor(200, 100, 100) },
-    { ThemedColor::TX_STATUS_LOCKED, QColor(0, 128, 255) },
-};
-
-static const std::map<ThemedColor, QColor> themedDarkColors = {
-    { ThemedColor::DEFAULT, QColor(170, 170, 170) },
-    { ThemedColor::UNCONFIRMED, QColor(204, 204, 204) },
-    { ThemedColor::NEGATIVE, QColor(255, 69, 0) },
-    { ThemedColor::BAREADDRESS, QColor(140, 140, 140) },
-    { ThemedColor::TX_STATUS_OPENUNTILDATE, QColor(64, 64, 255) },
-    { ThemedColor::TX_STATUS_OFFLINE, QColor(192, 192, 192) },
-    { ThemedColor::TX_STATUS_DANGER, QColor(200, 100, 100) },
-    { ThemedColor::TX_STATUS_LOCKED, QColor(0, 128, 255) },
-};
-
-static const std::map<ThemedStyle, QString> themedStyles = {
-    { ThemedStyle::TS_INVALID, "background:#FF8080;" },
-    { ThemedStyle::TS_ERROR, "color:red;" },
-    { ThemedStyle::TS_SUCCESS, "color:green;" },
-    { ThemedStyle::TS_COMMAND, "color:#006060;" },
-    { ThemedStyle::TS_PRIMARY, "color:black;" },
-    { ThemedStyle::TS_SECONDARY, "color:#808080;" },
-};
-
-static const std::map<ThemedStyle, QString> themedDarkStyles = {
-    { ThemedStyle::TS_INVALID, "background:#ff4500;" },
-    { ThemedStyle::TS_ERROR, "color:#ff4500;" },
-    { ThemedStyle::TS_SUCCESS, "color:green;" },
-    { ThemedStyle::TS_COMMAND, "color:#0cc;" },
-    { ThemedStyle::TS_PRIMARY, "color:#ccc;" },
-    { ThemedStyle::TS_SECONDARY, "color:#aaa;" },
-};
-
-QColor getThemedQColor(ThemedColor color)
-{
-    QString theme = QSettings().value("theme", "").toString();
-    return theme.startsWith(darkThemePrefix) ? themedDarkColors.at(color) : themedColors.at(color);
-}
-
-QString getThemedStyleQString(ThemedStyle style)
-{
-    QString theme = QSettings().value("theme", "").toString();
-    return theme.startsWith(darkThemePrefix) ? themedDarkStyles.at(style) : themedStyles.at(style);
-}
-
 QString defaultTheme()
 {
     QSettings settings;
     QString theme = settings.value("theme", "").toString();
-    if (theme == "") theme = "darkorange";
+    if (theme == "") theme = "rain";
     theme.prepend(":css/");	
 	
     return theme;
 }
 
+QFont getSubLabelFont()
+{
+    QFont labelSubFont;
+#if !defined(Q_OS_MAC)
+    labelSubFont.setFamily("Open Sans");
+#endif
+    labelSubFont.setWeight(QFont::Weight::ExtraLight);
+    labelSubFont.setLetterSpacing(QFont::SpacingType::AbsoluteSpacing, -0.6);
+    labelSubFont.setPixelSize(14);
+    return labelSubFont;
+}
+
+QFont getSubLabelFontBolded()
+{
+    QFont labelSubFont;
+#if !defined(Q_OS_MAC)
+    labelSubFont.setFamily("Open Sans");
+#endif
+    labelSubFont.setWeight(QFont::Weight::Bold);
+    labelSubFont.setLetterSpacing(QFont::SpacingType::AbsoluteSpacing, -0.6);
+    labelSubFont.setPixelSize(14);
+    return labelSubFont;
+}
+
+QFont getTopLabelFontBolded()
+{
+    QFont labelTopFont;
+#if !defined(Q_OS_MAC)
+    labelTopFont.setFamily("Open Sans");
+#endif
+    labelTopFont.setWeight(QFont::Weight::Bold);
+    labelTopFont.setLetterSpacing(QFont::SpacingType::AbsoluteSpacing, -0.6);
+    labelTopFont.setPixelSize(18);
+    return labelTopFont;
+}
+
+QFont getTopLabelFont(int weight, int pxsize)
+{
+    QFont labelTopFont;
+#if !defined(Q_OS_MAC)
+    labelTopFont.setFamily("Open Sans");
+#endif
+    labelTopFont.setWeight(weight);
+    labelTopFont.setLetterSpacing(QFont::SpacingType::AbsoluteSpacing, -0.6);
+    labelTopFont.setPixelSize(pxsize);
+    return labelTopFont;
+}
+
+QFont getTopLabelFont()
+{
+    QFont labelTopFont;
+#if !defined(Q_OS_MAC)
+    labelTopFont.setFamily("Open Sans");
+#endif
+    labelTopFont.setWeight(QFont::Weight::Light);
+    labelTopFont.setLetterSpacing(QFont::SpacingType::AbsoluteSpacing, -0.6);
+    labelTopFont.setPixelSize(18);
+    return labelTopFont;
+}
 
 QString dateTimeStr(const QDateTime &date)
 {
@@ -167,9 +175,40 @@ static std::string DummyAddress(const CChainParams &params)
     return "";
 }
 
+/**
+ * Parse a string into a number of base monetary units and
+ * return validity.
+ * @note Must return 0 if !valid.
+ */
+CAmount parseValue(const QString& text, int displayUnit, bool* valid_out)
+{
+    CAmount val = 0;
+    bool valid = RainUnits::parse(displayUnit, text, &val);
+    if (valid) {
+        if (val < 0 || val > RainUnits::maxMoney())
+            valid = false;
+    }
+    if (valid_out)
+        *valid_out = valid;
+    return valid ? val : 0;
+}
+
+QString formatBalance(CAmount amount, int nDisplayUnit){
+    return (amount == 0) ? ("0.00 " + RainUnits::longName(nDisplayUnit)) : RainUnits::floorHtmlWithUnit(nDisplayUnit, amount, false, RainUnits::separatorAlways, true);
+}
+
+bool requestUnlock(WalletModel* walletModel, bool relock){
+    // Request unlock if wallet was locked or unlocked for mixing:
+    WalletModel::EncryptionStatus encStatus = walletModel->getEncryptionStatus();
+    if (encStatus == walletModel->Locked) {
+        return WalletModel::UnlockContext(walletModel->requestUnlock()).isValid();
+    }
+    return true;
+}
+
 void setupAddressWidget(QValidatedLineEdit *widget, QWidget *parent)
 {
-    parent->setFocusProxy(widget);
+/*    parent->setFocusProxy(widget);
 
     widget->setFont(fixedPitchFont());
     // We don't want translators to use own addresses in translations
@@ -177,7 +216,22 @@ void setupAddressWidget(QValidatedLineEdit *widget, QWidget *parent)
     widget->setPlaceholderText(QObject::tr("Enter a Rain address (e.g. %1)").arg(
         QString::fromStdString(DummyAddress(Params()))));
     widget->setValidator(new RainAddressEntryValidator(parent));
-    widget->setCheckValidator(new RainAddressCheckValidator(parent));
+    widget->setCheckValidator(new RainAddressCheckValidator(parent));*/
+}
+
+void setupAmountWidget(QLineEdit* widget, QWidget* parent)
+{
+    QRegularExpression rx("^(\\d{0,8})((\\.|,)\\d{1,8})?$");
+    QValidator *validator = new QRegularExpressionValidator(rx, widget);
+    widget->setValidator(validator);
+}
+
+void updateWidgetTextAndCursorPosition(QLineEdit* widget, const QString& str)
+{
+    const int cpos = widget->cursorPosition();
+    widget->setText(str);
+    if (cpos > str.size()) return;
+    widget->setCursorPosition(cpos);
 }
 
 bool parseRainURI(const QUrl &uri, SendCoinsRecipient *out)
@@ -219,7 +273,7 @@ bool parseRainURI(const QUrl &uri, SendCoinsRecipient *out)
         {
             if(!i->second.isEmpty())
             {
-                if(!RainUnits::parse(RainUnits::RAIN, i->second, &rv.amount))
+                if(!RainUnits::parse(RainUnits::COIN, i->second, &rv.amount))
                 {
                     return false;
                 }
@@ -252,7 +306,7 @@ QString formatRainURI(const SendCoinsRecipient &info)
 
     if (info.amount)
     {
-        ret += QString("?amount=%1").arg(RainUnits::format(RainUnits::RAIN, info.amount, false, RainUnits::separatorNever));
+        ret += QString("?amount=%1").arg(RainUnits::format(RainUnits::COIN, info.amount, false, RainUnits::separatorNever));
         paramCount++;
     }
 
@@ -273,11 +327,102 @@ QString formatRainURI(const SendCoinsRecipient &info)
     return ret;
 }
 
+bool parseRainURI(const QUrl &uri, SendAssetsRecipient *out)
+{
+    // return if URI is not valid or is no rain: URI
+    if(!uri.isValid() || uri.scheme() != QString("rain"))
+        return false;
+
+    SendAssetsRecipient rv;
+    rv.address = uri.path();
+    // Trim any following forward slash which may have been added by the OS
+    if (rv.address.endsWith("/")) {
+        rv.address.truncate(rv.address.length() - 1);
+    }
+    rv.asset_amount = 0;
+
+    QUrlQuery uriQuery(uri);
+    QList<QPair<QString, QString> > items = uriQuery.queryItems();
+    for (QList<QPair<QString, QString> >::iterator i = items.begin(); i != items.end(); i++)
+    {
+        bool fShouldReturnFalse = false;
+        if (i->first.startsWith("req-"))
+        {
+            i->first.remove(0, 4);
+            fShouldReturnFalse = true;
+        }
+
+        if (i->first == "label")
+        {
+            rv.label = i->second;
+            fShouldReturnFalse = false;
+        }
+        if (i->first == "message")
+        {
+            rv.message = i->second;
+            fShouldReturnFalse = false;
+        }
+        else if (i->first == "amount")
+        {
+            if(!i->second.isEmpty())
+            {
+                if(!RainUnits::parse(RainUnits::COIN, i->second, &rv.asset_amount))
+                {
+                    return false;
+                }
+            }
+            fShouldReturnFalse = false;
+        }
+
+        if (fShouldReturnFalse)
+            return false;
+    }
+    if(out)
+    {
+        *out = rv;
+    }
+    return true;
+}
+
+
+bool parseRainURI(QString uri, SendAssetsRecipient *out)
+{
+    QUrl uriInstance(uri);
+    return parseRainURI(uriInstance, out);
+}
+
+QString formatRainURI(const SendAssetsRecipient &info)
+{
+    QString ret = info.address;
+    int paramCount = 0;
+
+    if (info.asset_amount)
+    {
+        ret += QString("?amount=%1").arg(RainUnits::format(RainUnits::COIN, info.asset_amount, false, RainUnits::separatorNever));
+        paramCount++;
+    }
+
+    if (!info.label.isEmpty())
+    {
+        QString lbl(QUrl::toPercentEncoding(info.label));
+        ret += QString("%1label=%2").arg(paramCount == 0 ? "?" : "&").arg(lbl);
+        paramCount++;
+    }
+
+
+        QString msg(QUrl::toPercentEncoding(QString(info.asset.assetID.ToString().c_str())));
+        ret += QString("%1message=%2").arg(paramCount == 0 ? "?" : "&").arg(msg);
+        paramCount++;
+
+
+    return ret;
+}
+
 bool isDust(interfaces::Node& node, const QString& address, const CAmount& amount)
 {
     CTxDestination dest = DecodeDestination(address.toStdString());
     CScript script = GetScriptForDestination(dest);
-    CTxOut txOut(amount, script);
+    CTxOut txOut(CAsset(), amount, script);
     return IsDust(txOut, node.getDustRelayFee());
 }
 
@@ -496,6 +641,36 @@ bool openRainConf()
     return res;
 }
 
+bool openFile(fs::path path, bool isTextFile)
+{
+    bool ret = false;
+    if (fs::exists(path)) {
+        ret = QDesktopServices::openUrl(QUrl::fromLocalFile(boostPathToQString(path)));
+#ifdef Q_OS_MAC
+        // Workaround for macOS-specific behavior; see btc@15409.
+        if (isTextFile && !ret) {
+            ret = QProcess::startDetached("/usr/bin/open", QStringList{"-t", boostPathToQString(path)});
+        }
+#endif
+    }
+    return ret;
+}
+
+bool openConfigfile()
+{
+    return openFile(GetConfigFile(gArgs.GetArg("-conf", RAIN_CONF_FILENAME)), true);
+}
+
+bool openMNConfigfile()
+{
+    return openFile(GetMasternodeConfigFile(), true);
+}
+
+bool showBackups()
+{
+    return openFile(GetDataDir() / "backups", false);
+}
+
 ToolTipToRichTextFilter::ToolTipToRichTextFilter(int _size_threshold, QObject *parent) :
     QObject(parent),
     size_threshold(_size_threshold)
@@ -519,120 +694,6 @@ bool ToolTipToRichTextFilter::eventFilter(QObject *obj, QEvent *evt)
         }
     }
     return QObject::eventFilter(obj, evt);
-}
-
-void TableViewLastColumnResizingFixer::connectViewHeadersSignals()
-{
-    connect(tableView->horizontalHeader(), &QHeaderView::sectionResized, this, &TableViewLastColumnResizingFixer::on_sectionResized);
-    connect(tableView->horizontalHeader(), &QHeaderView::geometriesChanged, this, &TableViewLastColumnResizingFixer::on_geometriesChanged);
-}
-
-// We need to disconnect these while handling the resize events, otherwise we can enter infinite loops.
-void TableViewLastColumnResizingFixer::disconnectViewHeadersSignals()
-{
-    disconnect(tableView->horizontalHeader(), &QHeaderView::sectionResized, this, &TableViewLastColumnResizingFixer::on_sectionResized);
-    disconnect(tableView->horizontalHeader(), &QHeaderView::geometriesChanged, this, &TableViewLastColumnResizingFixer::on_geometriesChanged);
-}
-
-// Setup the resize mode, handles compatibility for Qt5 and below as the method signatures changed.
-// Refactored here for readability.
-void TableViewLastColumnResizingFixer::setViewHeaderResizeMode(int logicalIndex, QHeaderView::ResizeMode resizeMode)
-{
-    tableView->horizontalHeader()->setSectionResizeMode(logicalIndex, resizeMode);
-}
-
-void TableViewLastColumnResizingFixer::resizeColumn(int nColumnIndex, int width)
-{
-    tableView->setColumnWidth(nColumnIndex, width);
-    tableView->horizontalHeader()->resizeSection(nColumnIndex, width);
-}
-
-int TableViewLastColumnResizingFixer::getColumnsWidth()
-{
-    int nColumnsWidthSum = 0;
-    for (int i = 0; i < columnCount; i++)
-    {
-        nColumnsWidthSum += tableView->horizontalHeader()->sectionSize(i);
-    }
-    return nColumnsWidthSum;
-}
-
-int TableViewLastColumnResizingFixer::getAvailableWidthForColumn(int column)
-{
-    int nResult = lastColumnMinimumWidth;
-    int nTableWidth = tableView->horizontalHeader()->width();
-
-    if (nTableWidth > 0)
-    {
-        int nOtherColsWidth = getColumnsWidth() - tableView->horizontalHeader()->sectionSize(column);
-        nResult = std::max(nResult, nTableWidth - nOtherColsWidth);
-    }
-
-    return nResult;
-}
-
-// Make sure we don't make the columns wider than the table's viewport width.
-void TableViewLastColumnResizingFixer::adjustTableColumnsWidth()
-{
-    disconnectViewHeadersSignals();
-    resizeColumn(lastColumnIndex, getAvailableWidthForColumn(lastColumnIndex));
-    connectViewHeadersSignals();
-
-    int nTableWidth = tableView->horizontalHeader()->width();
-    int nColsWidth = getColumnsWidth();
-    if (nColsWidth > nTableWidth)
-    {
-        resizeColumn(secondToLastColumnIndex,getAvailableWidthForColumn(secondToLastColumnIndex));
-    }
-}
-
-// Make column use all the space available, useful during window resizing.
-void TableViewLastColumnResizingFixer::stretchColumnWidth(int column)
-{
-    disconnectViewHeadersSignals();
-    resizeColumn(column, getAvailableWidthForColumn(column));
-    connectViewHeadersSignals();
-}
-
-// When a section is resized this is a slot-proxy for ajustAmountColumnWidth().
-void TableViewLastColumnResizingFixer::on_sectionResized(int logicalIndex, int oldSize, int newSize)
-{
-    adjustTableColumnsWidth();
-    int remainingWidth = getAvailableWidthForColumn(logicalIndex);
-    if (newSize > remainingWidth)
-    {
-       resizeColumn(logicalIndex, remainingWidth);
-    }
-}
-
-// When the table's geometry is ready, we manually perform the stretch of the "Message" column,
-// as the "Stretch" resize mode does not allow for interactive resizing.
-void TableViewLastColumnResizingFixer::on_geometriesChanged()
-{
-    if ((getColumnsWidth() - this->tableView->horizontalHeader()->width()) != 0)
-    {
-        disconnectViewHeadersSignals();
-        resizeColumn(secondToLastColumnIndex, getAvailableWidthForColumn(secondToLastColumnIndex));
-        connectViewHeadersSignals();
-    }
-}
-
-/**
- * Initializes all internal variables and prepares the
- * the resize modes of the last 2 columns of the table and
- */
-TableViewLastColumnResizingFixer::TableViewLastColumnResizingFixer(QTableView* table, int lastColMinimumWidth, int allColsMinimumWidth, QObject *parent) :
-    QObject(parent),
-    tableView(table),
-    lastColumnMinimumWidth(lastColMinimumWidth),
-    allColumnsMinimumWidth(allColsMinimumWidth)
-{
-    columnCount = tableView->horizontalHeader()->count();
-    lastColumnIndex = columnCount - 1;
-    secondToLastColumnIndex = columnCount - 2;
-    tableView->horizontalHeader()->setMinimumSectionSize(allColumnsMinimumWidth);
-    setViewHeaderResizeMode(secondToLastColumnIndex, QHeaderView::Interactive);
-    setViewHeaderResizeMode(lastColumnIndex, QHeaderView::Interactive);
 }
 
 #ifdef WIN32
@@ -867,27 +928,6 @@ bool SetStartOnSystemStartup(bool fAutoStart) { return false; }
 
 #endif
 
-// Open CSS when configured
-QString loadStyleSheet()
-{
-    QSettings settings;
-    QString theme = settings.value("theme", "").toString();
-
-    QDir themes(":themes");
-    // Make sure settings are pointing to an existent theme
-    if (theme.isEmpty() || !themes.exists(theme)) {
-        theme = defaultTheme();
-        settings.setValue("theme", theme);
-    }
-
-    QFile qFile(":css/" + theme);
-    if (qFile.open(QFile::ReadOnly)) {
-        return QLatin1String(qFile.readAll());
-    }
-
-    return QString();
-}
-
 void setClipboard(const QString& str)
 {
     QApplication::clipboard()->setText(str, QClipboard::Clipboard);
@@ -902,6 +942,68 @@ fs::path qstringToBoostPath(const QString &path)
 QString boostPathToQString(const fs::path &path)
 {
     return QString::fromStdString(path.string());
+}
+
+QString formatAssetAmount(const CAsset& asset, const CAmount& amount, const int rain_unit, RainUnits::SeparatorStyle separators, bool include_asset_name)
+{
+//    if (asset == Params().GetConsensus().subsidy_asset) {
+//        if (include_asset_name) {
+//            return RainUnits::formatWithUnit(rain_unit, amount, false, separators);
+//        } else {
+//            return RainUnits::simplestFormat(rain_unit, amount, false, separators);
+//        }
+//    }
+
+    qlonglong abs = qAbs(amount);
+    qlonglong whole = abs / 100000000;
+    qlonglong fraction = abs % 100000000;
+    QString str = QString("%1").arg(whole);
+    if (amount < 0) {
+        str.insert(0, '-');
+    }
+    if (fraction) {
+        str += QString(".%1").arg(fraction, 8, 10, QLatin1Char('0'));
+    }
+    if (include_asset_name) {
+        str += QString(" ") + QString::fromStdString(asset.getShortName());
+    }
+//    return str;
+    return RainUnits::simplestFormat(rain_unit, amount, 4, false, separators) + QString(" ") + QString::fromStdString(asset.getShortName());
+}
+
+QString formatMultiAssetAmount(const CAmountMap& amountmap, const int rain_unit, RainUnits::SeparatorStyle separators, QString line_separator)
+{
+    QStringList ret;
+    if (rain_unit >= 0) {
+        ret << formatAssetAmount(Params().GetConsensus().subsidy_asset, amountmap.count(Params().GetConsensus().subsidy_asset) ? amountmap.at(Params().GetConsensus().subsidy_asset) : 0, rain_unit, separators);
+        if(amountmap.size()==1)
+        return ret.join(line_separator);
+    }
+    
+    QString rmp = ret.join(line_separator);
+    for (const auto& assetamount : amountmap) {
+        if (assetamount.first == Params().GetConsensus().subsidy_asset) {
+            // Already handled first
+            continue;
+        }
+        if (!assetamount.second) {
+            // Don't include zero-amount assets
+            continue;
+        }
+        ret << formatAssetAmount(assetamount.first, assetamount.second, rain_unit, separators);
+    }
+    QString tmp = ret.join(line_separator);
+
+    return ret.join(line_separator);
+}
+
+bool parseAssetAmount(const CAsset& asset, const QString& text, const int rain_unit, CAmount *val_out)
+{
+    if (asset == Params().GetConsensus().subsidy_asset) {
+        return RainUnits::parse(rain_unit, text, val_out);
+    }
+
+    return RainUnits::parse(RainUnits::COIN, text, val_out);
 }
 
 QString formatDurationStr(int secs)
@@ -928,32 +1030,8 @@ QString formatServicesStr(quint64 mask)
 {
     QStringList strList;
 
-    // Just scan the last 8 bits for now.
-    for (int i = 0; i < 8; i++) {
-        uint64_t check = 1 << i;
-        if (mask & check)
-        {
-            switch (check)
-            {
-            case NODE_NETWORK:
-                strList.append("NETWORK");
-                break;
-            case NODE_GETUTXO:
-                strList.append("GETUTXO");
-                break;
-            case NODE_BLOOM:
-                strList.append("BLOOM");
-                break;
-            case NODE_WITNESS:
-                strList.append("WITNESS");
-                break;
-            case NODE_XTHIN:
-                strList.append("XTHIN");
-                break;
-            default:
-                strList.append(QString("%1[%2]").arg("UNKNOWN").arg(check));
-            }
-        }
+    for (const auto& flag : serviceFlagsToStr(mask)) {
+        strList.append(QString::fromStdString(flag));
     }
 
     if (strList.size())
@@ -1067,11 +1145,37 @@ void PolishProgressDialog(QProgressDialog* dialog)
 
 int TextWidth(const QFontMetrics& fm, const QString& text)
 {
-#if (QT_VERSION >= QT_VERSION_CHECK(5, 11, 0))
-    return fm.horizontalAdvance(text);
-#else
+//#if (QT_VERSION >= QT_VERSION_CHECK(5, 11, 0))
+//    return fm.horizontalAdvance(text);
+//#else
     return fm.width(text);
-#endif
+//#endif
+}
+
+void concatenate(QPainter* painter, QString& catString, int static_width, int left_side, int right_size)
+{
+    // Starting length of the name
+    int start_name_length = catString.size();
+  	int dots_width = painter->fontMetrics().width("...");
+
+    // Add the dots width to the amount width
+    static_width += dots_width;
+
+    // Start concatenation loop, end loop if name is at three characters
+    while (catString.size() > 3)
+    {
+       	int text_width = painter->fontMetrics().width(catString);
+        // Check to see if the text width is going to overlap the amount width if it doesn't break the loop
+        if (left_side + text_width < right_size - static_width)
+            break;
+
+        // substring the name minus the last character of it and continue the loop
+        catString = catString.left(catString.size() - 1);
+    }
+
+    // Add the ... if the name was concatenated
+    if (catString.size() != start_name_length)
+        catString.append("...");
 }
 
 } // namespace GUIUtil

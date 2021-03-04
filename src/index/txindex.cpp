@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 The Rain Core developers
+// Copyright (c) 2017-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -71,6 +71,7 @@ bool TxIndex::DB::MigrateData(CBlockTreeDB& block_tree_db, const CBlockLocator& 
     // with hash DB_TXINDEX_BLOCK.
     bool f_legacy_flag = false;
     block_tree_db.ReadFlag("txindex", f_legacy_flag);
+
     if (f_legacy_flag) {
         if (!block_tree_db.Write(DB_TXINDEX_BLOCK, best_locator)) {
             return error("%s: cannot write block indicator", __func__);
@@ -195,12 +196,10 @@ bool TxIndex::Init()
 
 bool TxIndex::WriteBlock(const CBlock& block, const CBlockIndex* pindex)
 {
-
-#ifndef ENABLE_GENESIS_TX_SPEND
     // Exclude genesis block transaction because outputs are not spendable.
-    if (pindex->nHeight == 0) return true;
+    //ELEMENTS: we do index the genesis block
+    //if (pindex->nHeight == 0) return true;
 
-#endif
     CDiskTxPos pos(pindex->GetBlockPos(), GetSizeOfCompactSize(block.vtx.size()));
     std::vector<std::pair<uint256, CDiskTxPos>> vPos;
     vPos.reserve(block.vtx.size());

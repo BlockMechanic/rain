@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 The Rain Core developers
+// Copyright (c) 2015-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -46,19 +46,14 @@ CZMQNotificationInterface* CZMQNotificationInterface::Create()
     factories["pubhashblock"] = CZMQAbstractNotifier::Create<CZMQPublishHashBlockNotifier>;
     factories["pubhashchainlock"] = CZMQAbstractNotifier::Create<CZMQPublishHashChainLockNotifier>;
     factories["pubhashtx"] = CZMQAbstractNotifier::Create<CZMQPublishHashTransactionNotifier>;
-    factories["pubhashtxlock"] = CZMQAbstractNotifier::Create<CZMQPublishHashTransactionLockNotifier>;
     factories["pubhashgovernancevote"] = CZMQAbstractNotifier::Create<CZMQPublishHashGovernanceVoteNotifier>;
     factories["pubhashgovernanceobject"] = CZMQAbstractNotifier::Create<CZMQPublishHashGovernanceObjectNotifier>;
-    factories["pubhashinstantsenddoublespend"] = CZMQAbstractNotifier::Create<CZMQPublishHashInstantSendDoubleSpendNotifier>;
     factories["pubrawblock"] = CZMQAbstractNotifier::Create<CZMQPublishRawBlockNotifier>;
     factories["pubrawchainlock"] = CZMQAbstractNotifier::Create<CZMQPublishRawChainLockNotifier>;
     factories["pubrawchainlocksig"] = CZMQAbstractNotifier::Create<CZMQPublishRawChainLockSigNotifier>;
     factories["pubrawtx"] = CZMQAbstractNotifier::Create<CZMQPublishRawTransactionNotifier>;
-    factories["pubrawtxlock"] = CZMQAbstractNotifier::Create<CZMQPublishRawTransactionLockNotifier>;
-    factories["pubrawtxlocksig"] = CZMQAbstractNotifier::Create<CZMQPublishRawTransactionLockSigNotifier>;
     factories["pubrawgovernancevote"] = CZMQAbstractNotifier::Create<CZMQPublishRawGovernanceVoteNotifier>;
     factories["pubrawgovernanceobject"] = CZMQAbstractNotifier::Create<CZMQPublishRawGovernanceObjectNotifier>;
-    factories["pubrawinstantsenddoublespend"] = CZMQAbstractNotifier::Create<CZMQPublishRawInstantSendDoubleSpendNotifier>;
 
     for (const auto& entry : factories)
     {
@@ -231,23 +226,6 @@ void CZMQNotificationInterface::ProcessPriorityRequest(const std::shared_ptr<con
     }
 }
 
-void CZMQNotificationInterface::NotifyTransactionLock(const CTransaction &tx, const llmq::CInstantSendLock& islock)
-{
-    for (std::list<CZMQAbstractNotifier*>::iterator i = notifiers.begin(); i!=notifiers.end(); )
-    {
-        CZMQAbstractNotifier *notifier = *i;
-        if (notifier->NotifyTransactionLock(tx, islock))
-        {
-            i++;
-        }
-        else
-        {
-            notifier->Shutdown();
-            i = notifiers.erase(i);
-        }
-    }
-}
-
 void CZMQNotificationInterface::NotifyGovernanceVote(const CGovernanceVote &vote)
 {
     for (std::list<CZMQAbstractNotifier*>::iterator i = notifiers.begin(); i != notifiers.end(); )
@@ -282,16 +260,4 @@ void CZMQNotificationInterface::NotifyGovernanceObject(const CGovernanceObject &
     }
 }
 
-void CZMQNotificationInterface::NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx)
-{
-    for (auto it = notifiers.begin(); it != notifiers.end();) {
-        CZMQAbstractNotifier *notifier = *it;
-        if (notifier->NotifyInstantSendDoubleSpendAttempt(currentTx, previousTx)) {
-            ++it;
-        } else {
-            notifier->Shutdown();
-            it = notifiers.erase(it);
-        }
-    }
-}
 CZMQNotificationInterface* g_zmq_notification_interface = nullptr;

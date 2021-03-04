@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 The Rain Core developers
+// Copyright (c) 2014-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -23,6 +23,9 @@ public:
     CSHA256();
     CSHA256& Write(const unsigned char* data, size_t len);
     void Finalize(unsigned char hash[OUTPUT_SIZE]);
+    //TODO: Midstate is a hack'ish speedup that probably should make way for something
+    //akin to the SHA256D64 speedups
+    void Midstate(unsigned char hash[OUTPUT_SIZE], uint64_t* len, unsigned char *buffer);
     CSHA256& Reset();
 };
 

@@ -5,13 +5,13 @@
 #ifndef RAIN_QUORUMS_SIGNING_H
 #define RAIN_QUORUMS_SIGNING_H
 
-#include "llmq/quorums.h"
+#include <llmq/quorums.h>
 
-#include "net.h"
-#include "chainparams.h"
-#include "saltedhasher.h"
-#include "univalue.h"
-#include "unordered_lru_cache.h"
+#include <net.h>
+#include <chainparams.h>
+#include <saltedhasher.h>
+#include <univalue.h>
+#include <unordered_lru_cache.h>
 
 #include <unordered_map>
 
@@ -66,13 +66,13 @@ class CRecoveredSigsDb
 private:
     CDBWrapper& db;
 
-    CCriticalSection cs;
+    RecursiveMutex cs;
     unordered_lru_cache<std::pair<Consensus::LLMQType, uint256>, bool, StaticSaltedHasher, 30000> hasSigForIdCache;
     unordered_lru_cache<uint256, bool, StaticSaltedHasher, 30000> hasSigForSessionCache;
     unordered_lru_cache<uint256, bool, StaticSaltedHasher, 30000> hasSigForHashCache;
 
 public:
-    CRecoveredSigsDb(CDBWrapper& _db);
+    explicit CRecoveredSigsDb(CDBWrapper& _db);
 
     void ConvertInvalidTimeKeys();
     void AddVoteTimeKeys();
@@ -120,13 +120,13 @@ class CSigningManager
     static const int SIGN_HEIGHT_OFFSET = 8;
 
 private:
-    CCriticalSection cs;
+    RecursiveMutex cs;
 
     CRecoveredSigsDb db;
 
     // Incoming and not verified yet
     std::unordered_map<NodeId, std::list<CRecoveredSig>> pendingRecoveredSigs;
-    std::list<std::pair<CRecoveredSig, CQuorumCPtr>> pendingReconstructedRecoveredSigs;
+    std::unordered_map<uint256, std::pair<CRecoveredSig, CQuorumCPtr>, StaticSaltedHasher> pendingReconstructedRecoveredSigs;
 
     // must be protected by cs
     FastRandomContext rnd;
@@ -181,7 +181,7 @@ public:
     bool GetVoteForId(Consensus::LLMQType llmqType, const uint256& id, uint256& msgHashRet);
 
     std::vector<CQuorumCPtr> GetActiveQuorumSet(Consensus::LLMQType llmqType, int signHeight);
-    CQuorumCPtr SelectQuorumForSigning(Consensus::LLMQType llmqType, int signHeight, const uint256& selectionHash);
+    CQuorumCPtr SelectQuorumForSigning(Consensus::LLMQType llmqType, const uint256& selectionHash, int signHeight = -1 /*chain tip*/, int signOffset = SIGN_HEIGHT_OFFSET);
 
     // Verifies a recovered sig that was signed while the chain tip was at signedAtTip
     bool VerifyRecoveredSig(Consensus::LLMQType llmqType, int signedAtHeight, const uint256& id, const uint256& msgHash, const CBLSSignature& sig);

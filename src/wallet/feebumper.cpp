@@ -10,10 +10,14 @@
 #include <wallet/wallet.h>
 #include <policy/fees.h>
 #include <policy/policy.h>
+#include <policy/rbf.h>
+#include <validation.h> //for mempool access
+#include <txmempool.h>
 #include <util/moneystr.h>
 #include <util/rbf.h>
 #include <util/system.h>
 #include <util/validation.h>
+#include <confidential_validation.h>
 
 //! Check whether transaction has descendant in wallet or mempool, or has been
 //! mined, or conflicts with a mined transaction. Return a feebumper::Result.
@@ -71,8 +75,8 @@ bool TransactionCanBeBumped(const CWallet* wallet, const uint256& txid)
     return res == feebumper::Result::OK;
 }
 
-Result CreateTotalBumpTransaction(const CWallet* wallet, const uint256& txid, const CCoinControl& coin_control, CAmount total_fee, std::vector<std::string>& errors,
-                                  CAmount& old_fee, CAmount& new_fee, CMutableTransaction& mtx)
+Result CreateTotalBumpTransaction(const CWallet* wallet, const uint256& txid, const CCoinControl& coin_control, CAmountMap total_fee, std::vector<std::string>& errors,
+                                  CAmountMap& old_fee, CAmountMap& new_fee, CMutableTransaction& mtx)
 {
     new_fee = total_fee;
 
@@ -117,35 +121,43 @@ Result CreateTotalBumpTransaction(const CWallet* wallet, const uint256& txid, co
     }
 
     // calculate the old fee and fee-rate
-    old_fee = wtx.GetDebit(ISMINE_SPENDABLE) - wtx.tx->GetValueOut();
+    old_fee = wtx.GetDebit(ISMINE_SPENDABLE) - wtx.tx->GetValueOutMap();
+    old_fee = GetFeeMap(*wtx.tx);
     CFeeRate nOldFeeRate(old_fee, txSize);
     // The wallet uses a conservative WALLET_INCREMENTAL_RELAY_FEE value to
     // future proof against changes to network wide policy for incremental relay
     // fee that our node may not be aware of.
     CFeeRate nodeIncrementalRelayFee = wallet->chain().relayIncrementalFee();
-    CFeeRate walletIncrementalRelayFee = CFeeRate(WALLET_INCREMENTAL_RELAY_FEE);
+    CFeeRate walletIncrementalRelayFee = CFeeRate(MAP_WALLET_INCREMENTAL_RELAY_FEE);
     if (nodeIncrementalRelayFee > walletIncrementalRelayFee) {
         walletIncrementalRelayFee = nodeIncrementalRelayFee;
     }
 
-    CAmount minTotalFee = nOldFeeRate.GetFee(maxNewTxSize) + nodeIncrementalRelayFee.GetFee(maxNewTxSize);
+    CAmountMap minTotalFee = nOldFeeRate.GetFee(maxNewTxSize) + nodeIncrementalRelayFee.GetFee(maxNewTxSize);
+    CAmountMap trt = nOldFeeRate.GetFee(maxNewTxSize);
+    CAmountMap rtr = nodeIncrementalRelayFee.GetFee(maxNewTxSize);
+    
+    
     if (total_fee < minTotalFee) {
         errors.push_back(strprintf("Insufficient totalFee, must be at least %s (oldFee %s + incrementalFee %s)",
-            FormatMoney(minTotalFee), FormatMoney(nOldFeeRate.GetFee(maxNewTxSize)), FormatMoney(nodeIncrementalRelayFee.GetFee(maxNewTxSize))));
+            mapToString(minTotalFee), mapToString(trt), mapToString(rtr)));
         return Result::INVALID_PARAMETER;
     }
-    CAmount requiredFee = GetRequiredFee(*wallet, maxNewTxSize);
+    CAmountMap requiredFee = GetRequiredFee(*wallet, maxNewTxSize);
+
     if (total_fee < requiredFee) {
         errors.push_back(strprintf("Insufficient totalFee (cannot be less than required fee %s)",
-            FormatMoney(requiredFee)));
+            mapToString(requiredFee)));
         return Result::INVALID_PARAMETER;
     }
 
     // Check that in all cases the new fee doesn't violate maxTxFee
      const CAmount max_tx_fee = wallet->m_default_max_tx_fee;
-     if (new_fee > max_tx_fee) {
-         errors.push_back(strprintf("Specified or calculated fee %s is too high (cannot be higher than -maxtxfee %s)",
-                               FormatMoney(new_fee), FormatMoney(max_tx_fee)));
+     CAmountMap mapmax_tx_fee = populateMap(max_tx_fee);
+
+     if (new_fee > mapmax_tx_fee) {
+         errors.push_back(strprintf("Specified or calculated fee %s \nis too high (cannot be higher than -maxtxfee %s)",
+                               mapToString(new_fee), FormatMoney(max_tx_fee)));
          return Result::WALLET_ERROR;
      }
 
@@ -156,32 +168,37 @@ Result CreateTotalBumpTransaction(const CWallet* wallet, const uint256& txid, co
     // moment earlier. In this case, we report an error to the user, who may use total_fee to make an adjustment.
     CFeeRate minMempoolFeeRate = wallet->chain().mempoolMinFee();
     CFeeRate nNewFeeRate = CFeeRate(total_fee, maxNewTxSize);
+    CAmountMap aaa = nNewFeeRate.GetFeePerK();
+    CAmountMap bbb = minMempoolFeeRate.GetFeePerK();
+    CAmountMap ccc = minMempoolFeeRate.GetFee(maxNewTxSize);
+    
     if (nNewFeeRate.GetFeePerK() < minMempoolFeeRate.GetFeePerK()) {
         errors.push_back(strprintf(
             "New fee rate (%s) is lower than the minimum fee rate (%s) to get into the mempool -- "
             "the totalFee value should be at least %s to add transaction",
-            FormatMoney(nNewFeeRate.GetFeePerK()),
-            FormatMoney(minMempoolFeeRate.GetFeePerK()),
-            FormatMoney(minMempoolFeeRate.GetFee(maxNewTxSize))));
+            mapToString(aaa),
+            mapToString(bbb),
+            mapToString(ccc)));
         return Result::WALLET_ERROR;
     }
 
     // Now modify the output to increase the fee.
     // If the output is not large enough to pay the fee, fail.
-    CAmount nDelta = new_fee - old_fee;
-    assert(nDelta > 0);
+    CAmountMap nDelta = new_fee - old_fee;
+    assert(nDelta.size() > 0);
     mtx = CMutableTransaction{*wtx.tx};
     CTxOut* poutput = &(mtx.vout[nOutput]);
-    if (poutput->nValue < nDelta) {
+    // TODO CA: Decrypt output amount using wallet
+    if (!poutput->nValue.IsExplicit() || poutput->nValue.GetAmount() < nDelta[poutput->nAsset.GetAsset()]) {
         errors.push_back("Change output is too small to bump the fee");
         return Result::WALLET_ERROR;
     }
 
     // If the output would become dust, discard it (converting the dust to fee)
-    poutput->nValue -= nDelta;
-    if (poutput->nValue <= GetDustThreshold(*poutput, GetDiscardRate(*wallet))) {
+    poutput->nValue = poutput->nValue.GetAmount() - nDelta[poutput->nAsset.GetAsset()];
+    if (poutput->nValue.GetAmount() <= GetDustThreshold(*poutput, GetDiscardRate(*wallet))[poutput->nAsset.GetAsset()]) {
         wallet->WalletLogPrintf("Bumping fee and discarding dust output\n");
-        new_fee += poutput->nValue;
+        new_fee += poutput->nValue.GetAmount();
         mtx.vout.erase(mtx.vout.begin() + nOutput);
     }
 
@@ -197,7 +214,7 @@ Result CreateTotalBumpTransaction(const CWallet* wallet, const uint256& txid, co
 
 
 Result CreateRateBumpTransaction(CWallet* wallet, const uint256& txid, const CCoinControl& coin_control, std::vector<std::string>& errors,
-                                 CAmount& old_fee, CAmount& new_fee, CMutableTransaction& mtx)
+                                 CAmountMap& old_fee, CAmountMap& new_fee, CMutableTransaction& mtx)
 {
     // We are going to modify coin control later, copy to re-use
     CCoinControl new_coin_control(coin_control);
@@ -221,23 +238,26 @@ Result CreateRateBumpTransaction(CWallet* wallet, const uint256& txid, const CCo
     std::vector<CRecipient> recipients;
     for (const auto& output : wtx.tx->vout) {
         if (!wallet->IsChange(output)) {
-            CRecipient recipient = {output.scriptPubKey, output.nValue, false};
+            CRecipient recipient = {output.scriptPubKey, output.nValue.GetAmount(), output.nAsset.GetAsset(), CPubKey(), false};
             recipients.push_back(recipient);
         } else {
             CTxDestination change_dest;
             ExtractDestination(output.scriptPubKey, change_dest);
-            new_coin_control.destChange = change_dest;
+            new_coin_control.destChange[output.nAsset.GetAsset()] = change_dest;
         }
     }
 
     // Get the fee rate of the original transaction. This is calculated from
     // the tx fee/vsize, so it may have been rounded down. Add 1 satoshi to the
     // result.
-    old_fee = wtx.GetDebit(ISMINE_SPENDABLE) - wtx.tx->GetValueOut();
+    old_fee = wtx.GetDebit(ISMINE_SPENDABLE) - wtx.tx->GetValueOutMap();
+
     int64_t txSize = GetVirtualTransactionSize(*(wtx.tx));
     // Feerate of thing we are bumping
     CFeeRate feerate(old_fee, txSize);
-    feerate += CFeeRate(1);
+    CAmountMap tmp_fee = populateMap(1);
+    
+    feerate += CFeeRate(tmp_fee);
 
     // The node has a configurable incremental relay fee. Increment the fee by
     // the minimum of that and the wallet's conservative
@@ -247,7 +267,7 @@ Result CreateRateBumpTransaction(CWallet* wallet, const uint256& txid, const CCo
     // (BIP 125 rule 4).  The replacement tx will be at least as large as the
     // original tx, so the total fee will be greater (BIP 125 rule 3)
     CFeeRate node_incremental_relay_fee = wallet->chain().relayIncrementalFee();
-    CFeeRate wallet_incremental_relay_fee = CFeeRate(WALLET_INCREMENTAL_RELAY_FEE);
+    CFeeRate wallet_incremental_relay_fee = CFeeRate(MAP_WALLET_INCREMENTAL_RELAY_FEE);
     feerate += std::max(node_incremental_relay_fee, wallet_incremental_relay_fee);
 
     // Fee rate must also be at least the wallet's GetMinimumFeeRate
@@ -272,7 +292,7 @@ Result CreateRateBumpTransaction(CWallet* wallet, const uint256& txid, const CCo
     new_coin_control.m_min_depth = 1;
 
     CTransactionRef tx_new = MakeTransactionRef();
-    CAmount fee_ret;
+    CAmountMap fee_ret;
     int change_pos_in_out = -1; // No requested location for change
     std::string fail_reason;
     if (!wallet->CreateTransaction(*locked_chain, recipients, tx_new, fee_ret, change_pos_in_out, fail_reason, new_coin_control, false)) {
@@ -325,6 +345,9 @@ Result CommitTransaction(CWallet* wallet, const uint256& txid, CMutableTransacti
     CTransactionRef tx = MakeTransactionRef(std::move(mtx));
     mapValue_t mapValue = oldWtx.mapValue;
     mapValue["replaces_txid"] = oldWtx.GetHash().ToString();
+    // wipe blinding details to not store old information
+    mapValue["blindingdata"] = "";
+    // TODO CA: store new blinding data to remember otherwise unblindable outputs
 
     CValidationState state;
     if (!wallet->CommitTransaction(tx, std::move(mapValue), oldWtx.vOrderForm, state)) {

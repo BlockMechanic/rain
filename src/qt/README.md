@@ -1,4 +1,4 @@
-This directory contains the RainQT graphical user interface (GUI). It uses the cross-platform framework [Qt](https://www1.qt.io/developers/).
+This directory contains the Rain QT graphical user interface (GUI). It uses the cross-platform framework [Qt](https://www1.qt.io/developers/).
 
 The current precise version for Qt 5 is specified in [qt.mk](/depends/packages/qt.mk).
 
@@ -60,7 +60,7 @@ Represents the view to a single wallet.
 
 * UI elements like RainAmountField, which inherit from QWidget.
 * `rainstrings.cpp`: automatically generated
-* `rainunits.(h/cpp)`: RAIN / mRAIN / etc handling
+* `rainunits.(h/cpp)`: XQM / mXQM / etc handling
 * `callback.h`
 * `guiconstants.h`: UI colors, app name, etc
 * `guiutil.h`: several helper functions

@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -38,6 +38,7 @@ class CNetAddr
     public:
         CNetAddr();
         explicit CNetAddr(const struct in_addr& ipv4Addr);
+        explicit CNetAddr(const std::string& strIp, bool fAllowLookup = false);
         void SetIP(const CNetAddr& ip);
 
     private:
@@ -75,7 +76,7 @@ class CNetAddr
         bool IsValid() const;
         enum Network GetNetwork() const;
         std::string ToString() const;
-        std::string ToStringIP(bool fUseGetnameinfo = true) const;
+        std::string ToStringIP() const;
         unsigned int GetByte(int n) const;
         uint64_t GetHash() const;
         bool GetInAddr(struct in_addr* pipv4Addr) const;
@@ -93,7 +94,7 @@ class CNetAddr
 
         template <typename Stream, typename Operation>
         inline void SerializationOp(Stream& s, Operation ser_action) {
-            READWRITE(ip);
+            READWRITE(FLATDATA(ip));
         }
 
         friend class CSubNet;
@@ -147,6 +148,7 @@ class CService : public CNetAddr
         CService(const CNetAddr& ip, unsigned short port);
         CService(const struct in_addr& ipv4Addr, unsigned short port);
         explicit CService(const struct sockaddr_in& addr);
+        explicit CService(const std::string& strIpPort, bool fAllowLookup = false);
         unsigned short GetPort() const;
         bool GetSockAddr(struct sockaddr* paddr, socklen_t *addrlen) const;
         bool SetSockAddr(const struct sockaddr* paddr);
@@ -154,9 +156,9 @@ class CService : public CNetAddr
         friend bool operator!=(const CService& a, const CService& b) { return !(a == b); }
         friend bool operator<(const CService& a, const CService& b);
         std::vector<unsigned char> GetKey() const;
-        std::string ToString(bool fUseGetnameinfo = true) const;
+        std::string ToString() const;
         std::string ToStringPort() const;
-        std::string ToStringIPPort(bool fUseGetnameinfo = true) const;
+        std::string ToStringIPPort() const;
 
         CService(const struct in6_addr& ipv6Addr, unsigned short port);
         explicit CService(const struct sockaddr_in6& addr);
@@ -167,7 +169,9 @@ class CService : public CNetAddr
         inline void SerializationOp(Stream& s, Operation ser_action) {
             READWRITE(ip);
             unsigned short portN = htons(port);
-            READWRITE(portN);
+            READWRITE(FLATDATA(portN));
+            if (ser_action.ForRead())
+                 port = ntohs(portN);
         }
 };
 

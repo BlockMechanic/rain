@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2019 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,6 +7,8 @@
 #include <coins.h>
 #include <consensus/merkle.h>
 #include <consensus/validation.h>
+#include <policy/fees.h>
+#include <policy/policy.h>
 #include <pow.h>
 #include <txmempool.h>
 #include <validation.h>
@@ -28,7 +30,7 @@ static void DuplicateInputs(benchmark::State& state)
     LOCK(cs_main);
     CBlockIndex* pindexPrev = ::ChainActive().Tip();
     assert(pindexPrev != nullptr);
-    block.nBits = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus());
+    block.nBits = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus(), false);
     block.nNonce = 0;
     auto nHeight = pindexPrev->nHeight + 1;
 
@@ -37,9 +39,7 @@ static void DuplicateInputs(benchmark::State& state)
     coinbaseTx.vin[0].prevout.SetNull();
     coinbaseTx.vout.resize(1);
     coinbaseTx.vout[0].scriptPubKey = SCRIPT_PUB;
-    uint256 hash;
-
-    coinbaseTx.vout[0].nValue = GetBlockSubsidy(nHeight, chainparams.GetConsensus(), pindexPrev->GetBlockHash());
+    coinbaseTx.vout[0].nValue =0;// GetBlockSubsidy(nHeight, chainparams.GetConsensus(), false, 0, populateMap(0));
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
 
 

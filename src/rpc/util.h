@@ -7,6 +7,7 @@
 
 #include <node/transaction.h>
 #include <outputtype.h>
+#include <protocol.h>
 #include <pubkey.h>
 #include <rpc/protocol.h>
 #include <rpc/request.h>
@@ -73,7 +74,7 @@ extern int64_t ParseInt64V(const UniValue& v, const std::string &strName);
 extern double ParseDoubleV(const UniValue& v, const std::string &strName);
 extern bool ParseBoolV(const UniValue& v, const std::string &strName);
 
-extern CAmount AmountFromValue(const UniValue& value);
+extern CAmount AmountFromValue(const UniValue& value, bool p_isXQM = true);
 extern std::string HelpExampleCli(const std::string& methodname, const std::string& args);
 extern std::string HelpExampleRpc(const std::string& methodname, const std::string& args);
 
@@ -82,6 +83,11 @@ CPubKey AddrToPubKey(FillableSigningProvider* const keystore, const std::string&
 CTxDestination AddAndGetMultisigDestination(const int required, const std::vector<CPubKey>& pubkeys, OutputType type, FillableSigningProvider& keystore, CScript& script_out);
 
 UniValue DescribeAddress(const CTxDestination& dest);
+UniValue DescribeBlindAddress(const CTxDestination& dest);
+CPubKey GetDestinationBlindingKey(const CTxDestination& dest);
+bool IsBlindDestination(const CTxDestination& dest);
+
+UniValue AmountMapToUniv(const CAmountMap& balanceOrig, std::string strasset);
 
 //! Parse a confirm target option and raise an RPC error if it is invalid.
 unsigned int ParseConfirmTarget(const UniValue& value, unsigned int max_target);
@@ -94,6 +100,9 @@ std::pair<int64_t, int64_t> ParseDescriptorRange(const UniValue& value);
 
 /** Evaluate a descriptor given as a string, or as a {"desc":...,"range":...} object, with default range of 1000. */
 std::vector<CScript> EvalDescriptorStringOrObject(const UniValue& scanobject, FlatSigningProvider& provider);
+
+/** Returns, given services flags, a list of humanly readable (known) network services */
+UniValue GetServicesNames(ServiceFlags services);
 
 struct RPCArg {
     enum class Type {

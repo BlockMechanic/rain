@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,6 +7,8 @@
 
 #include <amount.h>
 #include <fs.h>
+#include <qt/rainunits.h>
+#include <primitives/asset.h>
 
 #include <QEvent>
 #include <QHeaderView>
@@ -20,6 +22,8 @@
 
 class QValidatedLineEdit;
 class SendCoinsRecipient;
+class SendAssetsRecipient;
+class WalletModel;
 
 namespace interfaces
 {
@@ -34,69 +38,55 @@ class QLineEdit;
 class QProgressDialog;
 class QUrl;
 class QWidget;
+class QGraphicsDropShadowEffect;
+class AskPassphraseDialog;
 QT_END_NAMESPACE
 
 /** Utility functions used by the Rain Qt UI.
  */
 namespace GUIUtil
 {
-    /* Enumeration of possible "colors" */
-    enum class ThemedColor {
-        /* Transaction list -- TX status decoration - default color */
-        DEFAULT,
-        /* Transaction list -- unconfirmed transaction */
-        UNCONFIRMED,
-        /* Transaction list -- negative amount */
-        NEGATIVE,
-        /* Transaction list -- bare address (without label) */
-        BAREADDRESS,
-        /* Transaction list -- TX status decoration - open until date */
-        TX_STATUS_OPENUNTILDATE,
-        /* Transaction list -- TX status decoration - offline */
-        TX_STATUS_OFFLINE,
-        /* Transaction list -- TX status decoration - danger, tx needs attention */
-        TX_STATUS_DANGER,
-        /* Transaction list -- TX status decoration - LockedByInstantSend color */
-        TX_STATUS_LOCKED,
-    };
+    // Get the font for the sub labels
+    QFont getSubLabelFont();
+    QFont getSubLabelFontBolded();
 
-    /* Enumeration of possible "styles" */
-    enum class ThemedStyle {
-        /* Invalid field background style */
-        TS_INVALID,
-        /* Failed operation text style */
-        TS_ERROR,
-        /* Failed operation text style */
-        TS_SUCCESS,
-        /* Comand text style */
-        TS_COMMAND,
-        /* General text styles */
-        TS_PRIMARY,
-        TS_SECONDARY,
-    };
-
-    /** Helper to get colors for various themes which can't be applied via css for some reason */
-    QColor getThemedQColor(ThemedColor color);
-
-    /** Helper to get css style strings which are injected into rich text through qt */
-    QString getThemedStyleQString(ThemedStyle style);
+    // Get the font for the main labels
+    QFont getTopLabelFont();
+    QFont getTopLabelFontBolded();
+    QFont getTopLabelFont(int weight, int pxsize);
 
     // Create human-readable string from date
     QString dateTimeStr(const QDateTime &datetime);
     QString dateTimeStr(qint64 nTime);
-    
+
     QString defaultTheme();
+
+// Parse string into a CAmount value
+CAmount parseValue(const QString& text, int displayUnit, bool* valid_out = 0);
+
+// Format an amount
+QString formatBalance(CAmount amount, int nDisplayUnit = 0);
+
+// Request wallet unlock
+bool requestUnlock(WalletModel* walletModel, bool relock);
+
+// Set up widgets for address and amounts
+void setupAddressWidget(QValidatedLineEdit* widget, QWidget* parent);
+void setupAmountWidget(QLineEdit* widget, QWidget* parent);
+
+// Update the cursor of the widget after a text change
+void updateWidgetTextAndCursorPosition(QLineEdit* widget, const QString& str);
 
     // Return a monospace font
     QFont fixedPitchFont();
 
-    // Set up widget for address
-    void setupAddressWidget(QValidatedLineEdit *widget, QWidget *parent);
-
     // Parse "rain:" URI into recipient object, return true on successful parsing
     bool parseRainURI(const QUrl &uri, SendCoinsRecipient *out);
     bool parseRainURI(QString uri, SendCoinsRecipient *out);
+    bool parseRainURI(const QUrl &uri, SendAssetsRecipient *out);
+    bool parseRainURI(QString uri, SendAssetsRecipient *out);
     QString formatRainURI(const SendCoinsRecipient &info);
+    QString formatRainURI(const SendAssetsRecipient &info);
 
     // Returns true if given address+amount meets "dust" definition
     bool isDust(interfaces::Node& node, const QString& address, const CAmount& amount);
@@ -173,6 +163,19 @@ namespace GUIUtil
     // Open the config file
     bool openRainConf();
 
+// Open rain.conf
+bool openConfigfile();
+
+// Open masternode.conf
+bool openMNConfigfile();
+
+// Browse backup folder
+bool showBackups();
+
+    // Concatenate a string given the painter, static text width, left side of rect, and right side of rect
+    // and which side the concatenated string is on (default left)
+    void concatenate(QPainter* painter, QString& strToCon, int static_width, int left_side, int right_size);
+
     /** Qt event filter that intercepts ToolTipChange events, and replaces the tooltip with a rich text
       representation if needed. This assures that Qt can word-wrap long tooltip messages.
       Tooltips longer than the provided size threshold (in characters) are wrapped.
@@ -191,56 +194,23 @@ namespace GUIUtil
         int size_threshold;
     };
 
-    /**
-     * Makes a QTableView last column feel as if it was being resized from its left border.
-     * Also makes sure the column widths are never larger than the table's viewport.
-     * In Qt, all columns are resizable from the right, but it's not intuitive resizing the last column from the right.
-     * Usually our second to last columns behave as if stretched, and when on stretch mode, columns aren't resizable
-     * interactively or programmatically.
-     *
-     * This helper object takes care of this issue.
-     *
-     */
-    class TableViewLastColumnResizingFixer: public QObject
-    {
-        Q_OBJECT
-
-        public:
-            TableViewLastColumnResizingFixer(QTableView* table, int lastColMinimumWidth, int allColsMinimumWidth, QObject *parent);
-            void stretchColumnWidth(int column);
-
-        private:
-            QTableView* tableView;
-            int lastColumnMinimumWidth;
-            int allColumnsMinimumWidth;
-            int lastColumnIndex;
-            int columnCount;
-            int secondToLastColumnIndex;
-
-            void adjustTableColumnsWidth();
-            int getAvailableWidthForColumn(int column);
-            int getColumnsWidth();
-            void connectViewHeadersSignals();
-            void disconnectViewHeadersSignals();
-            void setViewHeaderResizeMode(int logicalIndex, QHeaderView::ResizeMode resizeMode);
-            void resizeColumn(int nColumnIndex, int width);
-
-        private Q_SLOTS:
-            void on_sectionResized(int logicalIndex, int oldSize, int newSize);
-            void on_geometriesChanged();
-    };
-
     bool GetStartOnSystemStartup();
     bool SetStartOnSystemStartup(bool fAutoStart);
-
-    /** Load global CSS theme */
-    QString loadStyleSheet();
 
     /* Convert QString to OS specific boost path through UTF-8 */
     fs::path qstringToBoostPath(const QString &path);
 
     /* Convert OS specific boost path to QString through UTF-8 */
     QString boostPathToQString(const fs::path &path);
+
+    /* Format an amount of assets in a user-friendly style */
+    QString formatAssetAmount(const CAsset&, const CAmount&, int rain_unit, RainUnits::SeparatorStyle, bool include_asset_name = true);
+
+    /* Format one or more asset+amounts in a user-friendly style */
+    QString formatMultiAssetAmount(const CAmountMap&, int rain_unit, RainUnits::SeparatorStyle, QString line_separator);
+
+    /* Parse an amount of a given asset from text */
+    bool parseAssetAmount(const CAsset&, const QString& text, int rain_unit, CAmount *val_out);
 
     /* Convert seconds into a QString with days, hours, mins, secs */
     QString formatDurationStr(int secs);

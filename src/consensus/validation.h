@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -48,7 +48,8 @@ enum class ValidationInvalidReason {
     BLOCK_TIME_FUTURE,          //!< block timestamp was > 2 hours in the future (or our clock is bad)
     BLOCK_CHECKPOINT,        //!< the block failed to meet one of our checkpoints
     // Only loose txn:
-    TX_NOT_STANDARD,          //!< didn't meet our local policy rules
+    TX_INPUTS_NOT_STANDARD,   //!< inputs (covered by txid) failed policy rules
+    TX_NOT_STANDARD,          //!< otherwise didn't meet our local policy rules
     TX_MISSING_INPUTS,        //!< a transaction was missing some of its inputs
     TX_PREMATURE_SPEND,       //!< transaction spends a coinbase too early, or violates locktime/sequence locks
     /**
@@ -75,6 +76,7 @@ inline bool IsTransactionReason(ValidationInvalidReason r)
     return r == ValidationInvalidReason::NONE ||
            r == ValidationInvalidReason::CONSENSUS ||
            r == ValidationInvalidReason::RECENT_CONSENSUS_CHANGE ||
+           r == ValidationInvalidReason::TX_INPUTS_NOT_STANDARD ||
            r == ValidationInvalidReason::TX_NOT_STANDARD ||
            r == ValidationInvalidReason::TX_PREMATURE_SPEND ||
            r == ValidationInvalidReason::TX_MISSING_INPUTS ||
@@ -150,16 +152,25 @@ public:
 // weight = (stripped_size * 3) + total_size.
 static inline int64_t GetTransactionWeight(const CTransaction& tx)
 {
-    return ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
+    return ::GetSerializeSize(tx, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(tx, PROTOCOL_VERSION);
 }
 static inline int64_t GetBlockWeight(const CBlock& block)
 {
-    return ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
+    return ::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(block, PROTOCOL_VERSION);
 }
-static inline int64_t GetTransactionInputWeight(const CTxIn& txin)
+
+static inline int64_t GetTransactionInputWeight(const CTransaction& tx, const size_t nIn)
 {
     // scriptWitness size is added here because witnesses and txins are split up in segwit serialization.
-    return ::GetSerializeSize(txin, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(txin, PROTOCOL_VERSION) + ::GetSerializeSize(txin.scriptWitness.stack, PROTOCOL_VERSION);
+    assert(tx.witness.vtxinwit.size() > nIn);
+    // ELEMENTS: This is only used for change size calculation in wallet, assert if
+    // anything is unexpected for this call e.g. issuances, rangeproofs
+    assert(tx.witness.vtxinwit[nIn].vchIssuanceAmountRangeproof.empty());
+    assert(tx.witness.vtxinwit[nIn].vchInflationKeysRangeproof.empty());
+
+    return ::GetSerializeSize(tx.vin[nIn], PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1)
+    + ::GetSerializeSize(tx.vin[nIn], PROTOCOL_VERSION)
+    + ::GetSerializeSize(tx.witness.vtxinwit[nIn].scriptWitness.stack, PROTOCOL_VERSION);
 }
 
 #endif // RAIN_CONSENSUS_VALIDATION_H

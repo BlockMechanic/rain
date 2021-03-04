@@ -55,20 +55,37 @@ android {
         abortOnError false
     }
 
+    dexOptions {
+        javaMaxHeapSize '4g'
+    }
+
     defaultConfig {
         minSdkVersion = 24
         targetSdkVersion = 29
+    }
+
+    signingConfigs {
+
+       release {
+           storeFile file(RELEASE_STORE_FILE)
+           storePassword RELEASE_STORE_PASSWORD
+           keyAlias RELEASE_KEY_ALIAS
+           keyPassword RELEASE_KEY_PASSWORD
+
+           // Optional, specify signing versions used
+           v1SigningEnabled true
+           v2SigningEnabled true
+       }
     }
 
     buildTypes {
         debug {
             debuggable true
         }
-        customDebuggableBuildType {
-            debuggable true
-        }
         release {
             debuggable false
+            zipAlignEnabled true
+            signingConfig signingConfigs.release
         }
     }
 }

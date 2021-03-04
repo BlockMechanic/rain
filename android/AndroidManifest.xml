@@ -1,32 +1,28 @@
-<?xml version="1.0"?>
-<manifest package="org.qtproject.example.rain_qt" xmlns:android="http://schemas.android.com/apk/res/android" android:versionName="1.0" android:versionCode="1" android:installLocation="auto">
+<?xml version='1.0' encoding='utf-8'?>
+<manifest package="org.rain_qt.qt" xmlns:android="http://schemas.android.com/apk/res/android" android:versionName="1.0" android:versionCode="1" android:installLocation="auto">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="29"/>
 
-    <!-- The following comment will be replaced upon deployment with default permissions based on the dependencies of the application.
-         Remove the comment if you do not require these default permissions. -->
-        <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
-
-    <!-- The following comment will be replaced upon deployment with default features based on the dependencies of the application.
-         Remove the comment if you do not require these default features. -->
-        <uses-feature android:name="android.hardware.gamepad" android:required="false"/>
     <uses-feature android:glEsVersion="0x00020000" android:required="true"/>
 
     <supports-screens android:largeScreens="true" android:normalScreens="true" android:anyDensity="true" android:smallScreens="true"/>
 
-    <application android:hardwareAccelerated="false" android:debuggable="true" android:name="org.qtproject.qt5.android.bindings.QtApplication" android:label="rain-qt" android:icon="@drawable/icon">
-        <activity android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density" android:name="org.qtproject.qt5.android.bindings.QtActivity" android:label="rain-qt" android:screenOrientation="unspecified" android:launchMode="singleTop">
+    <application android:hardwareAccelerated="true" android:name="org.qtproject.qt5.android.bindings.QtApplication" android:label="Rain">
+        <activity android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+                  android:name="org.rain_qt.qt.RainQtActivity"
+                  android:label="Rain"
+                  android:icon="@drawable/rain"
+                  android:screenOrientation="unspecified"
+                  android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- Application arguments -->
-            <!-- meta-data android:name="android.app.arguments" android:value="arg1 arg2 arg3"/ -->
-            <!-- Application arguments -->
-
+            <!-- meta-data android:name="android.app.arguments" android:value=""/ -->
             <meta-data android:name="android.app.lib_name" android:value="rain-qt"/>
             <meta-data android:name="android.app.qt_sources_resource_id" android:resource="@array/qt_sources"/>
             <meta-data android:name="android.app.repository" android:value="default"/>
@@ -67,30 +63,24 @@
                           application still try to draw after
                           "applicationStateChanged(Qt::ApplicationSuspended)"
                           signal is sent! -->
-            <meta-data android:name="android.app.background_running" android:value="false"/>
+            <meta-data android:name="android.app.background_running" android:value="true"/>
             <!-- Background running -->
 
             <!-- auto screen scale factor -->
-            <meta-data android:name="android.app.auto_screen_scale_factor" android:value="false"/>
+            <meta-data android:name="android.app.auto_screen_scale_factor" android:value="true"/>
             <!-- auto screen scale factor -->
 
-            <!-- extract android style -->
-            <!-- available android:values :
-                * default - In most cases this will be the same as "full", but it can also be something else if needed, e.g., for compatibility reasons
-                * full - useful QWidget & Quick Controls 1 apps
-                * minimal - useful for Quick Controls 2 apps, it is much faster than "full"
-                * none - useful for apps that don't use any of the above Qt modules
-                -->
-            <meta-data android:name="android.app.extract_android_style" android:value="full"/>
-            <!-- extract android style -->
+
+            <meta-data android:name="android.app.extract_android_style" android:value="minimal"/>
+
     </activity>
 
     <!-- For adding service(s) please check: https://wiki.qt.io/AndroidServices -->
 
     </application>
 
-<!-- %%INSERT_PERMISSIONS -->
-    <!-- %%INSERT_FEATURES -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.NFC"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>

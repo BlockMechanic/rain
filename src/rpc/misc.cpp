@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -18,6 +18,13 @@
 #include <masternode/masternode-sync.h>
 #include <spork.h>
 #include <validation.h>
+
+#ifdef ENABLE_WALLET
+#include <wallet/wallet.h>
+#include <wallet/walletdb.h>
+#include <wallet/rpcwallet.h>
+#endif
+
 #include <stdint.h>
 #include <tuple>
 #ifdef HAVE_MALLOC_INFO
@@ -25,6 +32,7 @@
 #endif
 
 #include <univalue.h>
+
 
 static UniValue validateaddress(const JSONRPCRequest& request)
 {
@@ -42,6 +50,8 @@ static UniValue validateaddress(const JSONRPCRequest& request)
             "  \"iswitness\" : true|false,     (boolean) If the address is a witness address\n"
             "  \"witness_version\" : version   (numeric, optional) The version number of the witness program\n"
             "  \"witness_program\" : \"hex\"     (string, optional) The hex value of the witness program\n"
+            "  \"confidential_key\" : \"hex\", (string) The hex value of the raw blinding public key for that address, if any. \"\" if none.\n"
+            "  \"unconfidential\" : \"address\", (string) The address without confidentiality key.\n"
             "}\n"
                 },
                 RPCExamples{
@@ -65,12 +75,138 @@ static UniValue validateaddress(const JSONRPCRequest& request)
 
         UniValue detail = DescribeAddress(dest);
         ret.pushKVs(detail);
+        UniValue blind_detail = DescribeBlindAddress(dest);
+        ret.pushKVs(blind_detail);
     }
     return ret;
 }
 
+void _publickey_from_string(const std::string &ks, CPubKey &out, CWallet * pwallet)
+{
+#ifdef ENABLE_WALLET
+    // Case 1: Bitcoin address and we have full public key:
+    CTxDestination dest = DecodeDestination(ks);
+    if (pwallet && IsValidDestination(dest))
+    {
+        CKeyID keyID = GetKeyForDestination(*pwallet, dest);
+        if (keyID.IsNull())
+            throw std::runtime_error(strprintf("%s does not refer to a key",ks));
+        CPubKey vchPubKey;
+        if (pwallet->GetPubKey(keyID, vchPubKey))
+            throw std::runtime_error(strprintf("no full public key for address %s",ks));
+        if (!vchPubKey.IsFullyValid())
+            throw std::runtime_error(" Invalid public key: "+ks);
+        out = vchPubKey;
+    }
+
+    // Case 2: hex public key
+    else
+#endif
+    if (IsHex(ks))
+    {
+        CPubKey vchPubKey(ParseHex(ks));
+        if (!vchPubKey.IsFullyValid())
+            throw std::runtime_error(" Invalid public key: "+ks);
+        out = vchPubKey;
+    }
+    else
+    {
+        throw std::runtime_error(" Invalid public key: "+ks);
+    }
+}
+
+
+UniValue mnsync(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 1)
+        throw std::runtime_error(
+            "mnsync [status|next|reset]\n"
+            "Returns the sync status, updates to the next step or resets it entirely.\n"
+        );
+
+    std::string strMode = request.params[0].get_str();
+
+    if(strMode == "status") {
+        UniValue objStatus(UniValue::VOBJ);
+        objStatus.pushKV("AssetID", masternodeSync.GetAssetID());
+        objStatus.pushKV("AssetName", masternodeSync.GetAssetName());
+        objStatus.pushKV("AssetStartTime", masternodeSync.GetAssetStartTime());
+        objStatus.pushKV("Attempt", masternodeSync.GetAttempt());
+        objStatus.pushKV("IsBlockchainSynced", masternodeSync.IsBlockchainSynced());
+        objStatus.pushKV("IsSynced", masternodeSync.IsSynced());
+        return objStatus;
+    }
+
+    if(strMode == "next")
+    {
+        masternodeSync.SwitchToNextAsset(*g_connman);
+        return "sync updated to " + masternodeSync.GetAssetName();
+    }
+
+    if(strMode == "reset")
+    {
+        masternodeSync.Reset(true);
+        return "success";
+    }
+    return "failure";
+}
+
+
+/**
+ * Used by addmultisigaddress / createmultisig:
+ */
+CScript _createmultisig_redeemScript(const UniValue& params, const UniValue& options, CWallet * pwallet)
+{
+    int nRequired = params[0].get_int();
+    const UniValue& keys = params[1].get_array();
+
+    int64_t cltv_height = 0, cltv_time = 0;
+    if (!options.isNull()) {
+        std::vector<std::string> keys = options.getKeys();
+        for(const std::string& key: keys) {
+            const UniValue& val = options[key];
+            if (key == "cltv_height" && val.isNum()) {
+                cltv_height = val.get_int64();
+            } else
+            if (key == "cltv_time" && val.isNum()) {
+                cltv_time = val.get_int64();
+            } else {
+                throw std::runtime_error(strprintf("unknown key/type for option '%s'", key));
+            }
+        }
+    }
+
+    // Gather public keys
+    if (nRequired < 1)
+        throw std::runtime_error("a multisignature address must require at least one key to redeem");
+    if ((int)keys.size() < nRequired)
+        throw std::runtime_error(
+            strprintf("not enough keys supplied "
+                      "(got %u keys, but need at least %d to redeem)", keys.size(), nRequired));
+    if (keys.size() > 16)
+        throw std::runtime_error("Number of addresses involved in the multisignature address creation > 16\nReduce the number");
+    std::vector<CPubKey> pubkeys;
+    pubkeys.resize(keys.size());
+    for (unsigned int i = 0; i < keys.size(); i++)
+    {
+        CPubKey vchPubKey;
+        _publickey_from_string(keys[i].get_str(), vchPubKey, pwallet);
+        pubkeys[i] = vchPubKey;
+    }
+    CScript result = GetScriptForMultisig(nRequired, pubkeys, cltv_height, cltv_time);
+
+    if (result.size() > MAX_SCRIPT_ELEMENT_SIZE)
+        throw std::runtime_error(
+                strprintf("redeemScript exceeds size limit: %d > %d", result.size(), MAX_SCRIPT_ELEMENT_SIZE));
+
+    return result;
+}
+
 static UniValue createmultisig(const JSONRPCRequest& request)
 {
+    std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
+    CWallet* const pwallet = wallet.get();
+
             RPCHelpMan{"createmultisig",
                 "\nCreates a multi-signature address with n signature of m keys required.\n"
                 "It returns a json object with the address and redeemScript.\n",
@@ -81,6 +217,14 @@ static UniValue createmultisig(const JSONRPCRequest& request)
                             {"key", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "The hex-encoded public key"},
                         }},
                     {"address_type", RPCArg::Type::STR, /* default */ "legacy", "The address type to use. Options are \"legacy\", \"p2sh-segwit\", and \"bech32\"."},
+
+ //           "3. options        (object, optional)\n"
+ //           "   {\n"
+ //           "     \"cltv_height\"  (numeric, optional) Minimum block height before received funds can be spent\n"
+ //           "     \"cltv_time\"    (numeric, optional) Minimum approximate time before received funds can be spent (WARNING: This version of " PACKAGE_NAME " does not support spending time-locked coins)\n"
+ //           "   }\n"
+
+
                 },
                 RPCResult{
             "{\n"
@@ -119,7 +263,15 @@ static UniValue createmultisig(const JSONRPCRequest& request)
 
     // Construct using pay-to-script-hash:
     FillableSigningProvider keystore;
-    CScript inner;
+    // Construct using pay-to-script-hash:
+    UniValue options;
+    if (request.params.size() > 2) {
+        options = request.params[2];
+    }
+    CScript inner = _createmultisig_redeemScript(request.params, options, pwallet);
+    CScriptID innerID(inner);
+
+
     const CTxDestination dest = AddAndGetMultisigDestination(required, pubkeys, output_type, keystore, inner);
 
     UniValue result(UniValue::VOBJ);
@@ -381,21 +533,28 @@ bool getAddressFromIndex(const int &type, const uint160 &hash, std::string &addr
     return true;
 }
 
+bool getIndexKey(const std::string& str, uint160& hashBytes, int& type)
+{
+    CTxDestination dest = DecodeDestination(str);
+    if (!IsValidDestination(dest)) {
+        type = 0;
+        return false;
+    }
+    CKeyID keyID = CKeyID(*boost::get<PKHash>(&dest));
+    CScriptID scriptID = CScriptID(*boost::get<ScriptHash>(&dest));
+    type = keyID.IsNull() ? 2 : 1;
+    hashBytes = keyID.IsNull() ? scriptID : keyID;
+    return true;
+}
+
 bool getAddressesFromParams(const UniValue& params, std::vector<std::pair<uint160, int> > &addresses)
 {
     if (params[0].isStr()) {
-        CTxDestination dest = DecodeDestination(params[0].get_str());
         uint160 hashBytes;
         int type = 0;
-		if (auto id = boost::get<PKHash>(&dest))
-		    type=1;
-
-		if (auto script_hash = boost::get<ScriptHash>(&dest))
-		    type=2;
-		    
-        CScript pubScript;
-        ExtractDestination(pubScript, dest);		    
-		memcpy(&hashBytes, &pubScript[2], 20);
+        if (!getIndexKey(params[0].get_str(), hashBytes, type)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address");
+        }
         addresses.push_back(std::make_pair(hashBytes, type));
     } else if (params[0].isObject()) {
 
@@ -408,19 +567,11 @@ bool getAddressesFromParams(const UniValue& params, std::vector<std::pair<uint16
 
         for (std::vector<UniValue>::iterator it = values.begin(); it != values.end(); ++it) {
 
-            CTxDestination dest = DecodeDestination(it->get_str());
             uint160 hashBytes;
             int type = 0;
-			if (auto id = boost::get<PKHash>(&dest))
-				type=1;
-
-			if (auto script_hash = boost::get<ScriptHash>(&dest))
-				type=2;
-				
-			CScript pubScript;
-			ExtractDestination(pubScript, dest);		    
-			memcpy(&hashBytes, &pubScript[2], 20);
-			
+            if (!getIndexKey(it->get_str(), hashBytes, type)) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address");
+            }
             addresses.push_back(std::make_pair(hashBytes, type));
         }
     } else {
@@ -548,9 +699,10 @@ UniValue getaddressutxos(const JSONRPCRequest& request)
     }
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
+    std::string assetName="";
 
     for (std::vector<std::pair<uint160, int> >::iterator it = addresses.begin(); it != addresses.end(); it++) {
-        if (!GetAddressUnspent((*it).first, (*it).second, unspentOutputs)) {
+        if (!GetAddressUnspent((*it).first, (*it).second, assetName, unspentOutputs)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
         }
     }
@@ -632,14 +784,15 @@ UniValue getaddressdeltas(const JSONRPCRequest& request)
     }
 
     std::vector<std::pair<CAddressIndexKey, CAmount> > addressIndex;
+    std::string assetName="";
 
     for (std::vector<std::pair<uint160, int> >::iterator it = addresses.begin(); it != addresses.end(); it++) {
         if (start > 0 && end > 0) {
-            if (!GetAddressIndex((*it).first, (*it).second, addressIndex, start, end)) {
+            if (!GetAddressIndex((*it).first, (*it).second, assetName, addressIndex, start, end)) {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
             }
         } else {
-            if (!GetAddressIndex((*it).first, (*it).second, addressIndex)) {
+            if (!GetAddressIndex((*it).first, (*it).second,assetName, addressIndex)) {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
             }
         }
@@ -697,9 +850,10 @@ UniValue getaddressbalance(const JSONRPCRequest& request)
     }
 
     std::vector<std::pair<CAddressIndexKey, CAmount> > addressIndex;
+    std::string assetName="";
 
     for (std::vector<std::pair<uint160, int> >::iterator it = addresses.begin(); it != addresses.end(); it++) {
-        if (!GetAddressIndex((*it).first, (*it).second, addressIndex)) {
+        if (!GetAddressIndex((*it).first, (*it).second, assetName, addressIndex)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
         }
     }
@@ -766,14 +920,15 @@ UniValue getaddresstxids(const JSONRPCRequest& request)
     }
 
     std::vector<std::pair<CAddressIndexKey, CAmount> > addressIndex;
+    std::string assetName="";
 
     for (std::vector<std::pair<uint160, int> >::iterator it = addresses.begin(); it != addresses.end(); it++) {
         if (start > 0 && end > 0) {
-            if (!GetAddressIndex((*it).first, (*it).second, addressIndex, start, end)) {
+            if (!GetAddressIndex((*it).first, (*it).second, assetName,  addressIndex, start, end)) {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
             }
         } else {
-            if (!GetAddressIndex((*it).first, (*it).second, addressIndex)) {
+            if (!GetAddressIndex((*it).first, (*it).second, assetName, addressIndex)) {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
             }
         }
@@ -1038,6 +1193,204 @@ static UniValue echo(const JSONRPCRequest& request)
     return request.params;
 }
 
+UniValue dumpassetlabels(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 0)
+        throw std::runtime_error(
+            RPCHelpMan{"dumpassetlabels",
+                "\nLists all known asset id/label pairs in this wallet. This list can be modified with `-assetdir` configuration argument.\n",
+                {},
+                RPCResults{},
+                RPCExamples{
+                    HelpExampleCli("dumpassetlabels", "" )
+            + HelpExampleRpc("dumpassetlabels", "" )
+                },
+            }.ToString());
+
+    UniValue obj(UniValue::VOBJ);
+    for (const auto& as : ::ChainActive().Tip()->nMoneySupply) {
+        obj.pushKV(as.first.getName(), as.first.assetID.ToString());
+    }
+    return obj;
+}
+
+class BlindingPubkeyAdderVisitor : public boost::static_visitor<>
+{
+public:
+    CPubKey blind_key;
+    explicit BlindingPubkeyAdderVisitor(const CPubKey& blind_key_in) : blind_key(blind_key_in) {}
+
+    void operator()(const CNoDestination& dest) const {}
+
+    void operator()(PKHash& keyID) const
+    {
+        keyID.blinding_pubkey = blind_key;
+    }
+
+    void operator()(ScriptHash& scriptID) const
+    {
+        scriptID.blinding_pubkey = blind_key;
+    }
+
+    void operator()(WitnessV0KeyHash& id) const
+    {
+        id.blinding_pubkey = blind_key;
+    }
+
+    void operator()(WitnessV0ScriptHash& id) const
+    {
+        id.blinding_pubkey = blind_key;
+    }
+
+    void operator()(WitnessUnknown& id) const
+    {
+        id.blinding_pubkey = blind_key;
+    }
+
+    void operator()(const NullData& id) const {}
+};
+
+
+UniValue createblindedaddress(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 2)
+        throw std::runtime_error(
+            RPCHelpMan{"createblindedaddress",
+                "\nCreates a blinded address using the provided blinding key.\n",
+                {
+                    {"address", RPCArg::Type::STR, RPCArg::Optional::NO, "The unblinded address to be blinded."},
+                    {"blinding_key", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The blinding public key. This can be obtained for a given address using `validateaddress`."},
+                },
+                RPCResult{
+            "\"blinded_address\"   (string) The blinded address.\n"
+                },
+                RPCExamples{
+            "\nCreate a multisig address from 2 addresses\n"
+            + HelpExampleCli("createblindedaddress", "HEZk3iQi1jC49bxUriTtynnXgWWWdAYx16 ec09811118b6febfa5ebe68642e5091c418fbace07e655da26b4a845a691fc2d") +
+            "\nAs a json rpc call\n"
+            + HelpExampleRpc("createblindedaddress", "HEZk3iQi1jC49bxUriTtynnXgWWWdAYx16, ec09811118b6febfa5ebe68642e5091c418fbace07e655da26b4a845a691fc2d")
+                },
+            }.ToString());
+
+    CTxDestination address = DecodeDestination(request.params[0].get_str());
+    if (!IsValidDestination(address)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Rain address or script");
+    }
+    if (IsBlindDestination(address)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Not an unblinded address");
+    }
+
+    if (!IsHex(request.params[1].get_str())) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid hexadecimal for key");
+    }
+    std::vector<unsigned char> keydata = ParseHex(request.params[1].get_str());
+    if (keydata.size() != 33) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid hexadecimal key length, must be length 66.");
+    }
+
+    CPubKey key;
+    key.Set(keydata.begin(), keydata.end());
+
+    // Append blinding key and return
+    boost::apply_visitor(BlindingPubkeyAdderVisitor(key), address);
+    return EncodeDestination(address);
+}
+
+
+// END ELEMENTS CALLS
+//
+
+UniValue createhtlc(const JSONRPCRequest& request)
+{
+    std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
+    CWallet* const pwallet = wallet.get();
+
+    if (request.fHelp || request.params.size() != 4) {
+        std::string msg = "createhtlc seller_key refund_key hash timeout_type timeout\n"
+            "\nCreates an address whose funds can be unlocked with a preimage or as a refund\n"
+            "It returns a json object with the address and redeemScript.\n"
+
+            "\nArguments:\n"
+            "1. seller_key    (string, required) The public key of the possessor of the preimage.\n"
+            "2. refund_key    (string, required) The public key of the recipient of the refund.\n"
+            "3. hash          (string, required) SHA256 or RIPEMD160 hash of the preimage.\n"
+            "4. timeout       (string, required) Timeout of the contract (denominated in blocks) relative to its placement in the blockchain\n"
+
+            "\nResult:"
+            "{\n"
+            "  \"address\":\"htlcaddress\"   (string) The value of the new HTLC address.\n"
+            "  \"redeemScript\":\"script\"   (string) The string value of the hex-encoded redemption script.\n"
+            "}\n"
+
+            "\nExamples:\n"
+            "\nPay someone for the preimage of 254e38932fdb9fc27f82aac2a5cc6d789664832383e3cf3298f8c120812712db\n"
+            + HelpExampleCli("createhtlc", "0333ffc4d18c7b2adbd1df49f5486030b0b70449c421189c2c0f8981d0da9669af 0333ffc4d18c7b2adbd1df49f5486030b0b70449c421189c2c0f8981d0da9669af 254e38932fdb9fc27f82aac2a5cc6d789664832383e3cf3298f8c120812712db 10") +
+            "\nAs a json rpc call\n"
+            + HelpExampleRpc("createhtlc", "0333ffc4d18c7b2adbd1df49f5486030b0b70449c421189c2c0f8981d0da9669af, 0333ffc4d18c7b2adbd1df49f5486030b0b70449c421189c2c0f8981d0da9669af, 254e38932fdb9fc27f82aac2a5cc6d789664832383e3cf3298f8c120812712db, 10")
+        ;
+
+        throw std::runtime_error(msg);
+    }
+
+    CPubKey seller_key;
+    CPubKey refund_key;
+    _publickey_from_string(request.params[0].get_str(), seller_key, pwallet);
+    _publickey_from_string(request.params[1].get_str(), refund_key, pwallet);
+
+    std::string hs = request.params[2].get_str();
+    std::vector<unsigned char> image;
+    opcodetype hasher;
+    if (IsHex(hs)) {
+        image = ParseHex(hs);
+
+        if (image.size() == 32) {
+            hasher = OP_SHA256;
+        } else if (image.size() == 20) {
+            hasher = OP_RIPEMD160;
+        } else {
+            throw JSONRPCError(RPC_TYPE_ERROR, "Invalid hash image length, 32 (SHA256) and 20 (RIPEMD160) accepted");
+        }
+    } else {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid hash image");
+    }
+
+    uint32_t blocks;
+    // This will make request.params[3] forward compatible with '10h'/'3d' style timeout
+    // values if it is extended in the future.
+    {
+        // FIXME: This duplicates the functionality of `ParseNonRFCJSONValue` in
+        // `client`, so perhaps it should just be added to univalue itself?
+        UniValue timeout;
+        if (!timeout.read(std::string("[")+request.params[3].get_str()+std::string("]")) ||
+            !timeout.isArray() || timeout.size()!=1)
+            throw std::runtime_error(std::string("Error parsing JSON:")+request.params[3].get_str());
+
+        blocks = timeout[0].get_int();
+    }
+
+    if (blocks >= CTxIn::SEQUENCE_LOCKTIME_TYPE_FLAG) {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid block denominated relative timeout");
+    }
+
+    CScript inner = GetScriptForHTLC(seller_key, refund_key, image, blocks, hasher, OP_CHECKSEQUENCEVERIFY);
+
+    CScriptID innerID();
+    CTxDestination dest;
+    txnouttype whichType;
+    
+    if(ExtractDestination(inner, dest, &whichType))
+        throw std::runtime_error(std::string("Error Extracting address "));
+
+    UniValue result(UniValue::VOBJ);
+    
+    result.pushKV("address", EncodeDestination(dest));
+    result.pushKV("redeemScript", HexStr(inner.begin(), inner.end()));
+    result.pushKV("type", std::string(GetTxnOutputType(whichType)));
+
+    return result;
+}
+
+
 // clang-format off
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         argNames
@@ -1050,6 +1403,15 @@ static const CRPCCommand commands[] =
     { "util",               "getdescriptorinfo",      &getdescriptorinfo,      {"descriptor"} },
     { "util",               "verifymessage",          &verifymessage,          {"address","signature","message"} },
     { "util",               "signmessagewithprivkey", &signmessagewithprivkey, {"privkey","message"} },
+    { "util",               "createblindedaddress",   &createblindedaddress,   {"address", "blinding_key"}},
+    { "util",               "dumpassetlabels",        &dumpassetlabels,        {}},
+    { "util",               "createhtlc",             &createhtlc,             {"seller_key","refund_key","hash","timeout"} },
+    { "util",               "mnsync",                 &mnsync,                 {} },
+    { "util",               "getaddressmempool",      &getaddressmempool,      {"addresses"}  },
+    { "util",               "getaddressutxos",        &getaddressutxos,        {"addresses"} },
+    { "util",               "getaddressdeltas",       &getaddressdeltas,       {"addresses"} },
+    { "util",               "getaddresstxids",        &getaddresstxids,        {"addresses"} },
+    { "util",               "getaddressbalance",      &getaddressbalance,      {"addresses"} },
 
     /* Not shown in help */
     { "hidden",             "setmocktime",            &setmocktime,            {"timestamp"}},

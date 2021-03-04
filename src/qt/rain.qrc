@@ -26,7 +26,7 @@
         <file alias="eye_plus">res/icons/eye_plus.png</file>
         <file alias="encrypt">res/icons/encrypt.png</file>
         <file alias="options">res/icons/configure.png</file>
-        <file alias="receiving_addresses">res/icons/receive.png</file>
+        <file alias="receive">res/icons/receive.png</file>
         <file alias="editpaste">res/icons/editpaste.png</file>
         <file alias="editcopy">res/icons/editcopy.png</file>
         <file alias="add">res/icons/add.png</file>
@@ -40,6 +40,8 @@
         <file alias="tx_input">res/icons/tx_input.png</file>
         <file alias="tx_output">res/icons/tx_output.png</file>
         <file alias="tx_inout">res/icons/tx_inout.png</file>
+        <file alias="tx_asset_input">res/icons/tx_asset_input.png</file>
+        <file alias="tx_asset_output">res/icons/tx_asset_output.png</file>
         <file alias="lock_closed">res/icons/lock_closed.png</file>
         <file alias="lock_open">res/icons/lock_open.png</file>
         <file alias="lock_staking">res/icons/lock_staking.png</file>
@@ -64,23 +66,38 @@
         <file alias="proxy">res/icons/proxy.png</file>
         <file alias="staking_on">res/icons/staking_on.png</file>
         <file alias="staking_off">res/icons/staking_off.png</file>
-        <file alias="sendtr">res/icons/sendtr.png</file>
-        <file alias="receivetr">res/icons/receivetr.png</file>
+        <file alias="staking">res/icons/staking.png</file>
+        <file alias="staking_unlocked">res/icons/staking_unlocked.png</file>
+        <file alias="charts">res/icons/charts.png</file>
+        <file alias="contacts">res/icons/contacts.png</file>
+        <file alias="assets">res/icons/assets.png</file>
+        <file alias="sync">res/icons/sync.png</file>
+        <file alias="plus">res/icons/plus.png</file>
+        <file alias="magnifying_glass">res/icons/magnifying-glass.png</file>
+        <file alias="text_edit_x">res/icons/text-edit-x.png</file>
+        <file alias="red_minus">res/icons/red-minus.png</file>
+        <file alias="green-plus">res/icons/green-plus.png</file>
+        <file alias="chevron">res/icons/chevron.png</file>
+        <file alias="blue-handle">res/icons/blue-handle.png</file>
+        <file alias="blue-bubble">res/icons/blue-bubble.png</file>
+        <file alias="back-chevron">res/icons/back-chevron.png</file>
+        <file alias="avatar-round">res/icons/avatar-round.png</file>
+        <file alias="blue-checkmark">res/icons/blue-checkmark.png</file>
+        <file alias="alphabet-scroller-labels">res/icons/alphabet-scroller-labels.png</file>
+        <file alias="background">res/icons/background.png</file>
+        <file alias="connections">res/icons/connections.png</file>
+        <file alias="locked">res/icons/locked.png</file>
+        <file alias="unlocked">res/icons/unlocked.png</file>
+        <file alias="crowdfund">res/icons/crowdfund.png</file>
+        <file alias="trash">res/icons/trash.png</file>
+        <file alias="repay">res/icons/repay.png</file>
+        <file alias="arbitrage">res/icons/arbitrage.png</file>
+        <file alias="account">res/icons/account.png</file>
+        <file alias="cs_staking_off">res/icons/cs_staking_off.png</file>
+        <file alias="cs_staking">res/icons/cs_staking.png</file>
     </qresource>
     <qresource prefix="/css">
-        <file alias="dyno">res/css/dyno.css</file>
-        <file alias="logo">res/css/logo2.png</file>
-        <file alias="logo-menu">res/css/logo-menu.png</file>
-        <file alias="up_arrow">res/css/up_arrow.png</file>
-        <file alias="intro">res/css/intro.png</file>
-        <file alias="down_arrow">res/css/down_arrow.png</file>
-        <file alias="material-blue">res/css/material-blue.css</file>
-        <file alias="transparent">res/css/transparent.css</file>
-        <file alias="dark">res/css/dark.css</file>
-        <file alias="qtdark">res/css/qtdark.css</file>
-        <file alias="orange">res/css/orange.css</file>
-        <file alias="ferrari">res/css/ferrari.css</file>
-        <file alias="darkorange">res/css/darkorange.css</file>
+        <file alias="rain">res/css/rain.css</file>
     </qresource>
     <qresource prefix="/movies">
         <file alias="spinner-000">res/movies/spinner-000.png</file>
@@ -121,15 +138,68 @@
         <file alias="spinner-035">res/movies/spinner-035.png</file>
     </qresource>
     <qresource prefix="/qml">
-        <file alias="main.qml">res/qml/main.qml</file>
-        <file alias="WalletPane.qml">res/qml/WalletPane.qml</file>
-        <file alias="SendPane.qml">res/qml/SendPane.qml</file>
-        <file alias="ReceivePane.qml">res/qml/ReceivePane.qml</file>
-        <file alias="SettingsPane.qml">res/qml/SettingsPane.qml</file>
-        <file alias="AboutPane.qml">res/qml/AboutPane.qml</file>
-        <file alias="ConsolePane.qml">res/qml/ConsolePane.qml</file>
+        <file alias="main.qml">qml/main.qml</file>
+        <file alias="WalletPane.qml">qml/WalletPane.qml</file>
+        <file alias="SendPane.qml">qml/SendPane.qml</file>
+        <file alias="ReceivePane.qml">qml/ReceivePane.qml</file>
+        <file alias="SettingsPane.qml">qml/SettingsPane.qml</file>
+        <file alias="IPCButton.qml">qml/IPCButton.qml</file>
+        <file alias="PageDrawer.qml">qml/PageDrawer.qml</file>
+        <file alias="DrawerItem.qml">qml/DrawerItem.qml</file>
+        <file alias="AppControls.qml">qml/AppControls.qml</file>
+        <file alias="FrontPane.qml">qml/FrontPane.qml</file>
+        <file alias="AssetPane.qml">qml/AssetPane.qml</file>
+        <file alias="Notification.qml">qml/Notification.qml</file>
+        <file alias="MasternodePane.qml">qml/MasternodePane.qml</file>
+        <file alias="AskPassphraseDialog.qml">qml/AskPassphraseDialog.qml</file>
+        <file alias="AutoCompleter.qml">qml/AutoCompleter.qml</file>
+        <file alias="SendCoinsEntry.qml">qml/SendCoinsEntry.qml</file>
+    </qresource>
+    <qresource prefix="/qml/contacts">
+        <file alias="ContactsMain.qml">qml/contacts/ContactsMain.qml</file>
+        <file alias="ContactViewPage.qml">qml/contacts/ContactViewPage.qml</file>
+        <file alias="ListSelectorPage.qml">qml/contacts/ListSelectorPage.qml</file>
+        <file alias="NewContactPage.qml">qml/contacts/NewContactPage.qml</file>
+        <file alias="IosIconButton.qml">qml/contacts/IosIconButton.qml</file>
+        <file alias="DimmableIconButton.qml">qml/contacts/DimmableIconButton.qml</file>
+        <file alias="DimmableTextButton.qml">qml/contacts/DimmableTextButton.qml</file>
+        <file alias="TitleBar.qml">qml/contacts/TitleBar.qml</file>
+        <file alias="IOSTextField.qml">qml/contacts/IOSTextField.qml</file>
+        <file alias="PhonesBlock.qml">qml/contacts/PhonesBlock.qml</file>
+        <file alias="PhoneNumberEditor.qml">qml/contacts/PhoneNumberEditor.qml</file>
+        <file alias="AddPhoneLine.qml">qml/contacts/AddPhoneLine.qml</file>
+        <file alias="SampleContacts.qml">qml/contacts/SampleContacts.qml</file>
+        <file alias="IOSPage.qml">qml/contacts/IOSPage.qml</file>
+        <file alias="AddToFavoritesMenu.qml">qml/contacts/AddToFavoritesMenu.qml</file>
+        <file alias="ShareContactMenu.qml">qml/contacts/ShareContactMenu.qml</file>
+    </qresource>
+    <qresource prefix="/qml/messages">
+        <file alias="MessagesMain.qml">qml/messages/MessagesMain.qml</file>
+        <file alias="Header.qml">qml/messages/Header.qml</file>
+        <file alias="MessagesTabBar.qml">qml/messages/MessagesTabBar.qml</file>
+        <file alias="MessagesTabButton.qml">qml/messages/MessagesTabButton.qml</file>
+        <file alias="MessageList.qml">qml/messages/MessageList.qml</file>
+        <file alias="MessagesModel.qml">qml/messages/MessagesModel.qml</file>
+        <file alias="MessageListItem.qml">qml/messages/MessageListItem.qml</file>
+        <file alias="ProfileImage.qml">qml/messages/ProfileImage.qml</file>
+        <file alias="JSONListModel.qml">qml/messages/JSONListModel.qml</file>
+        <file alias="StatusList.qml">qml/messages/StatusList.qml</file>
+    </qresource>
+    <qresource prefix="/qml/charts">
+        <file alias="ChartPane.qml">qml/charts/ChartPane.qml</file>
+        <file alias="Chart.qml">qml/charts/Chart.qml</file>
+        <file alias="SupplyChart.qml">qml/charts/SupplyChart.qml</file>
+        <file alias="StakeChart.qml">qml/charts/StakeChart.qml</file>
+        <file alias="DistributionChart.qml">qml/charts/DistributionChart.qml</file>
     </qresource>
     <qresource prefix="/fonts">
         <file alias="Roboto-Thin.ttf">res/fonts/Roboto-Thin.ttf</file>
+        <file alias="TwitterEmoji">res/fonts/TwitterEmoji.ttf</file>
+        <file alias="LineaBasic">res/fonts/lineabasic.ttf</file>
+        <file alias="FontAwesome">res/fonts/fontawesome.ttf</file>
+    </qresource>
+    <qresource prefix="/gifs">
+        <file alias="matrix-green">res/gifs/matrix-green.gif</file>
+        <file alias="galaxy">res/gifs/galaxy.gif</file>
     </qresource>
 </RCC>

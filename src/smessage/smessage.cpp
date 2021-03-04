@@ -115,9 +115,9 @@ SecMsgOptions                   smsgOptions;
 
 uint32_t nPeerIdCounter = 1;
 
-CCriticalSection cs_smsg;
-CCriticalSection cs_smsgDB;
-CCriticalSection cs_smsgThreads;
+RecursiveMutex cs_smsg;
+RecursiveMutex cs_smsgDB;
+RecursiveMutex cs_smsgThreads;
 
 leveldb::DB *smsgDB = NULL;
 
@@ -684,7 +684,8 @@ const CNetMsgMaker msgMaker(PROTOCOL_VERSION);
 
 
         try {
-            boost::this_thread::sleep_for(boost::chrono::seconds(SMSG_THREAD_DELAY)); // check every SMSG_THREAD_DELAY seconds
+            //boost::this_thread::sleep_for(boost::chrono::seconds(SMSG_THREAD_DELAY)); // check every SMSG_THREAD_DELAY seconds
+            UninterruptibleSleep(std::chrono::milliseconds{SMSG_THREAD_DELAY});
         }
         catch(boost::thread_interrupted &e) {
             break;

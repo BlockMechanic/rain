@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -30,7 +30,7 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
         // Check for a UTXO
         CTxOut utxo;
         if (psbtx.GetInputUTXO(utxo, i)) {
-            in_amt += utxo.nValue;
+            in_amt += utxo.nValue.GetAmount();
             input_analysis.has_utxo = true;
         } else {
             input_analysis.has_utxo = false;
@@ -79,7 +79,7 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
         // Get the output amount
         CAmount out_amt = std::accumulate(psbtx.tx->vout.begin(), psbtx.tx->vout.end(), CAmount(0),
             [](CAmount a, const CTxOut& b) {
-                return a += b.nValue;
+                return a += b.nValue.GetAmount();
             }
         );
 
@@ -102,7 +102,7 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
                 break;
             } else {
                 mtx.vin[i].scriptSig = input.final_script_sig;
-                mtx.vin[i].scriptWitness = input.final_script_witness;
+                //mtx.vin[i].scriptWitness = input.final_script_witness;
                 newcoin.nHeight = 1;
                 view.AddCoin(psbtx.tx->vin[i].prevout, std::move(newcoin), true);
             }
@@ -113,8 +113,8 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
             size_t size = GetVirtualTransactionSize(ctx, GetTransactionSigOpCost(ctx, view, STANDARD_SCRIPT_VERIFY_FLAGS));
             result.estimated_vsize = size;
             // Estimate fee rate
-            CFeeRate feerate(fee, size);
-            result.estimated_feerate = feerate;
+//            CFeeRate feerate(fee, size);
+//            result.estimated_feerate = feerate;
         }
 
         if (only_missing_sigs) {

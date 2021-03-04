@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>337</width>
-    <height>416</height>
+    <width>400</width>
+    <height>435</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -15,14 +15,43 @@
     <layout class="QVBoxLayout" name="verticalLayout">
      <item>
       <layout class="QGridLayout" name="gridLayout">
-       <item row="8" column="2">
-        <widget class="QLineEdit" name="reqMessage">
-         <property name="toolTip">
-          <string>An optional message to attach to the payment request, which will be displayed when the request is opened. Note: The message will not be sent with the payment over the Rain network.</string>
+       <item row="7" column="0">
+        <widget class="QLabel" name="label_7">
+         <property name="text">
+          <string/>
          </property>
         </widget>
        </item>
-       <item row="9" column="2">
+       <item row="4" column="2">
+        <layout class="QHBoxLayout" name="horizontalLayout_6">
+         <item>
+          <widget class="RainAmountField" name="reqAmount" native="true">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>80</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>1000</width>
+             <height>100</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>An optional amount to request. Leave this empty or zero to not request a specific amount.</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item row="7" column="2">
         <layout class="QHBoxLayout" name="horizontalLayout">
          <item>
           <widget class="QPushButton" name="receiveButton">
@@ -66,41 +95,12 @@
          </item>
         </layout>
        </item>
-       <item row="9" column="0">
-        <widget class="QLabel" name="label_7">
-         <property name="text">
-          <string/>
+       <item row="6" column="2">
+        <widget class="QLineEdit" name="reqMessage">
+         <property name="toolTip">
+          <string>An optional message to attach to the payment request, which will be displayed when the request is opened. Note: The message will not be sent with the payment over the Rain network.</string>
          </property>
         </widget>
-       </item>
-       <item row="4" column="2">
-        <layout class="QHBoxLayout" name="horizontalLayout_6">
-         <item>
-          <widget class="RainAmountField" name="reqAmount" native="true">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="minimumSize">
-            <size>
-             <width>80</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>1000</width>
-             <height>100</height>
-            </size>
-           </property>
-           <property name="toolTip">
-            <string>An optional amount to request. Leave this empty or zero to not request a specific amount.</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
        </item>
        <item row="3" column="2">
         <widget class="QLineEdit" name="reqLabel">
@@ -141,7 +141,7 @@
          </property>
         </widget>
        </item>
-       <item row="8" column="0">
+       <item row="6" column="0">
         <widget class="QLabel" name="label_3">
          <property name="toolTip">
           <string>An optional message to attach to the payment request, which will be displayed when the request is opened. Note: The message will not be sent with the payment over the Rain network.</string>
@@ -157,41 +157,30 @@
          </property>
         </widget>
        </item>
-       <item row="6" column="2">
-        <layout class="QHBoxLayout" name="horizontalLayout_5">
-         <item>
-          <widget class="QCheckBox" name="useLegacyAddress">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>1000</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="focusPolicy">
-            <enum>Qt::StrongFocus</enum>
-           </property>
-           <property name="toolTip">
-            <string>Native segwit addresses (aka Bech32 or BIP-173) reduce your transaction fees later on and offer better protection against typos, but old wallets don't support them. When checked, an address compatible with older wallets will be created instead.</string>
-           </property>
-           <property name="text">
-            <string>Legacy</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QCheckBox" name="reuseAddress">
-           <property name="text">
-            <string>Reuse Address</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
+       <item row="5" column="2">
+        <widget class="QCheckBox" name="useLegacyAddress">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>1000</width>
+           <height>16777215</height>
+          </size>
+         </property>
+         <property name="focusPolicy">
+          <enum>Qt::StrongFocus</enum>
+         </property>
+         <property name="toolTip">
+          <string>Native segwit addresses (aka Bech32 or BIP-173) reduce your transaction fees later on and offer better protection against typos, but old wallets don't support them. When checked, an address compatible with older wallets will be created instead.</string>
+         </property>
+         <property name="text">
+          <string>Legacy address</string>
+         </property>
+        </widget>
        </item>
       </layout>
      </item>

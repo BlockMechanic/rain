@@ -340,19 +340,18 @@ bool CSuperblockManager::GetSuperblockPayments(int nBlockHeight, std::vector<CTx
         if (pSuperblock->GetPayment(i, payment)) {
             // SET COINBASE OUTPUT TO SUPERBLOCK SETTING
 
-            CTxOut txout = CTxOut(payment.nAmount, payment.script);
+            CTxOut txout = CTxOut(payment.nAsset, payment.nAmount, payment.script);
             voutSuperblockRet.push_back(txout);
 
             // PRINT NICE LOG OUTPUT FOR SUPERBLOCK PAYMENT
 
-            CTxDestination address1;
-            ExtractDestination(payment.script, address1);
-            //CRainAddress address2(address1);
+            CTxDestination dest;
+            ExtractDestination(payment.script, dest);
 
             // TODO: PRINT NICE N.N RAIN OUTPUT
 
             LogPrint(BCLog::GOBJECT, "CSuperblockManager::GetSuperblockPayments -- NEW Superblock: output %d (addr %s, amount %lld)\n",
-                        i, EncodeDestination(address1), payment.nAmount);
+                        i, EncodeDestination(dest), payment.nAmount);
         } else {
             LogPrint(BCLog::GOBJECT, "CSuperblockManager::GetSuperblockPayments -- Payment not found\n");
         }
@@ -361,7 +360,7 @@ bool CSuperblockManager::GetSuperblockPayments(int nBlockHeight, std::vector<CTx
     return true;
 }
 
-bool CSuperblockManager::IsValid(const CTransaction& txNew, int nBlockHeight, CAmount blockReward)
+bool CSuperblockManager::IsValid(const CTransaction& txNew, int nBlockHeight, CAmountMap blockReward)
 {
     // GET BEST SUPERBLOCK, SHOULD MATCH
     LOCK(governance.cs);
@@ -461,17 +460,20 @@ void CSuperblock::GetNearestSuperblocksHeights(int nBlockHeight, int& nLastSuper
     }
 }
 
-CAmount CSuperblock::GetPaymentsLimit(int nBlockHeight)
+CAmountMap CSuperblock::GetPaymentsLimit(int nBlockHeight)
 {
     const Consensus::Params& consensusParams = Params().GetConsensus();
 
     if (!IsValidBlockHeight(nBlockHeight)) {
-        return 0;
+        return CAmountMap();
     }
 
     // some part of all blocks issued during the cycle goes to superblock, see GetBlockSubsidy
-    CAmount nSuperblockPartOfSubsidy = GetBlockSubsidy(nBlockHeight - 1, consensusParams, ::ChainActive().Tip()->GetBlockHash());
-    CAmount nPaymentsLimit = nSuperblockPartOfSubsidy * consensusParams.nSuperblockCycle;
+    uint64_t nCoinAge = 0;
+    //First get standard payout
+    CAmountMap nSuperblockPartOfSubsidy = GetBlockSubsidy(nBlockHeight,Params().GetConsensus(), Params().GetConsensus().subsidy_asset,false, nCoinAge, ::ChainActive().Tip()->nMoneySupply);
+
+    CAmountMap nPaymentsLimit = nSuperblockPartOfSubsidy * consensusParams.nSuperblockCycle;
     LogPrint(BCLog::GOBJECT, "CSuperblock::GetPaymentsLimit -- Valid superblock height %d, payments max %lld\n", nBlockHeight, nPaymentsLimit);
 
     return nPaymentsLimit;
@@ -509,14 +511,13 @@ void CSuperblock::ParsePaymentSchedule(const std::string& strPaymentAddresses, c
     */
 
     for (int i = 0; i < (int)vecParsed1.size(); i++) {
-		CTxDestination dest = DecodeDestination(vecParsed1[i]);
-		if (!IsValidDestination(dest)) {
+        CTxDestination dest = DecodeDestination(vecParsed1[i]);
+        if (!IsValidDestination(dest)) {
             std::ostringstream ostr;
             ostr << "CSuperblock::ParsePaymentSchedule -- Invalid Rain Address : " << vecParsed1[i];
             LogPrintf("%s\n", ostr.str());
             throw std::runtime_error(ostr.str());
-   		}
-
+        }
         /*
             TODO
 
@@ -559,13 +560,13 @@ bool CSuperblock::GetPayment(int nPaymentIndex, CGovernancePayment& paymentRet)
     return true;
 }
 
-CAmount CSuperblock::GetPaymentsTotalAmount()
+CAmountMap CSuperblock::GetPaymentsTotalAmount()
 {
-    CAmount nPaymentsTotalAmount = 0;
+    CAmountMap nPaymentsTotalAmount;
     int nPayments = CountPayments();
 
     for (int i = 0; i < nPayments; i++) {
-        nPaymentsTotalAmount += vecPayments[i].nAmount;
+        nPaymentsTotalAmount[vecPayments[i].nAsset] += vecPayments[i].nAmount;
     }
 
     return nPaymentsTotalAmount;
@@ -577,7 +578,7 @@ CAmount CSuperblock::GetPaymentsTotalAmount()
 *   - Does this transaction match the superblock?
 */
 
-bool CSuperblock::IsValid(const CTransaction& txNew, int nBlockHeight, CAmount blockReward)
+bool CSuperblock::IsValid(const CTransaction& txNew, int nBlockHeight, CAmountMap blockReward)
 {
     // TODO : LOCK(cs);
     // No reason for a lock here now since this method only accesses data
@@ -612,15 +613,15 @@ bool CSuperblock::IsValid(const CTransaction& txNew, int nBlockHeight, CAmount b
     }
 
     // payments should not exceed limit
-    CAmount nPaymentsTotalAmount = GetPaymentsTotalAmount();
-    CAmount nPaymentsLimit = GetPaymentsLimit(nBlockHeight);
+    CAmountMap nPaymentsTotalAmount = GetPaymentsTotalAmount();
+    CAmountMap nPaymentsLimit = GetPaymentsLimit(nBlockHeight);
     if (nPaymentsTotalAmount > nPaymentsLimit) {
         LogPrintf("CSuperblock::IsValid -- ERROR: Block invalid, payments limit exceeded: payments %lld, limit %lld\n", nPaymentsTotalAmount, nPaymentsLimit);
         return false;
     }
 
     // miner and masternodes should not get more than they would usually get
-    CAmount nBlockValue = txNew.GetValueOut();
+    CAmountMap nBlockValue = txNew.GetValueOutMap();
     if (nBlockValue > blockReward + nPaymentsTotalAmount) {
         LogPrintf("CSuperblock::IsValid -- ERROR: Block invalid, block value limit exceeded: block %lld, limit %lld\n", nBlockValue, blockReward + nPaymentsTotalAmount);
         return false;
@@ -640,7 +641,8 @@ bool CSuperblock::IsValid(const CTransaction& txNew, int nBlockHeight, CAmount b
         for (int j = nVoutIndex; j < nOutputs; j++) {
             // Find superblock payment
             fPaymentMatch = ((payment.script == txNew.vout[j].scriptPubKey) &&
-                             (payment.nAmount == txNew.vout[j].nValue));
+                             (payment.nAmount == txNew.vout[j].nValue.GetAmount() &&
+                             payment.nAsset == txNew.vout[j].nAsset.GetAsset() ));
 
             if (fPaymentMatch) {
                 nVoutIndex = j;
@@ -651,10 +653,9 @@ bool CSuperblock::IsValid(const CTransaction& txNew, int nBlockHeight, CAmount b
         if (!fPaymentMatch) {
             // Superblock payment not found!
 
-            CTxDestination address1;
-            ExtractDestination(payment.script, address1);
-            //CRainAddress address2(address1);
-            LogPrintf("CSuperblock::IsValid -- ERROR: Block invalid: %d payment %d to %s not found\n", i, payment.nAmount, EncodeDestination(address1));
+            CTxDestination dest;
+            ExtractDestination(payment.script, dest);
+            LogPrintf("CSuperblock::IsValid -- ERROR: Block invalid: %d payment %d to %s not found\n", i, payment.nAmount, EncodeDestination(dest));
 
             return false;
         }
@@ -718,16 +719,15 @@ std::string CSuperblockManager::GetRequiredPaymentsString(int nBlockHeight)
         if (pSuperblock->GetPayment(i, payment)) {
             // PRINT NICE LOG OUTPUT FOR SUPERBLOCK PAYMENT
 
-            CTxDestination address1;
-            ExtractDestination(payment.script, address1);
-           // CRainAddress address2(address1);
+            CTxDestination dest;
+            ExtractDestination(payment.script, dest);
 
             // RETURN NICE OUTPUT FOR CONSOLE
 
             if (ret != "Unknown") {
-                ret += ", " + EncodeDestination(address1);
+                ret += ", " + EncodeDestination(dest);
             } else {
-                ret = EncodeDestination(address1);
+                ret = EncodeDestination(dest);
             }
         }
     }

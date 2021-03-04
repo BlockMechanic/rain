@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -150,12 +150,8 @@ const CLogCategoryDesc LogCategories[] =
     {BCLog::COINDB, "coindb"},
     {BCLog::QT, "qt"},
     {BCLog::LEVELDB, "leveldb"},
-#ifdef ENABLE_PROOF_OF_STAKE
     {BCLog::COINSTAKE, "stake"},
-#endif
-#ifdef ENABLE_SECURE_MESSAGING
     {BCLog::SMSG, "smsg"},
-#endif
     {BCLog::ALL, "1"},
     {BCLog::ALL, "all"},
     //Start Rain
@@ -170,6 +166,8 @@ const CLogCategoryDesc LogCategories[] =
     {BCLog::MNSYNC, "mnsync"},
     {BCLog::PRIVATESEND, "privatesend"},
     {BCLog::SPORK, "spork"},
+    {BCLog::NETCONN, "netconn"},
+    {BCLog::NET_NETCONN, "net_netconn"},
 
 };
 
@@ -243,10 +241,32 @@ std::string BCLog::Logger::LogTimestampStr(const std::string& str)
     return strStamped;
 }
 
+namespace BCLog {
+    /** Belts and suspenders: make sure outgoing log messages don't contain
+     * potentially suspicious characters, such as terminal control codes.
+     *
+     * This escapes control characters except newline ('\n') in C syntax.
+     * It escapes instead of removes them to still allow for troubleshooting
+     * issues where they accidentally end up in strings.
+     */
+    std::string LogEscapeMessage(const std::string& str) {
+        std::string ret;
+        for (char ch_in : str) {
+            uint8_t ch = (uint8_t)ch_in;
+            if ((ch >= 32 || ch == '\n') && ch != '\x7f') {
+                ret += ch_in;
+            } else {
+                ret += strprintf("\\x%02x", ch);
+            }
+        }
+        return ret;
+    }
+}
+
 void BCLog::Logger::LogPrintStr(const std::string& str)
 {
     std::lock_guard<std::mutex> scoped_lock(m_cs);
-    std::string str_prefixed = str;
+    std::string str_prefixed = LogEscapeMessage(str);
 
     if (m_log_threadnames && m_started_new_line) {
         str_prefixed.insert(0, "[" + util::ThreadGetInternalName() + "] ");

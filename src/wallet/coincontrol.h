@@ -1,10 +1,11 @@
-// Copyright (c) 2011-2019 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #ifndef RAIN_WALLET_COINCONTROL_H
 #define RAIN_WALLET_COINCONTROL_H
 
+#include <primitives/asset.h>
 #include <policy/feerate.h>
 #include <policy/fees.h>
 #include <primitives/transaction.h>
@@ -15,21 +16,12 @@
 const int DEFAULT_MIN_DEPTH = 0;
 const int DEFAULT_MAX_DEPTH = 9999999;
 
-enum class CoinType
-{
-    ALL_COINS,
-    ONLY_DENOMINATED,
-    ONLY_NONDENOMINATED,
-    ONLY_MASTERNODE_INPUT, // find masternode outputs including locked ones (use with caution)
-    ONLY_PRIVATESEND_COLLATERAL,
-};
-
 /** Coin Control Features. */
 class CCoinControl
 {
 public:
     //! Custom change destination, if not set an address is generated
-    CTxDestination destChange;
+    std::map<CAsset, CTxDestination> destChange;
     //! Override the default change type if set, ignored if destChange is set
     boost::optional<OutputType> m_change_type;
     //! If false, allows unselected inputs, but requires all selected inputs be used
@@ -58,6 +50,7 @@ public:
     int m_min_depth = DEFAULT_MIN_DEPTH;
     //! Maximum chain depth value for coin availability
     int m_max_depth = DEFAULT_MAX_DEPTH;
+
 
     CCoinControl()
     {
@@ -94,18 +87,6 @@ public:
     void ListSelected(std::vector<COutPoint>& vOutpoints) const
     {
         vOutpoints.assign(setSelected.begin(), setSelected.end());
-    }
-
-    // Rain-specific helpers
-
-    void UsePrivateSend(bool fUsePrivateSend)
-    {
-        nCoinType = fUsePrivateSend ? CoinType::ONLY_DENOMINATED : CoinType::ALL_COINS;
-    }
-
-    bool IsUsingPrivateSend() const
-    {
-        return nCoinType == CoinType::ONLY_DENOMINATED;
     }
 
 private:

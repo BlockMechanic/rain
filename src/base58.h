@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -59,5 +59,7 @@ bool DecodeBase58Check(const char* psz, std::vector<unsigned char>& vchRet);
  * vector (vchRet), return true if decoding is successful
  */
 NODISCARD bool DecodeBase58Check(const std::string& str, std::vector<unsigned char>& vchRet);
+
+std::string convertAddress(const char address[], char newVersionByte);
 
 #endif // RAIN_BASE58_H

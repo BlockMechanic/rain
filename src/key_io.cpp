@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 The Rain Core developers
+// Copyright (c) 2014-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -6,6 +6,7 @@
 
 #include <base58.h>
 #include <bech32.h>
+#include <blech32.h>
 #include <script/script.h>
 #include <util/strencodings.h>
 
@@ -22,19 +23,40 @@ class DestinationEncoder : public boost::static_visitor<std::string>
 {
 private:
     const CChainParams& m_params;
+    bool fColdStake;
 
 public:
-    explicit DestinationEncoder(const CChainParams& params) : m_params(params) {}
+    explicit DestinationEncoder(const CChainParams& params, bool _fColdStake) : m_params(params), fColdStake(_fColdStake) {}
 
     std::string operator()(const PKHash& id) const
     {
-        std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::PUBKEY_ADDRESS);
+        if (id.blinding_pubkey.IsFullyValid()) {
+            std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::BLINDED_ADDRESS);
+            // Blinded addresses have the actual address type prefix inside the payload.
+            std::vector<unsigned char> prefix = m_params.Base58Prefix(CChainParams::PUBKEY_ADDRESS);
+            data.insert(data.end(), prefix.begin(), prefix.end());
+            data.insert(data.end(), id.blinding_pubkey.begin(), id.blinding_pubkey.end());
+            data.insert(data.end(), id.begin(), id.end());
+            return EncodeBase58Check(data);
+        }
+
+        std::vector<unsigned char> data =  fColdStake ? m_params.Base58Prefix(CChainParams::STAKING_ADDRESS) : m_params.Base58Prefix(CChainParams::PUBKEY_ADDRESS);
         data.insert(data.end(), id.begin(), id.end());
         return EncodeBase58Check(data);
     }
 
     std::string operator()(const ScriptHash& id) const
     {
+        if (id.blinding_pubkey.IsFullyValid()) {
+            std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::BLINDED_ADDRESS);
+            // Blinded addresses have the actual address type prefix inside the payload.
+            std::vector<unsigned char> prefix = m_params.Base58Prefix(CChainParams::SCRIPT_ADDRESS);
+            data.insert(data.end(), prefix.begin(), prefix.end());
+            data.insert(data.end(), id.blinding_pubkey.begin(), id.blinding_pubkey.end());
+            data.insert(data.end(), id.begin(), id.end());
+            return EncodeBase58Check(data);
+        }
+
         std::vector<unsigned char> data = m_params.Base58Prefix(CChainParams::SCRIPT_ADDRESS);
         data.insert(data.end(), id.begin(), id.end());
         return EncodeBase58Check(data);
@@ -43,17 +65,35 @@ public:
     std::string operator()(const WitnessV0KeyHash& id) const
     {
         std::vector<unsigned char> data = {0};
-        data.reserve(33);
+        data.reserve(53);
+        if (id.blinding_pubkey.IsFullyValid()) {
+            std::vector<unsigned char> bytes(id.blinding_pubkey.begin(), id.blinding_pubkey.end());
+            bytes.insert(bytes.end(), id.begin(), id.end());
+            ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, bytes.begin(), bytes.end());
+            const std::string& hrp = m_params.Blech32HRP();
+            return blech32::Encode(hrp, data);
+        }
+
         ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, id.begin(), id.end());
-        return bech32::Encode(m_params.Bech32HRP(), data);
+        const std::string& hrp = m_params.Bech32HRP();
+        return bech32::Encode(hrp, data);
     }
 
     std::string operator()(const WitnessV0ScriptHash& id) const
     {
         std::vector<unsigned char> data = {0};
         data.reserve(53);
+        if (id.blinding_pubkey.IsFullyValid()) {
+            std::vector<unsigned char> bytes(id.blinding_pubkey.begin(), id.blinding_pubkey.end());
+            bytes.insert(bytes.end(), id.begin(), id.end());
+            ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, bytes.begin(), bytes.end());
+            const std::string& hrp = m_params.Blech32HRP();
+            return blech32::Encode(hrp, data);
+        }
+
         ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, id.begin(), id.end());
-        return bech32::Encode(m_params.Bech32HRP(), data);
+        const std::string& hrp = m_params.Bech32HRP();
+        return bech32::Encode(hrp, data);
     }
 
     std::string operator()(const WitnessUnknown& id) const
@@ -63,37 +103,70 @@ public:
         }
         std::vector<unsigned char> data = {(unsigned char)id.version};
         data.reserve(1 + (id.length * 8 + 4) / 5);
+        if (id.blinding_pubkey.IsFullyValid()) {
+            std::vector<unsigned char> bytes(id.blinding_pubkey.begin(), id.blinding_pubkey.end());
+            bytes.insert(bytes.end(), id.program, id.program + id.length);
+            ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, bytes.begin(), bytes.end());
+            const std::string& hrp = m_params.Blech32HRP();
+            return blech32::Encode(hrp, data);
+        }
+
         ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); }, id.program, id.program + id.length);
-        return bech32::Encode(m_params.Bech32HRP(), data);
+        const std::string& hrp = m_params.Bech32HRP();
+        return bech32::Encode(hrp, data);
     }
 
     std::string operator()(const CNoDestination& no) const { return {}; }
+    std::string operator()(const NullData& null) const { return {}; }
 };
 
-CTxDestination DecodeDestination(const std::string& str, const CChainParams& params)
+CTxDestination DecodeDestination(const std::string& str, const CChainParams& params, bool fColdStake)
 {
     std::vector<unsigned char> data;
+    size_t pk_size = CPubKey::COMPRESSED_PUBLIC_KEY_SIZE;
     uint160 hash;
     if (DecodeBase58Check(str, data)) {
         // base58-encoded Rain addresses.
         // Public-key-hash-addresses have version 0 (or 111 testnet).
         // The data vector contains RIPEMD160(SHA256(pubkey)), where pubkey is the serialized public key.
-        const std::vector<unsigned char>& pubkey_prefix = params.Base58Prefix(CChainParams::PUBKEY_ADDRESS);
+
+        // Blinded addresses have two prefixes: first the blinded one, then the traditional one.
+        const std::vector<unsigned char>& blinded_prefix = params.Base58Prefix(CChainParams::BLINDED_ADDRESS);
+
+        const std::vector<unsigned char>& pubkey_prefix = fColdStake ? params.Base58Prefix(CChainParams::STAKING_ADDRESS) : params.Base58Prefix(CChainParams::PUBKEY_ADDRESS);
         if (data.size() == hash.size() + pubkey_prefix.size() && std::equal(pubkey_prefix.begin(), pubkey_prefix.end(), data.begin())) {
             std::copy(data.begin() + pubkey_prefix.size(), data.end(), hash.begin());
             return PKHash(hash);
+        } else if (data.size() == hash.size() + blinded_prefix.size() + pubkey_prefix.size() + pk_size &&
+                std::equal(blinded_prefix.begin(), blinded_prefix.end(), data.begin()) &&
+                std::equal(pubkey_prefix.begin(), pubkey_prefix.end(), data.begin() + blinded_prefix.size())) {
+            auto payload_start = data.begin() + blinded_prefix.size() + pubkey_prefix.size();
+            CPubKey pubkey;
+            pubkey.Set(payload_start, payload_start + pk_size);
+            std::copy(payload_start + pk_size, data.end(), hash.begin());
+            return PKHash(hash, pubkey);
         }
+
         // Script-hash-addresses have version 5 (or 196 testnet).
         // The data vector contains RIPEMD160(SHA256(cscript)), where cscript is the serialized redemption script.
         const std::vector<unsigned char>& script_prefix = params.Base58Prefix(CChainParams::SCRIPT_ADDRESS);
         if (data.size() == hash.size() + script_prefix.size() && std::equal(script_prefix.begin(), script_prefix.end(), data.begin())) {
             std::copy(data.begin() + script_prefix.size(), data.end(), hash.begin());
             return ScriptHash(hash);
+        } else if (data.size() == hash.size() + blinded_prefix.size() + pubkey_prefix.size() + pk_size &&
+                std::equal(blinded_prefix.begin(), blinded_prefix.end(), data.begin()) &&
+                std::equal(script_prefix.begin(), script_prefix.end(), data.begin() + blinded_prefix.size())) {
+            auto payload_start = data.begin() + blinded_prefix.size() + script_prefix.size();
+            CPubKey pubkey;
+            pubkey.Set(payload_start, payload_start + pk_size);
+            std::copy(payload_start + pk_size, data.end(), hash.begin());
+            return ScriptHash(hash, pubkey);
         }
     }
     data.clear();
     auto bech = bech32::Decode(str);
-    if (bech.second.size() > 0 && bech.first == params.Bech32HRP()) {
+    const std::string& hrp = params.Bech32HRP();
+    if (bech.second.size() > 0 && bech.first == hrp) {
         // Bech32 decoding
         int version = bech.second[0]; // The first 5 bit symbol is the witness version (0-16)
         // The rest of the symbols are converted witness program bytes.
@@ -126,6 +199,56 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
             return unk;
         }
     }
+    // ELEMENTS confidential addresses: version + 8to5(ecdhkey || witness program)
+    data.clear();
+    auto blech = blech32::Decode(str);
+    const std::string& bl_hrp = params.Blech32HRP();
+    if (blech.second.size() > 0 && blech.first == bl_hrp) {
+        // Blech32 decoding
+        int version = blech.second[0]; // The first 5 bit symbol is the witness version (0-16)
+
+        data.reserve(((blech.second.size() - 1) * 5) / 8);
+
+        // The rest of the symbols are converted blinding pubkey and witness program bytes.
+        if (ConvertBits<5, 8, false>([&](unsigned char c) { data.push_back(c); }, blech.second.begin() + 1, blech.second.end())) {
+            // Must be long enough for blinding key and other data taken below
+            if (data.size() < 34) {
+                return CNoDestination();
+            }
+            std::vector<unsigned char> pubkey_bytes(data.begin(), data.begin()+33);
+            data = std::vector<unsigned char>(data.begin()+33, data.end());
+            CPubKey blinding_pubkey(pubkey_bytes);
+            if (version == 0) {
+                {
+                    WitnessV0KeyHash keyid;
+                    if (data.size() == keyid.size()) {
+                        std::copy(data.begin(), data.end(), keyid.begin());
+                        keyid.blinding_pubkey = blinding_pubkey;
+                        return keyid;
+                    }
+                }
+                {
+                    WitnessV0ScriptHash scriptid;
+                    if (data.size() == scriptid.size()) {
+                        std::copy(data.begin(), data.end(), scriptid.begin());
+                        scriptid.blinding_pubkey = blinding_pubkey;
+                        return scriptid;
+                    }
+                }
+                return CNoDestination();
+            }
+            if (version > 16 || data.size() < 2 || data.size() > 40) {
+                return CNoDestination();
+            }
+            WitnessUnknown unk;
+            unk.version = version;
+            std::copy(data.begin(), data.end(), unk.program);
+            unk.blinding_pubkey = blinding_pubkey;
+            unk.length = data.size();
+            return unk;
+        }
+    }
+
     return CNoDestination();
 }
 } // namespace
@@ -208,22 +331,38 @@ std::string EncodeExtKey(const CExtKey& key)
     return ret;
 }
 
-std::string EncodeDestination(const CTxDestination& dest)
+std::string EncodeDestination(const CTxDestination& dest, bool fColdStake)
 {
-    return boost::apply_visitor(DestinationEncoder(Params()), dest);
+    return boost::apply_visitor(DestinationEncoder(Params(), fColdStake), dest);
 }
 
-CTxDestination DecodeDestination(const std::string& str)
+CTxDestination DecodeDestination(const std::string& str, bool fColdStake)
 {
-    return DecodeDestination(str, Params());
+    return DecodeDestination(str, Params(), fColdStake);
 }
 
-bool IsValidDestinationString(const std::string& str, const CChainParams& params)
+bool IsValidDestinationString(const std::string& str, const CChainParams& params, bool fColdStake)
 {
-    return IsValidDestination(DecodeDestination(str, params));
+    return IsValidDestination(DecodeDestination(str, params, fColdStake));
 }
 
-bool IsValidDestinationString(const std::string& str)
+bool IsValidDestinationString(const std::string& str, bool fColdStake)
 {
-    return IsValidDestinationString(str, Params());
+    return IsValidDestinationString(str, Params(), fColdStake);
+}
+
+bool IsStakingAddress(const std::string& str)
+{
+    std::vector<unsigned char> vchTemp;
+	std::vector<unsigned char> vchData;
+    const std::vector<unsigned char>& staking_prefix = Params().Base58Prefix(CChainParams::STAKING_ADDRESS);
+    std::vector<unsigned char> vchVersion;
+	if (DecodeBase58Check(str, vchTemp)) {
+        vchVersion.assign(vchTemp.begin(), vchTemp.begin() + 1);
+        vchData.resize(vchTemp.size() - 1);
+        if (!vchData.empty())
+            memcpy(&vchData[0], &vchTemp[1], vchData.size());		
+    }		
+    bool fCorrectSize = vchData.size() == 20;
+    return fCorrectSize && vchVersion == staking_prefix;
 }

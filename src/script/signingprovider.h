@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -25,6 +25,9 @@ public:
     virtual bool GetKey(const CKeyID &address, CKey& key) const { return false; }
     virtual bool HaveKey(const CKeyID &address) const { return false; }
     virtual bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const { return false; }
+    //! Support for HTLC preimages
+    virtual bool GetPreimage(const std::vector<unsigned char>& image, std::vector<unsigned char>& preimage) const  { return false; }
+    virtual bool AddPreimage(const std::vector<unsigned char>& image, const std::vector<unsigned char>& preimage) { return false; }
 };
 
 extern const SigningProvider& DUMMY_SIGNING_PROVIDER;
@@ -63,7 +66,7 @@ FlatSigningProvider Merge(const FlatSigningProvider& a, const FlatSigningProvide
 class FillableSigningProvider : public SigningProvider
 {
 protected:
-    mutable CCriticalSection cs_KeyStore;
+    mutable RecursiveMutex cs_KeyStore;
 
     using KeyMap = std::map<CKeyID, CKey>;
     using ScriptMap = std::map<CScriptID, CScript>;
@@ -72,6 +75,9 @@ protected:
     ScriptMap mapScripts GUARDED_BY(cs_KeyStore);
 
     void ImplicitlyLearnRelatedKeyScripts(const CPubKey& pubkey) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
+    typedef std::map<std::vector<unsigned char>, std::vector<unsigned char>> PreimageMap;
+    PreimageMap mapPreimages;
+
 
 public:
     virtual bool AddKeyPubKey(const CKey& key, const CPubKey &pubkey);
@@ -84,6 +90,8 @@ public:
     virtual bool HaveCScript(const CScriptID &hash) const override;
     virtual std::set<CScriptID> GetCScripts() const;
     virtual bool GetCScript(const CScriptID &hash, CScript& redeemScriptOut) const override;
+    virtual bool GetPreimage(const std::vector<unsigned char>& image, std::vector<unsigned char>& preimage) const override;
+    virtual bool AddPreimage(const std::vector<unsigned char>& image, const std::vector<unsigned char>& preimage);
 };
 
 /** Return the CKeyID of the key involved in a script (if there is a unique one). */

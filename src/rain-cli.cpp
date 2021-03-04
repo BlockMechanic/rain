@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -437,8 +437,6 @@ static int CommandLineRPC(int argc, char *argv[])
             method = args[0];
             args.erase(args.begin()); // Remove trailing method name from arguments vector
         }
-        
-        std::cout<< method.c_str() << std::endl;
 
         // Execute and handle connection failures with -rpcwait
         const bool fWait = gArgs.GetBoolArg("-rpcwait", false);
@@ -449,7 +447,7 @@ static int CommandLineRPC(int argc, char *argv[])
                 // Parse reply
                 const UniValue& result = find_value(reply, "result");
                 const UniValue& error  = find_value(reply, "error");
-                
+
                 if (!error.isNull()) {
                     // Error
                     int code = error["code"].get_int();
@@ -484,7 +482,7 @@ static int CommandLineRPC(int argc, char *argv[])
             }
             catch (const CConnectionFailed&) {
                 if (fWait)
-                    MilliSleep(1000);
+                    UninterruptibleSleep(std::chrono::milliseconds{1000});
                 else
                     throw;
             }
@@ -505,19 +503,11 @@ static int CommandLineRPC(int argc, char *argv[])
     return nRet;
 }
 
-#ifdef WIN32
-// Export main() and ensure working ASLR on Windows.
-// Exporting a symbol will prevent the linker from stripping
-// the .reloc section from the binary, which is a requirement
-// for ASLR. This is a temporary workaround until a fixed
-// version of binutils is used for releases.
-__declspec(dllexport) int main(int argc, char* argv[])
-{
-    util::WinCmdLineArgs winArgs;
-    std::tie(argc, argv) = winArgs.get();
-#else
 int main(int argc, char* argv[])
 {
+#ifdef WIN32
+    util::WinCmdLineArgs winArgs;
+    std::tie(argc, argv) = winArgs.get();
 #endif
     SetupEnvironment();
     if (!SetupNetworking()) {

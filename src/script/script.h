@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,6 +9,7 @@
 #include <crypto/common.h>
 #include <prevector.h>
 #include <serialize.h>
+#include <amount.h>
 
 #include <assert.h>
 #include <climits>
@@ -115,6 +116,7 @@ enum opcodetype
     // splice ops
     OP_CAT = 0x7e,
     OP_SUBSTR = 0x7f,
+    OP_SUBSTR_LAZY = 0xc3,
     OP_LEFT = 0x80,
     OP_RIGHT = 0x81,
     OP_SIZE = 0x82,
@@ -187,11 +189,28 @@ enum opcodetype
     OP_NOP9 = 0xb8,
     OP_NOP10 = 0xb9,
 
+
+    OP_DETERMINISTICRANDOM = 0xba,
+    OP_CHECKSIGFROMSTACK = 0xbb,
+    OP_CHECKSIGFROMSTACKVERIFY = 0xbc,
+
+    // cold staking
+    OP_CHECKCOLDSTAKEVERIFY = 0xbd,
+
+    // template matching params
+    OP_BIGINTEGER = 0xbe,
+    OP_U32INT = 0xbf,
+    OP_SMALLINTEGER = 0xc0,
+    OP_PUBKEYS = 0xc1,
+    OP_ANYDATA = 0xc2,
+    OP_PUBKEYHASH = 0xc3,
+    OP_PUBKEY = 0xc4,
+
     OP_INVALIDOPCODE = 0xff,
 };
 
 // Maximum value that an opcode can be
-static const unsigned int MAX_OPCODE = OP_NOP10;
+static const unsigned int MAX_OPCODE = OP_PUBKEY;
 
 const char* GetOpName(opcodetype opcode);
 
@@ -317,6 +336,8 @@ public:
         return m_value;
     }
 
+    int64_t GetInt64() const { return m_value; }
+
     std::vector<unsigned char> getvch() const
     {
         return serialize(m_value);
@@ -437,9 +458,7 @@ public:
 
     explicit CScript(opcodetype b)     { operator<<(b); }
     explicit CScript(const CScriptNum& b) { operator<<(b); }
-    // delete non-existent constructor to defend against future introduction
-    // e.g. via prevector
-    explicit CScript(const std::vector<unsigned char>& b) = delete;
+    explicit CScript(const std::vector<unsigned char>& b) { operator<<(b); }
 
 
     CScript& operator<<(int64_t b) { return push_int64(b); }
@@ -496,6 +515,23 @@ public:
     }
 
 
+    bool GetOp(iterator& pc, opcodetype& opcodeRet, std::vector<unsigned char>& vchRet)
+    {
+         // Wrapper so it can be called with either iterator or const_iterator
+         const_iterator pc2 = pc;
+         bool fRet = GetScriptOp(pc2, end(), opcodeRet, &vchRet);
+         pc = begin() + (pc2 - begin());
+         return fRet;
+    }
+
+    bool GetOp(iterator& pc, opcodetype& opcodeRet)
+    {
+         const_iterator pc2 = pc;
+         bool fRet = GetScriptOp(pc2, end(), opcodeRet, nullptr);
+         pc = begin() + (pc2 - begin());
+         return fRet;
+    }
+
     bool GetOp(const_iterator& pc, opcodetype& opcodeRet, std::vector<unsigned char>& vchRet) const
     {
         return GetScriptOp(pc, end(), opcodeRet, &vchRet);
@@ -505,7 +541,6 @@ public:
     {
         return GetScriptOp(pc, end(), opcodeRet, nullptr);
     }
-
 
     /** Encode/decode small integers: */
     static int DecodeOP_N(opcodetype opcode)
@@ -523,6 +558,43 @@ public:
         return (opcodetype)(OP_1+n-1);
     }
 
+    int FindAndDelete(const CScript& b)
+    {
+        int nFound = 0;
+        if (b.empty())
+            return nFound;
+        CScript result;
+        iterator pc = begin(), pc2 = begin();
+        opcodetype opcode;
+        do
+        {
+            result.insert(result.end(), pc2, pc);
+            while (static_cast<size_t>(end() - pc) >= b.size() && std::equal(b.begin(), b.end(), pc))
+            {
+                pc = pc + b.size();
+                ++nFound;
+            }
+            pc2 = pc;
+        }
+        while (GetOp(pc, opcode));
+
+        if (nFound > 0) {
+            result.insert(result.end(), pc2, end());
+            *this = result;
+        }
+
+        return nFound;
+    }
+    int Find(opcodetype op) const
+    {
+        int nFound = 0;
+        opcodetype opcode;
+        for (const_iterator pc = begin(); pc != end() && GetOp(pc, opcode);)
+            if (opcode == op)
+                ++nFound;
+        return nFound;
+    }
+
     /**
      * Pre-version-0.6, Rain always counted CHECKMULTISIGs
      * as 20 sigops. With pay-to-script-hash, that changed:
@@ -538,13 +610,17 @@ public:
      */
     unsigned int GetSigOpCount(const CScript& scriptSig) const;
 
+    bool IsNormalPaymentScript() const;
+    bool IsPayToWitnessPubkeyHash() const;
     bool IsPayToScriptHash() const;
+    bool IsPayToWitnessScriptHash() const;
+    bool IsWitnessProgram(int& version, std::vector<unsigned char>& program) const;
+
+    bool IsPayToColdStaking() const;
     bool IsPayToPubkey() const;
     bool IsPayToPubkeyHash() const;
     /////////////////////////////////////////////////
 
-    bool IsPayToWitnessScriptHash() const;
-    bool IsWitnessProgram(int& version, std::vector<unsigned char>& program) const;
 
     /** Called by IsStandardTx and P2SH/BIP62 VerifyScript (which makes it consensus-critical). */
     bool IsPushOnly(const_iterator pc) const;
@@ -560,7 +636,8 @@ public:
      */
     bool IsUnspendable() const
     {
-        return (size() > 0 && *begin() == OP_RETURN) || (size() > MAX_SCRIPT_SIZE);
+        return (size() > 0 && *begin() == OP_RETURN) || (size() > MAX_SCRIPT_SIZE) ||
+            (size() == 0 /* Elements rule for fee outputs */);
     }
 
     std::string ToString() const;
@@ -586,15 +663,8 @@ struct CScriptWitness
     void SetNull() { stack.clear(); stack.shrink_to_fit(); }
 
     std::string ToString() const;
-};
 
-class CReserveScript
-{
-public:
-    CScript reserveScript;
-    virtual void KeepScript() {}
-    CReserveScript() {}
-    virtual ~CReserveScript() {}
+    uint32_t GetSerializedSize() const;
 };
 
 #endif // RAIN_SCRIPT_SCRIPT_H

@@ -12,7 +12,7 @@
 #include <script/standard.h>
 #include <util/time.h>
 #include <validation.h>
-#include <net.h>
+
 #include <boost/test/unit_test.hpp>
 
 BOOST_AUTO_TEST_SUITE(blockfilter_index_tests)
@@ -149,7 +149,7 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, TestChain100Setup)
     int64_t time_start = GetTimeMillis();
     while (!filter_index.BlockUntilSyncedToCurrentChain()) {
         BOOST_REQUIRE(time_start + timeout_ms > GetTimeMillis());
-        MilliSleep(100);
+        UninterruptibleSleep(std::chrono::milliseconds{100});
     }
 
     // Check that filter index has all blocks that were in the chain before it started.
@@ -173,7 +173,6 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, TestChain100Setup)
     std::vector<std::shared_ptr<CBlock>> chainA, chainB;
     BOOST_REQUIRE(BuildChain(tip, coinbase_script_pub_key, 10, chainA));
     BOOST_REQUIRE(BuildChain(tip, coinbase_script_pub_key, 10, chainB));
-    std::unique_ptr<CConnman> g_connman = std::unique_ptr<CConnman>(new CConnman(GetRand(std::numeric_limits<uint64_t>::max()), GetRand(std::numeric_limits<uint64_t>::max())));
 
     // Check that new blocks on chain A get indexed.
     uint256 chainA_last_header = last_header;
@@ -224,7 +223,7 @@ BOOST_FIXTURE_TEST_CASE(blockfilter_index_initial_sync, TestChain100Setup)
     // Reorg back to chain A.
      for (size_t i = 2; i < 4; i++) {
          const auto& block = chainA[i];
-         BOOST_REQUIRE(ProcessNewBlock(Params(), block, true, nullptr));
+        BOOST_REQUIRE(ProcessNewBlock(Params(), block, true, nullptr));
      }
 
      // Check that chain A and B blocks can be retrieved.

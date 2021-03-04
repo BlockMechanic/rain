@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 The Rain Core developers
+// Copyright (c) 2017-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,13 +7,17 @@
 
 #include <amount.h>
 
+#include <confidential_validation.h>
+#include <set>
 #include <stdint.h>
 #include <vector>
+#include <uint256.h>
 
 class CBlockIndex;
 class CCoinsViewCache;
 class CTransaction;
 class CValidationState;
+class COutPoint;
 
 /** Transaction validation functions */
 
@@ -24,7 +28,7 @@ namespace Consensus {
  * @param[out] txfee Set to the transaction fee if successful.
  * Preconditions: tx.IsCoinBase() is false.
  */
-bool CheckTxInputs(const CTransaction& tx, CValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, CAmount& txfee);
+bool CheckTxInputs(const CTransaction& tx, CValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, CAmountMap& fee_map, std::vector<CCheck*> *pvChecks, const bool cacheStore, bool fScriptChecks);
 } // namespace Consensus
 
 /** Auxiliary functions for transaction validation (ideally should not be exposed) */

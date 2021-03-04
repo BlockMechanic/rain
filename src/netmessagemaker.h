@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -19,8 +19,7 @@ public:
     {
         CSerializedNetMsg msg;
         msg.command = std::move(sCommand);
-        int32_t serModes = nVersion <= BRAVO_VERSION ? SER_NETWORK : SER_NETWORK | SER_POSMARKER;
-        CVectorWriter{ serModes, nFlags | nVersion, msg.data, 0, std::forward<Args>(args)... };
+        CVectorWriter{ SER_NETWORK, nFlags | nVersion, msg.data, 0, std::forward<Args>(args)... };
         return msg;
     }
 

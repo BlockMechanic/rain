@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -11,6 +11,7 @@
 #include <serialize.h>
 #include <span.h>
 
+class CKeyID;
 class CPubKey;
 class CScriptID;
 
@@ -94,14 +95,29 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        if (!ser_action.ForRead()) {
-            uint64_t nVal = CompressAmount(txout.nValue);
-            READWRITE(VARINT(nVal));
-        } else {
-            uint64_t nVal = 0;
-            READWRITE(VARINT(nVal));
-            txout.nValue = DecompressAmount(nVal);
-        }
+            if (!ser_action.ForRead()) {
+                if (txout.nValue.IsExplicit()) {
+                    uint8_t b = 0;
+                    READWRITE(b);
+                    uint64_t nVal = CompressAmount(txout.nValue.GetAmount());
+                    READWRITE(VARINT(nVal));
+                } else {
+                    uint8_t b = 1;
+                    READWRITE(b);
+                    READWRITE(txout.nValue);
+                }
+            } else {
+                uint8_t type = 0;
+                READWRITE(type);
+                if (type == 0) {
+                    uint64_t nVal = 0;
+                    READWRITE(VARINT(nVal));
+                    txout.nValue = DecompressAmount(nVal);
+                } else {
+                    READWRITE(txout.nValue);
+                }
+            }
+            READWRITE(txout.nAsset);
         CScriptCompressor cscript(REF(txout.scriptPubKey));
         READWRITE(cscript);
     }

@@ -64,7 +64,7 @@ public:
     static void ExecuteBestSuperblock(int nBlockHeight);
 
     static std::string GetRequiredPaymentsString(int nBlockHeight);
-    static bool IsValid(const CTransaction& txNew, int nBlockHeight, CAmount blockReward);
+    static bool IsValid(const CTransaction& txNew, int nBlockHeight, CAmountMap blockReward);
 };
 
 /**
@@ -80,6 +80,7 @@ private:
 public:
     CScript script;
     CAmount nAmount;
+    CAsset nAsset;
 
     CGovernancePayment() :
         fValid(false),
@@ -88,21 +89,22 @@ public:
     {
     }
 
-    CGovernancePayment(CTxDestination dest, CAmount nAmountIn) :
+    CGovernancePayment(CTxDestination destIn, CAmount nAmountIn) :
         fValid(false),
         script(),
         nAmount(0)
     {
-        try {            
+        try {
+            CTxDestination dest = destIn;
             script = GetScriptForDestination(dest);
             nAmount = nAmountIn;
             fValid = true;
         } catch (std::exception& e) {
-            LogPrintf("CGovernancePayment Payment not valid: addrIn = %s, nAmountIn = %d, what = %s\n",
-                EncodeDestination(dest), nAmountIn, e.what());
+            LogPrintf("CGovernancePayment Payment not valid: destIn = %s, nAmountIn = %d, what = %s\n",
+                EncodeDestination(destIn), nAmountIn, e.what());
         } catch (...) {
-            LogPrintf("CGovernancePayment Payment not valid: addrIn = %s, nAmountIn = %d\n",
-                EncodeDestination(dest), nAmountIn);
+            LogPrintf("CGovernancePayment Payment not valid: destIn = %s, nAmountIn = %d\n",
+                EncodeDestination(destIn), nAmountIn);
         }
     }
 
@@ -140,11 +142,11 @@ private:
 
 public:
     CSuperblock();
-    CSuperblock(uint256& nHash);
+    explicit CSuperblock(uint256& nHash);
 
     static bool IsValidBlockHeight(int nBlockHeight);
     static void GetNearestSuperblocksHeights(int nBlockHeight, int& nLastSuperblockRet, int& nNextSuperblockRet);
-    static CAmount GetPaymentsLimit(int nBlockHeight);
+    static CAmountMap GetPaymentsLimit(int nBlockHeight);
 
     int GetStatus() { return nStatus; }
     void SetStatus(int nStatusIn) { nStatus = nStatusIn; }
@@ -166,9 +168,9 @@ public:
 
     int CountPayments() { return (int)vecPayments.size(); }
     bool GetPayment(int nPaymentIndex, CGovernancePayment& paymentRet);
-    CAmount GetPaymentsTotalAmount();
+    CAmountMap GetPaymentsTotalAmount();
 
-    bool IsValid(const CTransaction& txNew, int nBlockHeight, CAmount blockReward);
+    bool IsValid(const CTransaction& txNew, int nBlockHeight, CAmountMap blockReward);
     bool IsExpired() const;
 };
 

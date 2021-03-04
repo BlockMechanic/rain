@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -29,7 +29,7 @@ public:
     /** Create a new notificator.
        @note Ownership of trayIcon is not transferred to this object.
     */
-    Notificator(const QString &programName, QSystemTrayIcon *trayIcon, QWidget *parent);
+    Notificator(const QString &programName, QSystemTrayIcon *trayIcon);
     ~Notificator();
 
     // Message class
@@ -53,7 +53,7 @@ public Q_SLOTS:
                 const QIcon &icon = QIcon(), int millisTimeout = 10000);
 
 private:
-    QWidget *parent;
+
     enum Mode {
         None,                       /**< Ignore informational notifications, and show a modal pop-up dialog for Critical notifications. */
         Freedesktop,                /**< Use DBus org.freedesktop.Notifications */

@@ -1,4 +1,4 @@
-// Copyright (c) 2010-2018 The Rain Core developers
+// Copyright (c) 2010-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -24,6 +24,7 @@ struct UISignals {
     boost::signals2::signal<CClientUIInterface::NotifyMasternodeListChangedSig> NotifyMasternodeListChanged;
     boost::signals2::signal<CClientUIInterface::NotifyAdditionalDataSyncProgressChangedSig> NotifyAdditionalDataSyncProgressChanged;
 
+    boost::signals2::signal<CClientUIInterface::NotifyAuxiliaryBlockRequestProgressSig> NotifyAuxiliaryBlockRequestProgress;
 };
 static UISignals g_ui_signals;
 
@@ -46,6 +47,7 @@ ADD_SIGNALS_IMPL_WRAPPER(NotifyHeaderTip);
 ADD_SIGNALS_IMPL_WRAPPER(NotifyMasternodeListChanged);
 ADD_SIGNALS_IMPL_WRAPPER(NotifyAdditionalDataSyncProgressChanged);
 ADD_SIGNALS_IMPL_WRAPPER(BannedListChanged);
+ADD_SIGNALS_IMPL_WRAPPER(NotifyAuxiliaryBlockRequestProgress);
 
 bool CClientUIInterface::ThreadSafeMessageBox(const std::string& message, const std::string& caption, unsigned int style) { return g_ui_signals.ThreadSafeMessageBox(message, caption, style); }
 bool CClientUIInterface::ThreadSafeQuestion(const std::string& message, const std::string& non_interactive_message, const std::string& caption, unsigned int style) { return g_ui_signals.ThreadSafeQuestion(message, non_interactive_message, caption, style); }
@@ -60,7 +62,7 @@ void CClientUIInterface::NotifyHeaderTip(bool b, const CBlockIndex* i) { return 
 void CClientUIInterface::NotifyMasternodeListChanged(const CDeterministicMNList& i) { return g_ui_signals.NotifyMasternodeListChanged(i); }
 void CClientUIInterface::NotifyAdditionalDataSyncProgressChanged(double b) { return g_ui_signals.NotifyAdditionalDataSyncProgressChanged(b); }
 void CClientUIInterface::BannedListChanged() { return g_ui_signals.BannedListChanged(); }
-
+void CClientUIInterface::NotifyAuxiliaryBlockRequestProgress(int64_t a, size_t b, size_t c, size_t d) { return g_ui_signals.NotifyAuxiliaryBlockRequestProgress(a,b,c,d); }
 
 bool InitError(const std::string& str)
 {

@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -270,7 +270,7 @@ static void MutateTxAddOutAddr(CMutableTransaction& tx, const std::string& strIn
     std::vector<std::string> vStrInputParts;
     boost::split(vStrInputParts, strInput, boost::is_any_of(":"));
 
-    if (vStrInputParts.size() != 2)
+    if (vStrInputParts.size() < 2)
         throw std::runtime_error("TX output missing or too many separators");
 
     // Extract and validate VALUE
@@ -284,8 +284,19 @@ static void MutateTxAddOutAddr(CMutableTransaction& tx, const std::string& strIn
     }
     CScript scriptPubKey = GetScriptForDestination(destination);
 
+    // extract and validate ASSET
+    CAsset asset;
+    if (vStrInputParts.size() == 3) {
+        asset = CAsset(uint256S(vStrInputParts[2]));
+        if (asset.IsNull()) {
+            throw std::runtime_error("invalid TX output asset type");
+        }
+    } else {
+        asset = Params().GetConsensus().subsidy_asset;
+    }
+
     // construct TxOut, append to transaction output list
-    CTxOut txout(value, scriptPubKey);
+    CTxOut txout(asset, CConfidentialValue(value), scriptPubKey);
     tx.vout.push_back(txout);
 }
 
@@ -329,7 +340,7 @@ static void MutateTxAddOutPubKey(CMutableTransaction& tx, const std::string& str
     }
 
     // construct TxOut, append to transaction output list
-    CTxOut txout(value, scriptPubKey);
+    CTxOut txout(Params().GetConsensus().subsidy_asset, CConfidentialValue(value), scriptPubKey);
     tx.vout.push_back(txout);
 }
 
@@ -403,7 +414,7 @@ static void MutateTxAddOutMultiSig(CMutableTransaction& tx, const std::string& s
     }
 
     // construct TxOut, append to transaction output list
-    CTxOut txout(value, scriptPubKey);
+    CTxOut txout(Params().GetConsensus().subsidy_asset, CConfidentialValue(value), scriptPubKey);
     tx.vout.push_back(txout);
 }
 
@@ -411,26 +422,46 @@ static void MutateTxAddOutData(CMutableTransaction& tx, const std::string& strIn
 {
     CAmount value = 0;
 
-    // separate [VALUE:]DATA in string
-    size_t pos = strInput.find(':');
+    // separate [VALUE:]DATA[:ASSET] in string
+    std::vector<std::string> vStrInputParts;
+    boost::split(vStrInputParts, strInput, boost::is_any_of(":"));
 
-    if (pos==0)
+    // Check that there are enough parameters
+    if (vStrInputParts[0].empty())
         throw std::runtime_error("TX output value not specified");
 
-    if (pos != std::string::npos) {
-        // Extract and validate VALUE
-        value = ExtractAndValidateValue(strInput.substr(0, pos));
+    if (vStrInputParts.size()>3)
+        throw std::runtime_error("too many separators");
+
+    std::vector<unsigned char> data;
+    CAsset asset(Params().GetConsensus().subsidy_asset);
+
+    if (vStrInputParts.size()==1) {
+        std::string strData = vStrInputParts[0];
+        if (!IsHex(strData))
+            throw std::runtime_error("invalid TX output data");
+        data = ParseHex(strData);
+
+    } else {
+        value = ExtractAndValidateValue(vStrInputParts[0]);
+        std::string strData = vStrInputParts[1];
+        if (!IsHex(strData))
+            throw std::runtime_error("invalid TX output data");
+        data = ParseHex(strData);
+
+        if (vStrInputParts.size()==3) {
+            std::string strAsset = vStrInputParts[2];
+            if (!IsHex(strAsset))
+                throw std::runtime_error("invalid TX output asset type");
+
+            asset.SetHex(strAsset);
+            if (asset.IsNull()) {
+                throw std::runtime_error("invalid TX output asset type");
+            }
+        }
     }
 
-    // extract and validate DATA
-    std::string strData = strInput.substr(pos + 1, std::string::npos);
-
-    if (!IsHex(strData))
-        throw std::runtime_error("invalid TX output data");
-
-    std::vector<unsigned char> data = ParseHex(strData);
-
-    CTxOut txout(value, CScript() << OP_RETURN << data);
+    CTxOut txout(asset, CConfidentialValue(value), CScript() << OP_RETURN << data);
     tx.vout.push_back(txout);
 }
 
@@ -475,7 +506,7 @@ static void MutateTxAddOutScript(CMutableTransaction& tx, const std::string& str
     }
 
     // construct TxOut, append to transaction output list
-    CTxOut txout(value, scriptPubKey);
+    CTxOut txout(Params().GetConsensus().subsidy_asset, CConfidentialValue(value), scriptPubKey);
     tx.vout.push_back(txout);
 }
 
@@ -615,7 +646,7 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
                 newcoin.out.scriptPubKey = scriptPubKey;
                 newcoin.out.nValue = 0;
                 if (prevOut.exists("amount")) {
-                    newcoin.out.nValue = AmountFromValue(prevOut["amount"]);
+                    newcoin.out.nValue = CConfidentialValue(AmountFromValue(prevOut["amount"]));
                 }
                 newcoin.nHeight = 1;
                 view.AddCoin(out, std::move(newcoin), true);
@@ -645,12 +676,12 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
             continue;
         }
         const CScript& prevPubKey = coin.out.scriptPubKey;
-        const CAmount& amount = coin.out.nValue;
+        const CConfidentialValue& amount = coin.out.nValue;
 
         SignatureData sigdata = DataFromTransaction(mergedTx, i, coin.out);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
         if (!fHashSingle || (i < mergedTx.vout.size()))
-            ProduceSignature(keystore, MutableTransactionSignatureCreator(&mergedTx, i, amount, nHashType), prevPubKey, sigdata);
+            ProduceSignature(keystore, MutableTransactionSignatureCreator(&mergedTx, i, amount, nHashType), prevPubKey, sigdata, false);
 
         UpdateInput(txin, sigdata);
     }
@@ -797,7 +828,7 @@ static int CommandLineRawTx(int argc, char* argv[])
             if (strHexTx == "-")                 // "-" implies standard input
                 strHexTx = readStdin();
 
-            if (!DecodeHexTx(tx, strHexTx, true))
+            if (!DecodeHexTx(tx, strHexTx))
                 throw std::runtime_error("invalid transaction encoding");
 
             startArg = 2;

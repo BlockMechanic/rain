@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2018 The Rain Core developers
+// Copyright (c) 2012-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -230,7 +230,19 @@ CAmount CCoinsViewCache::GetValueIn(const CTransaction& tx) const
 
     CAmount nResult = 0;
     for (unsigned int i = 0; i < tx.vin.size(); i++)
-        nResult += AccessCoin(tx.vin[i].prevout).out.nValue;
+        nResult += AccessCoin(tx.vin[i].prevout).out.nValue.GetAmount();
+
+    return nResult;
+}
+
+CAmountMap CCoinsViewCache::GetValueInMap(const CTransaction& tx) const
+{
+    if (tx.IsCoinBase())
+        return CAmountMap();
+
+    CAmountMap nResult;
+    for (unsigned int i = 0; i < tx.vin.size(); i++)
+        nResult[AccessCoin(tx.vin[i].prevout).out.nAsset.GetAsset()] += AccessCoin(tx.vin[i].prevout).out.nValue.GetAmount();
 
     return nResult;
 }
@@ -249,6 +261,14 @@ bool CCoinsViewCache::HaveInputs(const CTransaction& tx) const
 
 static const size_t MIN_TRANSACTION_OUTPUT_WEIGHT = WITNESS_SCALE_FACTOR * ::GetSerializeSize(CTxOut(), PROTOCOL_VERSION);
 static const size_t MAX_OUTPUTS_PER_BLOCK = MAX_BLOCK_WEIGHT / MIN_TRANSACTION_OUTPUT_WEIGHT;
+
+int CCoinsViewCache::GetCoinDepthAtHeight(const COutPoint& output, int nHeight) const
+{
+    const Coin& coin = AccessCoin(output);
+    if (!coin.IsSpent())
+        return nHeight - coin.nHeight + 1;
+    return -1;
+}
 
 const Coin& AccessByTxid(const CCoinsViewCache& view, const uint256& txid)
 {

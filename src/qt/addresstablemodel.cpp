@@ -1,13 +1,14 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <qt/addresstablemodel.h>
-
+#include <addressbook.h>
 #include <qt/guiutil.h>
 #include <qt/walletmodel.h>
 
 #include <key_io.h>
+#include <qt/sortedit.h>
 #include <wallet/wallet.h>
 
 #include <algorithm>
@@ -17,22 +18,31 @@
 
 const QString AddressTableModel::Send = "S";
 const QString AddressTableModel::Receive = "R";
+const QString AddressTableModel::Delegator = "D";
+const QString AddressTableModel::Delegable = "E";
+const QString AddressTableModel::ColdStaking = "C";
+const QString AddressTableModel::ColdStakingSend = "T";
 
 struct AddressTableEntry
 {
     enum Type {
         Sending,
         Receiving,
+        Delegator,
+        Delegable,
+        ColdStaking,
+        ColdStakingSend,
         Hidden /* QSortFilterProxyModel will filter these out */
     };
 
     Type type;
     QString label;
     QString address;
+    uint creationTime;
 
     AddressTableEntry() {}
-    AddressTableEntry(Type _type, const QString &_label, const QString &_address):
-        type(_type), label(_label), address(_address) {}
+    AddressTableEntry(Type _type, const QString &_label, const QString &_address, const uint _creationTime):
+        type(_type), label(_label), address(_address), creationTime(_creationTime) {}
 };
 
 struct AddressTableEntryLessThan
@@ -60,6 +70,14 @@ static AddressTableEntry::Type translateTransactionType(const QString &strPurpos
         addressType = AddressTableEntry::Sending;
     else if (strPurpose == "receive")
         addressType = AddressTableEntry::Receiving;
+    else if (strPurpose == QString::fromStdString(AddressBook::AddressBookPurpose::DELEGATOR))
+        addressType = AddressTableEntry::Delegator;
+    else if (strPurpose == QString::fromStdString(AddressBook::AddressBookPurpose::DELEGABLE))
+        addressType = AddressTableEntry::Delegable;
+    else if (strPurpose == QString::fromStdString(AddressBook::AddressBookPurpose::COLD_STAKING))
+        addressType = AddressTableEntry::ColdStaking;
+    else if (strPurpose == QString::fromStdString(AddressBook::AddressBookPurpose::COLD_STAKING_SEND))
+        addressType = AddressTableEntry::ColdStakingSend;
     else if (strPurpose == "unknown" || strPurpose == "") // if purpose not set, guess
         addressType = (isMine ? AddressTableEntry::Receiving : AddressTableEntry::Sending);
     return addressType;
@@ -70,6 +88,9 @@ class AddressTablePriv
 {
 public:
     QList<AddressTableEntry> cachedAddressTable;
+    int sendNum = 0;
+    int recvNum = 0;
+    int coldSendNum = 0;
     AddressTableModel *parent;
 
     explicit AddressTablePriv(AddressTableModel *_parent):
@@ -83,9 +104,17 @@ public:
             {
                 AddressTableEntry::Type addressType = translateTransactionType(
                         QString::fromStdString(address.purpose), address.is_mine);
+
+                uint creationTime = 0;
+                if(address.purpose == "receive"){
+                    creationTime = static_cast<uint>(wallet.getCreationTime());
+                }else if(address.purpose == "send"){
+                    creationTime = 0;
+                }
+
                 cachedAddressTable.append(AddressTableEntry(addressType,
                                   QString::fromStdString(address.name),
-                                  QString::fromStdString(EncodeDestination(address.dest))));
+                                  QString::fromStdString(EncodeDestination(address.dest)), creationTime));
             }
         }
         // qLowerBound() and qUpperBound() require our cachedAddressTable list to be sorted in asc order
@@ -115,7 +144,7 @@ public:
                 break;
             }
             parent->beginInsertRows(QModelIndex(), lowerIndex, lowerIndex);
-            cachedAddressTable.insert(lowerIndex, AddressTableEntry(newEntryType, label, address));
+            cachedAddressTable.insert(lowerIndex, AddressTableEntry(newEntryType, label, address, 0));
             parent->endInsertRows();
             break;
         case CT_UPDATED:
@@ -146,6 +175,15 @@ public:
         return cachedAddressTable.size();
     }
 
+    int sizeSend(){
+        return sendNum;
+    }
+
+    int sizeRecv(){
+        return recvNum;
+    }
+    int SizeColdSend() { return coldSendNum; }
+
     AddressTableEntry *index(int idx)
     {
         if(idx >= 0 && idx < cachedAddressTable.size())
@@ -160,9 +198,9 @@ public:
 };
 
 AddressTableModel::AddressTableModel(WalletModel *parent) :
-    QAbstractTableModel(parent), walletModel(parent)
+    QAbstractItemModel(parent), walletModel(parent)
 {
-    columns << tr("Label") << tr("Address");
+    columns << tr("Label") << tr("Address") << tr("Date");
     priv = new AddressTablePriv(this);
     priv->refreshAddressTable(parent->wallet());
 }
@@ -170,6 +208,11 @@ AddressTableModel::AddressTableModel(WalletModel *parent) :
 AddressTableModel::~AddressTableModel()
 {
     delete priv;
+}
+
+void AddressTableModel::refresh()
+{
+    priv->refreshAddressTable(walletModel->wallet());
 }
 
 int AddressTableModel::rowCount(const QModelIndex &parent) const
@@ -184,6 +227,17 @@ int AddressTableModel::columnCount(const QModelIndex &parent) const
     return columns.length();
 }
 
+int AddressTableModel::sizeSend() const{
+    return priv->sizeSend();
+}
+int AddressTableModel::sizeRecv() const{
+    return priv->sizeRecv();
+}
+int AddressTableModel::size() const{
+    return priv->size();
+}
+int AddressTableModel::sizeColdSend() const { return priv->SizeColdSend(); }
+
 QVariant AddressTableModel::data(const QModelIndex &index, int role) const
 {
     if(!index.isValid())
@@ -191,6 +245,36 @@ QVariant AddressTableModel::data(const QModelIndex &index, int role) const
 
     AddressTableEntry *rec = static_cast<AddressTableEntry*>(index.internalPointer());
 
+    switch (role)
+    {
+        case LabelRole:
+            return rec->label;
+        case AddressRole:
+            return rec->address;
+        case DateRole:
+            return rec->creationTime;
+        case TypeRole:{
+			switch(rec->type)
+			{
+			case AddressTableEntry::Sending:
+				return Send;
+			case AddressTableEntry::Receiving:
+				return Receive;
+			case AddressTableEntry::Delegator:
+				return Delegator;
+			case AddressTableEntry::Delegable:
+				return Delegable;
+			case AddressTableEntry::ColdStaking:
+				return ColdStaking;
+			case AddressTableEntry::ColdStakingSend:
+				return ColdStakingSend;
+			case AddressTableEntry::Hidden:
+			default:
+			    return QVariant();
+			}            
+		}
+    }
+/*
     if(role == Qt::DisplayRole || role == Qt::EditRole)
     {
         switch(index.column())
@@ -206,6 +290,10 @@ QVariant AddressTableModel::data(const QModelIndex &index, int role) const
             }
         case Address:
             return rec->address;
+        case Date:
+            return rec->creationTime;
+        default:
+            return rec->label.isEmpty() ? rec->address : rec->label;
         }
     }
     else if (role == Qt::FontRole)
@@ -228,6 +316,7 @@ QVariant AddressTableModel::data(const QModelIndex &index, int role) const
         default: break;
         }
     }
+*/
     return QVariant();
 }
 
@@ -447,7 +536,39 @@ int AddressTableModel::lookupAddress(const QString &address) const
 
 OutputType AddressTableModel::GetDefaultAddressType() const { return walletModel->wallet().getDefaultAddressType(); };
 
+/**
+ * Return last created unused address --> TODO: complete "unused"..
+ * @return
+ */
+QString AddressTableModel::getLastUnusedAddress() const{
+    auto map = walletModel->wallet().getMapAddressBook();
+    if(!map.empty()) {
+        for (auto it = map.end(); it != map.begin(); --it) {
+            if(it != map.end()) {
+                if (it->second.purpose == "receive") {
+                    CTxDestination dest = it->first;
+                    bool fMine = walletModel->wallet().isMine(dest);
+                    if (fMine) {
+                        return QString::fromStdString(EncodeDestination(dest));
+                    }
+                }
+            }
+        }
+    }
+    return QString();
+}
+
 void AddressTableModel::emitDataChanged(int idx)
 {
     Q_EMIT dataChanged(index(idx, 0, QModelIndex()), index(idx, columns.length()-1, QModelIndex()));
+}
+
+void AddressTableModel::notifyChange(const QModelIndex &_index)
+{
+    int idx = _index.row();
+    emitDataChanged(idx);
+}
+
+QModelIndex AddressTableModel::parent(const QModelIndex &child) const{
+    return QModelIndex();
 }

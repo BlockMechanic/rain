@@ -31,7 +31,7 @@ Drag Rain Core to your applications folder, and then run Rain Core.
 * See the documentation at the [Rain Wiki](https://en.rain.it/wiki/Main_Page)
 for help and more information.
 * Ask for help on [#rain](http://webchat.freenode.net?channels=rain) on Freenode. If you don't have an IRC client, use [webchat here](http://webchat.freenode.net?channels=rain).
-* Ask for help on the [RainTalk](https://raintalk.org/) forums, in the [Technical Support board](https://raintalk.org/index.php?board=4.0).
+* Ask for help on the [RainTalk](https://bitcointalk.org/) forums, in the [Technical Support board](https://bitcointalk.org/index.php?board=4.0).
 
 Building
 ---------------------
@@ -44,6 +44,7 @@ The following are developer notes on how to build Rain Core on your native platf
 - [FreeBSD Build Notes](build-freebsd.md)
 - [OpenBSD Build Notes](build-openbsd.md)
 - [NetBSD Build Notes](build-netbsd.md)
+- [Android Build Notes](build-android.md)
 - [Gitian Building Guide (External Link)](https://github.com/rain-core/docs/blob/master/gitian-building.md)
 
 Development
@@ -65,7 +66,7 @@ The Rain repo's [root README](/README.md) contains relevant information on the d
 - [Benchmarking](benchmarking.md)
 
 ### Resources
-* Discuss on the [RainTalk](https://raintalk.org/) forums, in the [Development & Technical Discussion board](https://raintalk.org/index.php?board=6.0).
+* Discuss on the [RainTalk](https://bitcointalk.org/) forums, in the [Development & Technical Discussion board](https://bitcointalk.org/index.php?board=6.0).
 * Discuss project-specific development on #rain-core-dev on Freenode. If you don't have an IRC client, use [webchat here](http://webchat.freenode.net/?channels=rain-core-dev).
 * Discuss general Rain development on #rain-dev on Freenode. If you don't have an IRC client, use [webchat here](http://webchat.freenode.net/?channels=rain-dev).
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2018 The Rain Core developers
+// Copyright (c) 2012-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -13,7 +13,7 @@
 #include <util/strencodings.h>
 #include <version.h>
 
-#include <memory>
+#include <typeindex>
 
 #include <leveldb/db.h>
 #include <leveldb/write_batch.h>
@@ -410,7 +410,7 @@ private:
     bool curIsParent{false};
 
 public:
-    CDBTransactionIterator(CDBTransaction& _transaction) :
+    explicit CDBTransactionIterator(CDBTransaction& _transaction) :
             transaction(_transaction),
             parentKey(SER_DISK, CLIENT_VERSION)
     {

@@ -1,16 +1,15 @@
-// Copyright (c) 2014-2019 The Rain Core developers
+// Copyright (c) 2009-2012 The Rain developers
+// Copyright (c) 2015-2020 The RAIN developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <masternode/activemasternode.h>
-#include <base58.h>
-#include <clientversion.h>
-#include <init.h>
-#include <netbase.h>
-#include <validation.h>
-#include <util/system.h>
+#include "db.h"
+#include "init.h"
+#include "validation.h"
+#include "netbase.h"
+#include "rpc/server.h"
 #include <util/moneystr.h>
-#include <txmempool.h>
 #include <key_io.h>
 #include <evo/specialtx.h>
 #include <evo/deterministicmns.h>
@@ -20,6 +19,7 @@
 
 #include <rpc/server.h>
 #include <rpc/protocol.h>
+#include <rpc/util.h>
 
 #include <wallet/coincontrol.h>
 #include <wallet/rpcwallet.h>
@@ -27,8 +27,6 @@
 #include <wallet/wallet.h>
 #endif // ENABLE_WALLET
 
-#include <fstream>
-#include <iomanip>
 #include <univalue.h>
 
 UniValue masternodelist(const JSONRPCRequest& request);
@@ -232,7 +230,7 @@ UniValue masternode_outputs(const JSONRPCRequest& request)
     // Find possible candidates
     std::vector<COutput> vPossibleCoins;
     CCoinControl coin_control;
-    coin_control.nCoinType = CoinType::ONLY_MASTERNODE_INPUT;
+    coin_control.nCoinType = CoinType::ONLY_MASTERNODE_COLLATERAL;
     auto locked_chain = pwallet->chain().lock();
     pwallet->AvailableCoins(*locked_chain, vPossibleCoins, true, &coin_control);
 
@@ -296,7 +294,7 @@ void masternode_winners_help()
 
 UniValue masternode_winners(const JSONRPCRequest& request)
 {
-    if (request.fHelp)
+    if (request.fHelp || request.params.size() > 3)
         masternode_winners_help();
 
     int nHeight;
@@ -311,16 +309,13 @@ UniValue masternode_winners(const JSONRPCRequest& request)
     int nLast = 10;
     std::string strFilter = "";
 
-    if (request.params.size() >= 2) {
+    if (!request.params[1].isNull()) {
         nLast = atoi(request.params[1].get_str());
     }
 
-    if (request.params.size() == 3) {
+    if (!request.params[2].isNull()) {
         strFilter = request.params[2].get_str();
     }
-
-    if (request.params.size() > 3)
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Correct usage is 'masternode winners ( \"count\" \"filter\" )'");
 
     UniValue obj(UniValue::VOBJ);
     auto mapPayments = GetRequiredPaymentsStrings(nHeight - nLast, nHeight + 20);
@@ -354,7 +349,7 @@ UniValue masternode_winners(const JSONRPCRequest& request)
 UniValue masternode(const JSONRPCRequest& request)
 {
     std::string strCommand;
-    if (request.params.size() >= 1) {
+    if (!request.params[0].isNull()) {
         strCommand = request.params[0].get_str();
     }
 
@@ -390,8 +385,8 @@ UniValue masternodelist(const JSONRPCRequest& request)
     std::string strMode = "json";
     std::string strFilter = "";
 
-    if (request.params.size() >= 1) strMode = request.params[0].get_str();
-    if (request.params.size() == 2) strFilter = request.params[1].get_str();
+    if (!request.params[0].isNull()) strMode = request.params[0].get_str();
+    if (!request.params[1].isNull()) strFilter = request.params[1].get_str();
 
     std::transform(strMode.begin(), strMode.end(), strMode.begin(), ::tolower);
 
@@ -446,7 +441,7 @@ UniValue masternodelist(const JSONRPCRequest& request)
         }
 
         if (strMode == "addr") {
-            std::string strAddress = dmn->pdmnState->addr.ToString(false);
+            std::string strAddress = dmn->pdmnState->addr.ToString();
             if (strFilter !="" && strAddress.find(strFilter) == std::string::npos &&
                 strOutpoint.find(strFilter) == std::string::npos) return;
             obj.pushKV(strOutpoint, strAddress);
@@ -536,8 +531,8 @@ static const CRPCCommand commands[] =
     { "rain",               "masternodelist",         &masternodelist,           {} },
 };
 
-void RegisterMasternodeRPCCommands(CRPCTable &t)
+void RegisterMasternodeRPCCommands(CRPCTable &tableRPC)
 {
     for (unsigned int vcidx = 0; vcidx < ARRAYLEN(commands); vcidx++)
-        t.appendCommand(commands[vcidx].name, &commands[vcidx]);
+        tableRPC.appendCommand(commands[vcidx].name, &commands[vcidx]);
 }

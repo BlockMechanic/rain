@@ -1,9 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <txdb.h>
+#include <chain.h>
 
 #include <pow.h>
 #include <random.h>
@@ -27,6 +28,7 @@ static const char DB_TXINDEX = 't';
 static const char DB_ADDRESSINDEX = 'a';
 static const char DB_ADDRESSUNSPENTINDEX = 'u';
 static const char DB_TIMESTAMPINDEX = 's';
+static const char DB_BLOCKHASHINDEX = 'z';
 static const char DB_SPENTINDEX = 'p';
 static const char DB_BLOCK_INDEX = 'b';
 //////////////////////////////////////////
@@ -287,7 +289,7 @@ bool CBlockTreeDB::UpdateAddressUnspentIndex(const std::vector<std::pair<CAddres
     return WriteBatch(batch);
 }
 
-bool CBlockTreeDB::ReadAddressUnspentIndex(uint160 addressHash, int type,
+bool CBlockTreeDB::ReadAddressUnspentIndex(uint160 addressHash, int type, std::string assetName,
                                            std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > &unspentOutputs) {
 
     std::unique_ptr<CDBIterator> pcursor(NewIterator());
@@ -327,14 +329,14 @@ bool CBlockTreeDB::EraseAddressIndex(const std::vector<std::pair<CAddressIndexKe
     return WriteBatch(batch);
 }
 
-bool CBlockTreeDB::ReadAddressIndex(uint160 addressHash, int type,
+bool CBlockTreeDB::ReadAddressIndex(uint160 addressHash, int type, std::string assetName,
                                     std::vector<std::pair<CAddressIndexKey, CAmount> > &addressIndex,
                                     int start, int end) {
 
     std::unique_ptr<CDBIterator> pcursor(NewIterator());
 
     if (start > 0 && end > 0) {
-        pcursor->Seek(std::make_pair(DB_ADDRESSINDEX, CAddressIndexIteratorHeightKey(type, addressHash, start)));
+        pcursor->Seek(std::make_pair(DB_ADDRESSINDEX, CAddressIndexIteratorHeightKey(type, addressHash, assetName, start)));
     } else {
         pcursor->Seek(std::make_pair(DB_ADDRESSINDEX, CAddressIndexIteratorKey(type, addressHash)));
     }
@@ -387,6 +389,22 @@ bool CBlockTreeDB::ReadTimestampIndex(const unsigned int &high, const unsigned i
     return true;
 }
 
+bool CBlockTreeDB::WriteTimestampBlockIndex(const CTimestampBlockIndexKey &blockhashIndex, const CTimestampBlockIndexValue &logicalts) {
+    CDBBatch batch(*this);
+    batch.Write(std::make_pair(DB_BLOCKHASHINDEX, blockhashIndex), logicalts);
+    return WriteBatch(batch);
+}
+
+bool CBlockTreeDB::ReadTimestampBlockIndex(const uint256 &hash, unsigned int &ltimestamp) {
+
+    CTimestampBlockIndexValue(lts);
+    if (!Read(std::make_pair(DB_BLOCKHASHINDEX, hash), lts))
+	return false;
+
+    ltimestamp = lts.ltimestamp;
+    return true;
+}
+
 bool CBlockTreeDB::WriteFlag(const std::string &name, bool fValue) {
     return Write(std::make_pair(DB_FLAG, name), fValue ? '1' : '0');
 }
@@ -416,6 +434,7 @@ bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, 
                 // Construct block index object
                 CBlockIndex* pindexNew = insertBlockIndex(diskindex.GetBlockHash());
                 pindexNew->pprev          = insertBlockIndex(diskindex.hashPrev);
+                pindexNew->pnext          = insertBlockIndex(diskindex.hashNext);
                 pindexNew->nHeight        = diskindex.nHeight;
                 pindexNew->nFile          = diskindex.nFile;
                 pindexNew->nDataPos       = diskindex.nDataPos;
@@ -427,15 +446,19 @@ bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, 
                 pindexNew->nNonce         = diskindex.nNonce;
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
+                pindexNew->nHeight        = diskindex.nHeight;
 
                 pindexNew->nMoneySupply   = diskindex.nMoneySupply;
-                pindexNew->nFlags         = diskindex.nFlags;
                 pindexNew->nStakeModifier = diskindex.nStakeModifier;
                 pindexNew->prevoutStake   = diskindex.prevoutStake;
+                pindexNew->vchBlockSig    = diskindex.vchBlockSig;
                 pindexNew->hashProof      = diskindex.hashProof;
 
                 if (pindexNew->IsProofOfWork() && !CheckProofOfWork(pindexNew->GetBlockHash(), pindexNew->nBits, consensusParams, false))
                     return error("%s: CheckProofOfWork failed: %s", __func__, pindexNew->ToString());
+
+                if (pindexNew->IsProofOfStake())
+                    setStakeSeen.insert(std::make_pair(pindexNew->prevoutStake, pindexNew->nTime));
 
                 pcursor->Next();
             } else {

@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -12,17 +12,26 @@
 #include <qt/messagemodel.h>
 #include <qt/messagepage.h>
 #include <qt/optionsmodel.h>
-#include <qt/overviewpage.h>
+#include <qt/dashboardwidget.h>
 #include <qt/platformstyle.h>
-#include <qt/receivecoinsdialog.h>
-#include <qt/rpcconsole.h>
-#include <qt/sendcoinsdialog.h>
 #include <qt/sendmessagespage.h>
 #include <qt/signverifymessagedialog.h>
 #include <qt/transactiontablemodel.h>
 #include <qt/transactionview.h>
 #include <qt/walletmodel.h>
-#include <qt/transactionrecord.h>
+
+#include <qt/chartswidget.h>
+//#include <qt/blockexplorer.h>
+#include <qt/addresseswidget.h>
+#include <qt/assetpage.h>
+#include <qt/historywidget.h>
+#include <qt/receivewidget.h>
+#include <qt/send.h>
+#include <qt/settings/settingswidget.h>
+
+#include <qt/masternodeswidget.h>
+#include <qt/coldstakingwidget.h>
+
 
 #include <interfaces/node.h>
 #include <ui_interface.h>
@@ -33,110 +42,95 @@
 #include <QHBoxLayout>
 #include <QProgressDialog>
 #include <QPushButton>
-#include <QSettings>
 #include <QVBoxLayout>
 
 WalletView::WalletView(const PlatformStyle *_platformStyle, QWidget *parent):
-    QStackedWidget(parent),
+    QSlideStackedWidget(parent),
     clientModel(nullptr),
     walletModel(nullptr),
     platformStyle(_platformStyle)
 {
+    // customize
+    QSizePolicy sizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    setSizePolicy(sizePolicy);
+    setContentsMargins(0,200,0,0);
+    setSpeed(300);
+
     // Create tabs
-    overviewPage = new OverviewPage(platformStyle);
-
-    transactionsPage = new QWidget(this);
-    QVBoxLayout *vbox = new QVBoxLayout();
-    QHBoxLayout *hbox_buttons = new QHBoxLayout();
-    transactionView = new TransactionView(platformStyle, this);
-    vbox->addWidget(transactionView);
-    QPushButton *exportButton = new QPushButton(tr("&Export"), this);
-    exportButton->setToolTip(tr("Export the data in the current tab to a file"));
-    if (platformStyle->getImagesOnButtons()) {
-        exportButton->setIcon(platformStyle->SingleColorIcon(":/icons/export"));
-    }
-    hbox_buttons->addStretch();
-
-    // Sum of selected transactions
-    QLabel *transactionSumLabel = new QLabel(); // Label
-    transactionSumLabel->setObjectName("transactionSumLabel"); // Label ID as CSS-reference
-    transactionSumLabel->setText(tr("Selected amount:"));
-    hbox_buttons->addWidget(transactionSumLabel);
-
-    transactionSum = new QLabel(); // Amount
-    transactionSum->setObjectName("transactionSum"); // Label ID as CSS-reference
-    transactionSum->setMinimumSize(200, 8);
-    transactionSum->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    hbox_buttons->addWidget(transactionSum);
-
-    hbox_buttons->addWidget(exportButton);
-    vbox->addLayout(hbox_buttons);
-    transactionsPage->setLayout(vbox);
-
-    receiveCoinsPage = new ReceiveCoinsDialog(platformStyle);
-    sendCoinsPage = new SendCoinsDialog(platformStyle);
-
-    usedSendingAddressesPage = new AddressBookPage(platformStyle, AddressBookPage::ForEditing, AddressBookPage::SendingTab, this);
-    usedReceivingAddressesPage = new AddressBookPage(platformStyle, AddressBookPage::ForEditing, AddressBookPage::ReceivingTab, this);
-    
-    rpcConsole = new RPCConsole(platformStyle, this);
-        
-#ifdef ENABLE_SECURE_MESSAGING
+    dashboard = new DashboardWidget(platformStyle);
     sendMessagesPage = new SendMessagesPage(platformStyle, this);
     messagePage = new MessagePage(platformStyle, this);
-#endif
-    addWidget(overviewPage);
-    addWidget(transactionsPage);
-    addWidget(receiveCoinsPage);
-    addWidget(sendCoinsPage);
-#ifdef ENABLE_SECURE_MESSAGING
-	addWidget(sendMessagesPage);
+    chartsWidget = new ChartsWidget(this);
+    addressesWidget = new AddressesWidget(this);
+    assetPage = new AssetPage(platformStyle, this);
+    historyWidget = new HistoryWidget(this);
+    sendWidget = new SendWidget(this);
+    receiveWidget = new ReceiveWidget(this);
+    settingsWidget = new SettingsWidget(this);
+    usedSendingAddressesPage = new AddressBookPage(platformStyle, AddressBookPage::ForEditing, AddressBookPage::SendingTab, this);
+    usedReceivingAddressesPage = new AddressBookPage(platformStyle, AddressBookPage::ForEditing, AddressBookPage::ReceivingTab, this);
+
+    masterNodesWidget = new MasterNodesWidget(this);
+    coldStakingWidget = new ColdStakingWidget(this);
+
+//    WalletFrame* pWalletFrame = qobject_cast<WalletFrame*>(parent());
+
+    addWidget(dashboard);
+    addWidget(sendMessagesPage);
     addWidget(messagePage);
-#endif
-    addWidget(rpcConsole);
- 
-    QSettings settings;
-    if (!fLiteMode && settings.value("fShowMasternodesTab").toBool()) {
-        masternodeListPage = new MasternodeList(platformStyle);
-        addWidget(masternodeListPage);
-    }
-
+    addWidget(chartsWidget);
+    addWidget(addressesWidget);
+    addWidget(assetPage);
+    addWidget(historyWidget);
+    addWidget(sendWidget);
+    addWidget(receiveWidget);
+    addWidget(coldStakingWidget);
+    addWidget(masterNodesWidget);    
+        
+    addWidget(settingsWidget);
     // Clicking on a transaction on the overview pre-selects the transaction on the transaction history page
-    connect(overviewPage, &OverviewPage::transactionClicked, transactionView, static_cast<void (TransactionView::*)(const QModelIndex&)>(&TransactionView::focusTransaction));
+    //connect(dashboard, &DashboardWidget::transactionClicked, transactionView, static_cast<void (TransactionView::*)(const QModelIndex&)>(&TransactionView::focusTransaction));
 
-    connect(overviewPage, &OverviewPage::outOfSyncWarningClicked, this, &WalletView::requestedSyncWarningInfo);
+    //connect(dashboard, &DashboardWidget::outOfSyncWarningClicked, this, &WalletView::requestedSyncWarningInfo);
 
     // Highlight transaction after send
-    connect(sendCoinsPage, &SendCoinsDialog::coinsSent, transactionView, static_cast<void (TransactionView::*)(const uint256&)>(&TransactionView::focusTransaction));
+    //connect(sendCoinsPage, &SendCoinsDialog::coinsSent, transactionView, static_cast<void (TransactionView::*)(const uint256&)>(&TransactionView::focusTransaction));
 
     // Clicking on "Export" allows to export the transaction list
-    connect(exportButton, &QPushButton::clicked, transactionView, &TransactionView::exportClicked);
+    //connect(exportButton, &QPushButton::clicked, transactionView, &TransactionView::exportClicked);
 
     // Pass through messages from sendCoinsPage
-    connect(sendCoinsPage, &SendCoinsDialog::message, this, &WalletView::message);
+   // connect(sendCoinsPage, &SendCoinsDialog::message, this, &WalletView::message);
     // Pass through messages from transactionView
-    connect(transactionView, &TransactionView::message, this, &WalletView::message);
+   // connect(transactionView, &TransactionView::message, this, &WalletView::message);
 }
 
 WalletView::~WalletView()
 {
-    delete rpcConsole;
 }
 
 void WalletView::setRainGUI(RainGUI *gui)
 {
+    this->fgui = gui;
     if (gui)
     {
         // Clicking on a transaction on the overview page simply sends you to transaction history page
-        connect(overviewPage, &OverviewPage::transactionClicked, gui, &RainGUI::gotoHistoryPage);
+//        connect(overviewPage, &DashboardWidget::transactionClicked, gui, &RainGUI::goToHistory);
 
         // Navigate to transaction history page after send
-        connect(sendCoinsPage, &SendCoinsDialog::coinsSent, gui, &RainGUI::gotoHistoryPage);
+     //   connect(sendCoinsPage, &SendCoinsDialog::coinsSent, gui, &RainGUI::goToHistory);
 
         // Receive and report messages
         connect(this, &WalletView::message, [gui](const QString &title, const QString &message, unsigned int style) {
             gui->message(title, message, style);
         });
+
+        connect(sendWidget, &SendWidget::message, gui, &RainGUI::message);
+        connect(receiveWidget, &ReceiveWidget::message, gui, &RainGUI::message);
+        connect(addressesWidget, &AddressesWidget::message, gui, &RainGUI::message);
+        connect(settingsWidget, &SettingsWidget::message, gui, &RainGUI::message);
+        connect(historyWidget, &HistoryWidget::message, gui, &RainGUI::message);
+        connect(chartsWidget, &ChartsWidget::message, gui, &RainGUI::message);
 
         // Pass through encryption status changed signals
         connect(this, &WalletView::encryptionStatusChanged, gui, &RainGUI::updateWalletStatus);
@@ -151,6 +145,8 @@ void WalletView::setRainGUI(RainGUI *gui)
 
         // Connect SPV enabled state signal
         connect(this, &WalletView::spvEnabledStatusChanged, gui, &RainGUI::updateWalletStatus);
+
+
     }
 }
 
@@ -158,14 +154,8 @@ void WalletView::setClientModel(ClientModel *_clientModel)
 {
     this->clientModel = _clientModel;
 
-    overviewPage->setClientModel(_clientModel);
-    sendCoinsPage->setClientModel(_clientModel);
-    rpcConsole->setClientModel(_clientModel);
-
-    QSettings settings;
-    if (!fLiteMode && settings.value("fShowMasternodesTab").toBool()) {
-        masternodeListPage->setClientModel(_clientModel);
-    }
+    dashboard->setClientModel(_clientModel);
+    settingsWidget->setClientModel(_clientModel);
 }
 
 void WalletView::setWalletModel(WalletModel *_walletModel)
@@ -173,19 +163,22 @@ void WalletView::setWalletModel(WalletModel *_walletModel)
     this->walletModel = _walletModel;
 
     // Put transaction list in tabs
-    transactionView->setModel(_walletModel);
-    overviewPage->setWalletModel(_walletModel);
-    QSettings settings;
-    if (!fLiteMode && settings.value("fShowMasternodesTab").toBool()) {
-        masternodeListPage->setWalletModel(_walletModel);
-    }
-    receiveCoinsPage->setModel(_walletModel);
-    sendCoinsPage->setModel(_walletModel);
-#ifdef ENABLE_SECURE_MESSAGING
+    //assetPage->setWalletModel(_walletModel);
+    dashboard->setWalletModel(_walletModel);
+    historyWidget->setWalletModel(_walletModel);
     sendMessagesPage->setWalletModel(_walletModel);
-#endif
+
+    receiveWidget->setWalletModel(_walletModel);
+    sendWidget->setWalletModel(_walletModel);
+    addressesWidget->setWalletModel(_walletModel);
+    settingsWidget->setWalletModel(walletModel);
+    chartsWidget->setWalletModel(_walletModel);
+    fgui->setWalletModel(_walletModel);
     usedReceivingAddressesPage->setModel(_walletModel ? _walletModel->getAddressTableModel() : nullptr);
     usedSendingAddressesPage->setModel(_walletModel ? _walletModel->getAddressTableModel() : nullptr);
+
+    coldStakingWidget->setWalletModel(_walletModel);
+    masterNodesWidget->setWalletModel(_walletModel);
 
     if (_walletModel)
     {
@@ -215,7 +208,6 @@ void WalletView::setWalletModel(WalletModel *_walletModel)
     }
 }
 
-#ifdef ENABLE_SECURE_MESSAGING
 void WalletView::setMessageModel(MessageModel *messageModel)
 {
     this->messageModel = messageModel;
@@ -228,7 +220,7 @@ void WalletView::setMessageModel(MessageModel *messageModel)
         connect(messageModel, SIGNAL(rowsInserted(QModelIndex,int,int)), this, SLOT(processNewMessage(QModelIndex,int,int)));
     }
 }
-#endif
+
 
 void WalletView::processNewTransaction(const QModelIndex& parent, int start, int /*end*/)
 {
@@ -240,26 +232,17 @@ void WalletView::processNewTransaction(const QModelIndex& parent, int start, int
     if (!ttm || ttm->processingQueuedTransactions())
         return;
 
-    QModelIndex index = ttm->index(start, 0, parent);
-    QSettings settings;
-    if (!settings.value("fShowPrivateSendPopups").toBool()) {
-        QVariant nType = ttm->data(index, TransactionTableModel::TypeRole);
-        if (nType == TransactionRecord::PrivateSendDenominate ||
-            nType == TransactionRecord::PrivateSendCollateralPayment ||
-            nType == TransactionRecord::PrivateSendMakeCollaterals ||
-            nType == TransactionRecord::PrivateSendCreateDenominations) return;
-    }
 
     QString date = ttm->index(start, TransactionTableModel::Date, parent).data().toString();
     qint64 amount = ttm->index(start, TransactionTableModel::Amount, parent).data(Qt::EditRole).toULongLong();
     QString type = ttm->index(start, TransactionTableModel::Type, parent).data().toString();
+    QModelIndex index = ttm->index(start, 0, parent);
     QString address = ttm->data(index, TransactionTableModel::AddressRole).toString();
     QString label = ttm->data(index, TransactionTableModel::LabelRole).toString();
 
     Q_EMIT incomingTransaction(date, walletModel->getOptionsModel()->getDisplayUnit(), amount, type, address, label, walletModel->getWalletName());
 }
 
-#ifdef ENABLE_SECURE_MESSAGING
 void WalletView::processNewMessage(const QModelIndex& parent, int start, int /*end*/)
 {
     // Prevent balloon-spam when initial block download is in progress
@@ -272,57 +255,74 @@ void WalletView::processNewMessage(const QModelIndex& parent, int start, int /*e
     QString from_address  = mm->index(start, MessageModel::FromAddress,      parent).data().toString();
     QString to_address    = mm->index(start, MessageModel::ToAddress,        parent).data().toString();
     QString message       = mm->index(start, MessageModel::Message,          parent).data().toString();
-    int type 	          = mm->index(start, MessageModel::TypeInt,          parent).data().toInt();
+    int type              = mm->index(start, MessageModel::TypeInt,          parent).data().toInt();
 
     Q_EMIT incomingMessage(sent_datetime, from_address, to_address, message, type);
 }
-#endif
 
-void WalletView::gotoOverviewPage()
+
+void WalletView::gotoDashbord()
 {
-    setCurrentWidget(overviewPage);
+    setCurrentWidget(dashboard);
 }
-#ifdef ENABLE_SECURE_MESSAGING
+
 void WalletView::gotoSendMessagesPage()
 {
-	setCurrentWidget(sendMessagesPage);
+    setCurrentWidget(sendMessagesPage);
 }
 
 void WalletView::gotoMessagesPage()
 {
     setCurrentWidget(messagePage);
 }
-#endif
+
 
 void WalletView::gotoHistoryPage()
 {
-    setCurrentWidget(transactionsPage);
-}
-
-void WalletView::gotoMasternodePage()
-{
-    QSettings settings;
-    if (!fLiteMode && settings.value("fShowMasternodesTab").toBool()) {
-        setCurrentWidget(masternodeListPage);
-    }
-}
-
-void WalletView::gotoRpcPage()
-{
-    setCurrentWidget(rpcConsole);
+    setCurrentWidget(historyWidget);
 }
 
 void WalletView::gotoReceiveCoinsPage()
 {
-    setCurrentWidget(receiveCoinsPage);
+    setCurrentWidget(receiveWidget);
 }
 
 void WalletView::gotoSendCoinsPage(QString addr)
 {
-    setCurrentWidget(sendCoinsPage);
+    setCurrentWidget(sendWidget);
 
-    if (!addr.isEmpty())
-        sendCoinsPage->setAddress(addr);
+   // if (!addr.isEmpty())
+   //     sendCoinsPage->setAddress(addr);
+}
+
+void WalletView::gotoChartsPage()
+{
+    setCurrentWidget(chartsWidget);
+}
+
+void WalletView::gotoContactsPage()
+{
+    setCurrentWidget(addressesWidget);
+}
+
+void WalletView::gotoAssetPage()
+{
+    setCurrentWidget(assetPage);
+}
+
+void WalletView::gotoMasterNodes()
+{
+    setCurrentWidget(masterNodesWidget);
+}
+
+void WalletView::gotoColdStaking()
+{
+    setCurrentWidget(coldStakingWidget);
+}
+
+void WalletView::gotoSettings()
+{
+    setCurrentWidget(settingsWidget);
 }
 
 void WalletView::gotoSignMessageTab(QString addr)
@@ -351,12 +351,12 @@ void WalletView::gotoVerifyMessageTab(QString addr)
 
 bool WalletView::handlePaymentRequest(const SendCoinsRecipient& recipient)
 {
-    return sendCoinsPage->handlePaymentRequest(recipient);
+    return false;
 }
 
 void WalletView::showOutOfSyncWarning(bool fShow)
 {
-    overviewPage->showOutOfSyncWarning(fShow);
+//    dashboard->showOutOfSyncWarning(fShow);
 }
 
 void WalletView::updateEncryptionStatus()
@@ -401,7 +401,7 @@ void WalletView::changePassphrase()
     dlg.exec();
 }
 
-void WalletView::unlockWallet(bool fForMixingOnly)
+void WalletView::unlockWallet(/*bool fromMenu*/)
 {
     if(!walletModel)
         return;

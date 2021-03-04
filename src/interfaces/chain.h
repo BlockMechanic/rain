@@ -5,6 +5,9 @@
 #ifndef RAIN_INTERFACES_CHAIN_H
 #define RAIN_INTERFACES_CHAIN_H
 
+#include <chainparams.h>
+
+
 #include <optional.h>               // For Optional and nullopt
 #include <primitives/transaction.h> // For CTransactionRef
 
@@ -13,8 +16,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
-#include <validation.h>
-#include <pos.h>
+
 #include <ui_interface.h>
 
 #include <boost/thread.hpp>
@@ -32,6 +34,8 @@ struct CBlockLocator;
 struct FeeCalculation;
 class CWallet;
 class CBlockIndex;
+class CBlockHeader;
+struct CDiskTxPos;
 class CGovernanceVote;
 class CGovernanceObject;
 class CDeterministicMNList;
@@ -39,7 +43,6 @@ class CDeterministicMNListDiff;
 
 namespace llmq {
     class CChainLockSig;
-    class CInstantSendLock;
 } // namespace llmq
 
 namespace interfaces {
@@ -118,39 +121,28 @@ public:
         virtual CBlockIndex * currentTip() = 0;
         //! Check that the block is is available on disk and is proof of stake.
         virtual bool IsProofOfStake(int height) = 0;
-                
+        
         virtual bool startStake(bool fStake, CWallet *pwallet, boost::thread_group*& stakeThread) = 0;
 
         virtual bool getCoinAge(const CTransaction& tx, uint64_t& nCoinAge) =0;
-        virtual int64_t getBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, uint256 prevHash, bool fProofofStake, int64_t nCoinAge, int64_t nFees, int64_t supply) = 0;
+        virtual CAmountMap getBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, CAsset asset, bool fProofofStake, int64_t nCoinAge, CAmountMap& supply) = 0;
         virtual bool getPostx(const uint256 &hash, CDiskTxPos& postx, CBlockHeader& header, CTransactionRef& tx) =0;
-        virtual	bool checkKernel(CValidationState& state, unsigned int nBits, uint32_t nTimeBlock, const COutPoint& prevout) =0;
+        virtual	bool checkKernel(unsigned int nBits, uint32_t nTimeBlock, const COutPoint& prevout) =0;
         virtual int outputpriority(CTransactionRef tx, int i) = 0;
-        virtual std::vector<CAmount> privsenddenoms () =0;
-        virtual bool isDenominatedAmount (CAmount amount) =0;
-        virtual bool isCollateralAmount (CAmount amount) =0;
-        virtual bool qourumISM_IsLocked(uint256 hash) =0;
         virtual bool isChainLocked(uint256 hashBlock) =0;
-		virtual CAmount getSmallestDenomination () =0;
-		virtual CAmount getCollateralAmount () = 0;
-		virtual bool getDenominationsBits(int nDenom, std::vector<int>& vecBits) =0;
-		virtual int psRounds() =0;
-		virtual bool psEnabled ()=0;
 		virtual bool deterministicMNComp (CTransactionRef tx, uint256 hash, int i) =0;
-		virtual void psRemoveSkippedDenom (CAmount amount)=0;
 
-#ifdef ENABLE_SECURE_MESSAGING
         virtual bool smsgStart()=0;
         virtual void secureMsgWalletUnlocked()=0;
         virtual void secureMsgWalletKeyChanged(std::string sAddress, std::string sLabel, ChangeType mode) =0;
-#endif
+
 
         //! Return height of the first block in the chain with timestamp equal
         //! or greater than the given time and height equal or greater than the
         //! given height, or nullopt if there is no block with a high enough
         //! timestamp and height. Also return the block hash as an optional output parameter
         //! (to avoid the cost of a second lookup in case this information is needed.)
-        virtual Optional<int> findFirstBlockWithTimeAndHeight(int64_t time, int height, uint256* hash) = 0;
+        virtual Optional<int> findFirstBlockWithTimeAndHeight(int64_t time, int height, uint256& hash) = 0;
 
         //! Return height of last block in the specified range which is pruned, or
         //! nullopt if no block in the range is pruned. Range is inclusive.
@@ -174,6 +166,8 @@ public:
 
         //! Check if transaction will be final given chain height current time.
         virtual bool checkFinalTx(const CTransaction& tx) = 0;
+        //! Check if transaction will be final given height or current time.
+        virtual bool isFinalTx(const CTransaction& tx, int& nBlockHeight, int64_t& nBlockTime) = 0;
     };
 
     //! Return Lock interface. Chain is locked when this is called, and
@@ -273,11 +267,11 @@ public:
     virtual void getSPVTips(CBlockIndex *pIndex,CBlockIndex *chainActiveTip)=0;
     virtual CBlockIndex * setpNVSBestBlock(bool genesis, CBlockLocator &locator) =0;
     virtual bool checkpNVSLastKnownBestHeader(CBlockIndex *block) =0;
-   	virtual const CBlockIndex * setpNVSLastKnownBestHeader(CBlockIndex *block) =0;
-   	virtual bool checkActiveHeader(const CBlockIndex *pindexFork)= 0;
+    virtual const CBlockIndex * setpNVSLastKnownBestHeader(CBlockIndex *block) =0;
+    virtual bool checkActiveHeader(const CBlockIndex *pindexFork)= 0;
 
-   	virtual int64_t getheaders() =0;
-   	virtual void addPriorityDownload(const std::vector<const CBlockIndex*>& blocksToDownload) =0;
+    virtual int64_t getheaders() =0;
+    virtual void addPriorityDownload(const std::vector<const CBlockIndex*>& blocksToDownload) =0;
 
     //! Chain notifications.
     class Notifications
@@ -290,11 +284,9 @@ public:
         virtual void BlockDisconnected(const CBlock& block, const CBlockIndex* pindexDisconnected) {}
         virtual void UpdatedBlockTip() {}
         virtual void ChainStateFlushed(const CBlockLocator& locator) {} 
-		virtual void NotifyTransactionLock(const CTransaction &tx, const llmq::CInstantSendLock& islock) {}
 		virtual void NotifyChainLock(const CBlockIndex* pindex, const llmq::CChainLockSig& clsig) {}
 		virtual void NotifyGovernanceVote(const CGovernanceVote &vote) {}
 		virtual void NotifyGovernanceObject(const CGovernanceObject &object) {}
-		virtual void NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) {}
 		virtual void NotifyMasternodeListChanged(bool undo, const CDeterministicMNList& oldMNList, const CDeterministicMNListDiff& diff) {}
     };
 

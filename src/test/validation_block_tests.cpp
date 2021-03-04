@@ -45,7 +45,7 @@ struct TestSubscriber : public CValidationInterface {
         m_expected_tip = block->GetHash();
     }
 
-    void BlockDisconnected(const std::shared_ptr<const CBlock>& block, const CBlockIndex *pindexDisconnected) override
+    void BlockDisconnected(const std::shared_ptr<const CBlock>& block) override
     {
         BOOST_CHECK_EQUAL(m_expected_tip, block->GetHash());
 
@@ -67,11 +67,6 @@ std::shared_ptr<CBlock> Block(const uint256& prev_hash)
     pblock->nTime = ++time;
 
     pubKey.clear();
-    {
-        WitnessV0ScriptHash witness_program;
-        CSHA256().Write(&V_OP_TRUE[0], V_OP_TRUE.size()).Finalize(witness_program.begin());
-        pubKey << OP_0 << ToByteVector(witness_program);
-    }
 
     // Make the coinbase transaction with two outputs:
     // One zero-value one that has a unique pubkey to make sure that blocks at the same height can have a different hash
@@ -81,7 +76,6 @@ std::shared_ptr<CBlock> Block(const uint256& prev_hash)
     txCoinbase.vout[1].scriptPubKey = pubKey;
     txCoinbase.vout[1].nValue = txCoinbase.vout[0].nValue;
     txCoinbase.vout[0].nValue = 0;
-    txCoinbase.vin[0].scriptWitness.SetNull();
     pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));
 
     return pblock;
@@ -90,7 +84,7 @@ std::shared_ptr<CBlock> Block(const uint256& prev_hash)
 std::shared_ptr<CBlock> FinalizeBlock(std::shared_ptr<CBlock> pblock)
 {
     LOCK(cs_main); // For LookupBlockIndex
-    GenerateCoinbaseCommitment(*pblock, LookupBlockIndex(pblock->hashPrevBlock), Params().GetConsensus());
+    //GenerateCoinbaseCommitment(*pblock, LookupBlockIndex(pblock->hashPrevBlock), Params().GetConsensus());
 
     pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
 
@@ -230,9 +224,7 @@ BOOST_AUTO_TEST_CASE(processnewblock_signals_ordering)
 BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
 {
     bool ignored;
-    std::unique_ptr<CConnman> g_connman = std::unique_ptr<CConnman>(new CConnman(GetRand(std::numeric_limits<uint64_t>::max()), GetRand(std::numeric_limits<uint64_t>::max())));
-    
-    auto ProcessBlock = [&ignored, &g_connman](std::shared_ptr<const CBlock> block) -> bool {
+    auto ProcessBlock = [&ignored](std::shared_ptr<const CBlock> block) -> bool {
         return ProcessNewBlock(Params(), block, /* fForceProcessing */ true, /* fNewBlock */ &ignored);
     };
 
@@ -254,9 +246,8 @@ BOOST_AUTO_TEST_CASE(mempool_locks_reorg)
         for (int num_txs = 22; num_txs > 0; --num_txs) {
             CMutableTransaction mtx;
             mtx.vin.push_back(CTxIn{COutPoint{last_mined->vtx[0]->GetHash(), 1}, CScript{}});
-            mtx.vin[0].scriptWitness.stack.push_back(V_OP_TRUE);
             mtx.vout.push_back(last_mined->vtx[0]->vout[1]);
-            mtx.vout[0].nValue -= 1000;
+            //mtx.vout[0].nValue.GetAmount() -= 1000;
             txs.push_back(MakeTransactionRef(mtx));
 
             last_mined = GoodBlock(last_mined->GetHash());

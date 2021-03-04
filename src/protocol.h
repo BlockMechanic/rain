@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -61,7 +61,7 @@ public:
 };
 
 /**
- * Rain protocol message types. When adding new message types, don't forget
+ * Bitcoin protocol message types. When adding new message types, don't forget
  * to update allNetMessageTypes in protocol.cpp.
  */
 namespace NetMsgType {
@@ -69,100 +69,100 @@ namespace NetMsgType {
 /**
  * The version message provides information about the transmitting node to the
  * receiving node at the beginning of a connection.
- * @see https://rain.org/en/developer-reference#version
+ * @see https://bitcoin.org/en/developer-reference#version
  */
 extern const char *VERSION;
 /**
  * The verack message acknowledges a previously-received version message,
  * informing the connecting node that it can begin to send other messages.
- * @see https://rain.org/en/developer-reference#verack
+ * @see https://bitcoin.org/en/developer-reference#verack
  */
 extern const char *VERACK;
 /**
  * The addr (IP address) message relays connection information for peers on the
  * network.
- * @see https://rain.org/en/developer-reference#addr
+ * @see https://bitcoin.org/en/developer-reference#addr
  */
 extern const char *ADDR;
 /**
  * The inv message (inventory message) transmits one or more inventories of
  * objects known to the transmitting peer.
- * @see https://rain.org/en/developer-reference#inv
+ * @see https://bitcoin.org/en/developer-reference#inv
  */
 extern const char *INV;
 /**
  * The getdata message requests one or more data objects from another node.
- * @see https://rain.org/en/developer-reference#getdata
+ * @see https://bitcoin.org/en/developer-reference#getdata
  */
 extern const char *GETDATA;
 /**
  * The merkleblock message is a reply to a getdata message which requested a
  * block using the inventory type MSG_MERKLEBLOCK.
  * @since protocol version 70001 as described by BIP37.
- * @see https://rain.org/en/developer-reference#merkleblock
+ * @see https://bitcoin.org/en/developer-reference#merkleblock
  */
 extern const char *MERKLEBLOCK;
 /**
  * The getblocks message requests an inv message that provides block header
  * hashes starting from a particular point in the block chain.
- * @see https://rain.org/en/developer-reference#getblocks
+ * @see https://bitcoin.org/en/developer-reference#getblocks
  */
 extern const char *GETBLOCKS;
 /**
  * The getheaders message requests a headers message that provides block
  * headers starting from a particular point in the block chain.
  * @since protocol version 31800.
- * @see https://rain.org/en/developer-reference#getheaders
+ * @see https://bitcoin.org/en/developer-reference#getheaders
  */
 extern const char *GETHEADERS;
 /**
  * The tx message transmits a single transaction.
- * @see https://rain.org/en/developer-reference#tx
+ * @see https://bitcoin.org/en/developer-reference#tx
  */
 extern const char *TX;
 /**
  * The headers message sends one or more block headers to a node which
  * previously requested certain headers with a getheaders message.
  * @since protocol version 31800.
- * @see https://rain.org/en/developer-reference#headers
+ * @see https://bitcoin.org/en/developer-reference#headers
  */
 extern const char *HEADERS;
 /**
  * The block message transmits a single serialized block.
- * @see https://rain.org/en/developer-reference#block
+ * @see https://bitcoin.org/en/developer-reference#block
  */
 extern const char *BLOCK;
 /**
  * The getaddr message requests an addr message from the receiving node,
  * preferably one with lots of IP addresses of other receiving nodes.
- * @see https://rain.org/en/developer-reference#getaddr
+ * @see https://bitcoin.org/en/developer-reference#getaddr
  */
 extern const char *GETADDR;
 /**
  * The mempool message requests the TXIDs of transactions that the receiving
  * node has verified as valid but which have not yet appeared in a block.
  * @since protocol version 60002.
- * @see https://rain.org/en/developer-reference#mempool
+ * @see https://bitcoin.org/en/developer-reference#mempool
  */
 extern const char *MEMPOOL;
 /**
  * The ping message is sent periodically to help confirm that the receiving
  * peer is still connected.
- * @see https://rain.org/en/developer-reference#ping
+ * @see https://bitcoin.org/en/developer-reference#ping
  */
 extern const char *PING;
 /**
  * The pong message replies to a ping message, proving to the pinging node that
  * the ponging node is still alive.
  * @since protocol version 60001 as described by BIP31.
- * @see https://rain.org/en/developer-reference#pong
+ * @see https://bitcoin.org/en/developer-reference#pong
  */
 extern const char *PONG;
 /**
  * The notfound message is a reply to a getdata message which requested an
  * object the receiving node does not have available for relay.
- * @since protocol version 70001.
- * @see https://rain.org/en/developer-reference#notfound
+ * @ince protocol version 70001.
+ * @see https://bitcoin.org/en/developer-reference#notfound
  */
 extern const char *NOTFOUND;
 /**
@@ -171,7 +171,7 @@ extern const char *NOTFOUND;
  * @since protocol version 70001 as described by BIP37.
  *   Only available with service bit NODE_BLOOM since protocol version
  *   70011 as described by BIP111.
- * @see https://rain.org/en/developer-reference#filterload
+ * @see https://bitcoin.org/en/developer-reference#filterload
  */
 extern const char *FILTERLOAD;
 /**
@@ -180,7 +180,7 @@ extern const char *FILTERLOAD;
  * @since protocol version 70001 as described by BIP37.
  *   Only available with service bit NODE_BLOOM since protocol version
  *   70011 as described by BIP111.
- * @see https://rain.org/en/developer-reference#filteradd
+ * @see https://bitcoin.org/en/developer-reference#filteradd
  */
 extern const char *FILTERADD;
 /**
@@ -189,21 +189,21 @@ extern const char *FILTERADD;
  * @since protocol version 70001 as described by BIP37.
  *   Only available with service bit NODE_BLOOM since protocol version
  *   70011 as described by BIP111.
- * @see https://rain.org/en/developer-reference#filterclear
+ * @see https://bitcoin.org/en/developer-reference#filterclear
  */
 extern const char *FILTERCLEAR;
 /**
  * The reject message informs the receiving node that one of its previous
  * messages has been rejected.
  * @since protocol version 70002 as described by BIP61.
- * @see https://rain.org/en/developer-reference#reject
+ * @see https://bitcoin.org/en/developer-reference#reject
  */
 extern const char *REJECT;
 /**
  * Indicates that a node prefers to receive new block announcements via a
  * "headers" message rather than an "inv".
  * @since protocol version 70012 as described by BIP130.
- * @see https://rain.org/en/developer-reference#sendheaders
+ * @see https://bitcoin.org/en/developer-reference#sendheaders
  */
 extern const char *SENDHEADERS;
 /**
@@ -239,7 +239,6 @@ extern const char *GETBLOCKTXN;
  */
 extern const char *BLOCKTXN;
 extern const char *CHECKPOINT;
-#ifdef ENABLE_SECURE_MESSAGING
 
 extern const char *SMSGIGNORE;
 extern const char *SMSGPING;
@@ -251,11 +250,27 @@ extern const char *SMSGHAVE;
 extern const char *SMSGWANT;
 extern const char *SMSGMSG;
 extern const char *SMSGINV;
-#endif
 
-// Rain message types
-// NOTE: do NOT declare non-implmented here, we don't want them to be exposed to the outside
-// TODO: add description
+/**
+ * Contains a AssetDataRequest.
+ * Peer should respond with assetdata
+ * @since protocol version 70017
+ */
+extern const char *GETASSETDATA;
+
+/**
+ * Contains a AssetData
+ * Sent in response to a "getassetdata" message.
+ * @since protocol version 70017
+ */
+extern const char *ASSETDATA;
+
+/**
+ * The asstnotfound message is a reply to a getassetdata message which requested an
+ * object the receiving node does not have available for relay.
+ * @since protocol version 70018.
+ */
+extern const char *ASSETNOTFOUND;
 extern const char *LEGACYTXLOCKREQUEST; // only present for backwards compatibility
 extern const char *SPORK;
 extern const char *GETSPORKS;
@@ -286,6 +301,7 @@ extern const char *QSIGSHARESINV;
 extern const char *QGETSIGSHARES;
 extern const char *QBSIGSHARES;
 extern const char *QSIGREC;
+extern const char *QSIGSHARE;
 extern const char *CLSIG;
 extern const char *ISLOCK;
 extern const char *MNAUTH;
@@ -302,7 +318,7 @@ enum ServiceFlags : uint64_t {
     // set by all Rain Core non pruned nodes, and is unset by SPV clients or other light clients.
     NODE_NETWORK = (1 << 0),
     // NODE_GETUTXO means the node is capable of responding to the getutxo protocol request.
-    // Rain Core does not support this but a patch set called Rain XT does.
+    // Bitcoin Core does not support this but a patch set called Bitcoin XT does.
     // See BIP 64 for details on how this is implemented.
     NODE_GETUTXO = (1 << 1),
     // NODE_BLOOM means the node is capable and willing to handle bloom-filtered connections.
@@ -315,6 +331,13 @@ enum ServiceFlags : uint64_t {
     // NODE_XTHIN means the node supports Xtreme Thinblocks
     // If this is turned off then the node will not service nor make xthin requests
     NODE_XTHIN = (1 << 4),
+    // NODE_BLOOM_WITHOUT_MN means the node has the same features as NODE_BLOOM with the only difference
+    // that the node doesn't want to receive master nodes messages. (the 1<<3 was not picked as constant because on rain 0.14 is witness and we want that update here )
+    NODE_BLOOM_WITHOUT_MN = (1 << 5),
+
+    SMSG_RELAY = (1 << 6),
+    SERVICE_NODE   = (1 << 7),
+
     // NODE_NETWORK_LIMITED means the same as NODE_NETWORK with the limitation of only
     // serving the last 288 (2 day) blocks
     // See BIP159 for details on how this is implemented.
@@ -328,6 +351,13 @@ enum ServiceFlags : uint64_t {
     // do not actually support. Other service bits should be allocated via the
     // BIP process.
 };
+
+/**
+ * Convert service flags (a bitmask of NODE_*) to human readable strings.
+ * It supports unknown service flags which will be returned as "UNKNOWN[...]".
+ * @param[in] flags multiple NODE_* bitwise-OR-ed together
+ */
+std::vector<std::string> serviceFlagsToStr(uint64_t flags);
 
 /**
  * Gets the set of service flags which are "desirable" for a given peer.
@@ -473,6 +503,13 @@ public:
 
     friend bool operator<(const CInv& a, const CInv& b);
 
+    friend bool operator==(const CInv& a, const CInv& b)
+    {
+        return (a.hash == b.hash && a.type == b.type);
+    }
+
+    bool IsKnownType() const;
+    bool IsMasterNodeType() const;
     std::string GetCommand() const;
     std::string ToString() const;
 
@@ -481,7 +518,30 @@ public:
     uint256 hash;
 };
 
-/** peercoin: How much temperature a PoW header will remove */
+/** inv message data */
+class CInvAsset
+{
+public:
+    CInvAsset();
+    CInvAsset(std::string name);
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action)
+    {
+        READWRITE(name);
+    }
+
+    friend bool operator<(const CInvAsset& a, const CInvAsset& b);
+
+    std::string ToString() const;
+
+public:
+    std::string name; // block height that asset data should come from
+};
+
+bool isMNMessageType(const std::string& command);
 extern const unsigned int POW_HEADER_COOLING;
 
 #endif // RAIN_PROTOCOL_H

@@ -1,11 +1,11 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #ifndef RAIN_QT_ADDRESSTABLEMODEL_H
 #define RAIN_QT_ADDRESSTABLEMODEL_H
 
-#include <QAbstractTableModel>
+#include <QAbstractItemModel>
 #include <QStringList>
 
 enum class OutputType;
@@ -20,7 +20,7 @@ class Wallet;
 /**
    Qt model of the address book in the core. This allows views to access and modify the address book.
  */
-class AddressTableModel : public QAbstractTableModel
+class AddressTableModel : public QAbstractItemModel
 {
     Q_OBJECT
 
@@ -29,12 +29,17 @@ public:
     ~AddressTableModel();
 
     enum ColumnIndex {
-        Label = 0,   /**< User specified label */
-        Address = 1  /**< Rain address */
+        Label = 0,  /**< User specified label */
+        Address = 1, /**< Rain address */
+        Date = 2, /**< Address creation date */
+        Type = 3 /**< Address Type */
     };
 
     enum RoleIndex {
-        TypeRole = Qt::UserRole /**< Type of address (#Send or #Receive) */
+		LabelRole =100,
+		AddressRole =101,
+		DateRole=102,		
+        TypeRole=103
     };
 
     /** Return status of edit/insert operation */
@@ -49,17 +54,27 @@ public:
 
     static const QString Send;      /**< Specifies send address */
     static const QString Receive;   /**< Specifies receive address */
+    static const QString Delegator; /**< Specifies cold staking addresses which delegated tokens to this wallet and ARE being staked */
+    static const QString Delegable; /**< Specifies cold staking addresses which delegated tokens to this wallet*/
+    static const QString ColdStaking; /**< Specifies cold staking own addresses */
+    static const QString ColdStakingSend; /**< Specifies send cold staking addresses (simil 'contacts')*/
 
     /** @name Methods overridden from QAbstractTableModel
         @{*/
     int rowCount(const QModelIndex &parent) const;
     int columnCount(const QModelIndex &parent) const;
+    int sizeSend() const;
+    int sizeRecv() const;
+    int size() const;
+    int sizeColdSend() const;
+    void notifyChange(const QModelIndex &index);
     QVariant data(const QModelIndex &index, int role) const;
     bool setData(const QModelIndex &index, const QVariant &value, int role);
     QVariant headerData(int section, Qt::Orientation orientation, int role) const;
     QModelIndex index(int row, int column, const QModelIndex &parent) const;
     bool removeRows(int row, int count, const QModelIndex &parent = QModelIndex());
     Qt::ItemFlags flags(const QModelIndex &index) const;
+    QModelIndex parent(const QModelIndex &child) const;
     /*@}*/
 
     /* Add an address to the model.
@@ -78,9 +93,30 @@ public:
      */
     int lookupAddress(const QString &address) const;
 
+    /**
+     * Checks if the address is whitelisted
+     */
+    bool isWhitelisted(const std::string& address) const;
+
+    /**
+     * Return last unused address
+     */
+    QString getLastUnusedAddress() const;
+
     EditStatus getEditStatus() const { return editStatus; }
 
+    void refresh();
     OutputType GetDefaultAddressType() const;
+
+	QHash<int, QByteArray> roleNames() const override
+	{
+		QHash<int, QByteArray> roles;
+		roles[LabelRole] = "label";
+		roles[AddressRole] = "address";
+		roles[DateRole] = "date";
+		roles[TypeRole] = "type";
+		return roles;
+	}
 
 private:
     WalletModel* const walletModel;

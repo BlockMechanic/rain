@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 The Rain Core developers
+// Copyright (c) 2015-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -71,7 +71,6 @@ int main(int argc, char** argv)
             gArgs.GetArg("-plot-width", DEFAULT_PLOT_WIDTH),
             gArgs.GetArg("-plot-height", DEFAULT_PLOT_HEIGHT)));
     }
-
 
     benchmark::BenchRunner::RunAll(*printer, evaluations, scaling_factor, regex_filter, is_list_only);
 

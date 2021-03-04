@@ -5,7 +5,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.2.0'
+        classpath 'com.android.tools.build:gradle:4.1.0'
     }
 }
 
@@ -17,7 +17,7 @@ repositories {
 apply plugin: 'com.android.application'
 
 dependencies {
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
 }
 
 android {
@@ -33,6 +33,8 @@ android {
      * updated by QtCreator and androiddeployqt tools.
      * Changing them manually might break the compilation!
      *******************************************************/
+     
+    ndkPath "/opt/android_ndk"
 
     compileSdkVersion androidCompileSdkVersion.toInteger()
 
@@ -64,15 +66,25 @@ android {
         targetSdkVersion = 29
     }
 
+    signingConfigs {
+
+       release {
+           storeFile file(RELEASE_STORE_FILE)
+           storePassword RELEASE_STORE_PASSWORD
+           keyAlias RELEASE_KEY_ALIAS
+           keyPassword RELEASE_KEY_PASSWORD
+
+           // Optional, specify signing versions used
+           v1SigningEnabled true
+           v2SigningEnabled true
+       }
+    }
+
     buildTypes {
-        debug {
-            debuggable true
-        }
-        customDebuggableBuildType {
-            debuggable true
-        }
         release {
             debuggable false
+            zipAlignEnabled true
+            signingConfig signingConfigs.release
         }
     }
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2012-2018 The Rain Core developers
+// Copyright (c) 2012-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -70,7 +70,7 @@ public:
         /** Force blocking, modal message box dialog (not just OS notification) */
         MODAL               = 0x10000000U,
 
-        /** Do not print contents of message to debug log */
+        /** Do not prepend error/warning prefix */
         MSG_NOPREFIX        = 0x20000000U,
 
         /** Do not print contents of message to debug log */
@@ -130,6 +130,9 @@ public:
 
     /** Banlist did change. */
     ADD_SIGNALS_DECL_WRAPPER(BannedListChanged, void, void);
+
+    /** Auxiliary Block Request (SPV) progress did change */
+    ADD_SIGNALS_DECL_WRAPPER(NotifyAuxiliaryBlockRequestProgress , void, int64_t, size_t, size_t, size_t);
 };
 
 /** Show warning message **/

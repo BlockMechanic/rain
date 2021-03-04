@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018 The Rain Core developers
+// Copyright (c) 2014-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -23,7 +23,6 @@
 #include <governance/governance-vote.h>
 
 #include <llmq/quorums_chainlocks.h>
-#include <llmq/quorums_instantsend.h>
 
 void zmqError(const char *str);
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -28,6 +28,10 @@ public:
 
     //! Add wallets that should be opened to list of init interfaces.
     void Construct(InitInterfaces& interfaces) const override;
+
+    // Dash Specific Wallet Init
+    void AutoLockMasternodeCollaterals() override;
+    bool InitAutoBackup() override;
 };
 
 const WalletInitInterface& g_wallet_init_interface = WalletInit();
@@ -48,8 +52,8 @@ void WalletInit::AddWalletOptions() const
         CURRENCY_UNIT, FormatMoney(DEFAULT_TRANSACTION_MAXFEE)), ArgsManager::ALLOW_ANY, OptionsCategory::DEBUG_TEST);
     gArgs.AddArg("-mintxfee=<amt>", strprintf("Fees (in %s/kB) smaller than this are considered zero fee for transaction creation (default: %s)",
                                                             CURRENCY_UNIT, FormatMoney(DEFAULT_TRANSACTION_MINFEE)), ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
-    gArgs.AddArg("-paytxfee=<amt>", strprintf("Fee (in %s/kB) to add to transactions you send (default: %s)",
-                                                            CURRENCY_UNIT, FormatMoney(CFeeRate{DEFAULT_PAY_TX_FEE}.GetFeePerK())), ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
+//    gArgs.AddArg("-paytxfee=<amt>", strprintf("Fee (in %s/kB) to add to transactions you send (default: %s)",
+//                                                            CURRENCY_UNIT, mapToString(CFeeRate{populateMap(DEFAULT_PAY_TX_FEE)}.GetFeePerK())), ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
     gArgs.AddArg("-rescan", "Rescan the block chain for missing wallet transactions on startup", ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
     gArgs.AddArg("-salvagewallet", "Attempt to recover private keys from a corrupt wallet on startup", ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
     gArgs.AddArg("-spendzeroconfchange", strprintf("Spend unconfirmed change when sending transactions (default: %u)", DEFAULT_SPEND_ZEROCONF_CHANGE), ArgsManager::ALLOW_ANY, OptionsCategory::WALLET);
@@ -74,12 +78,19 @@ void WalletInit::AddWalletOptions() const
 
 bool WalletInit::ParameterInteraction() const
 {
+    if (gArgs.IsArgSet("-masternodeblsprivkey") && gArgs.SoftSetBoolArg("-disablewallet", true)) {
+        LogPrintf("%s: parameter interaction: -masternodeblsprivkey set -> setting -disablewallet=1\n", __func__);
+    }
+
     if (gArgs.GetBoolArg("-disablewallet", DEFAULT_DISABLE_WALLET)) {
         for (const std::string& wallet : gArgs.GetArgs("-wallet")) {
             LogPrintf("%s: parameter interaction: -disablewallet -> ignoring -wallet=%s\n", __func__, wallet);
         }
 
         return true;
+    } else if (gArgs.IsArgSet("-masternodeblsprivkey")) {
+        return InitError("You can not start a masternode with wallet enabled.");
+
     }
 
     const bool is_multiwallet = gArgs.GetArgs("-wallet").size() > 1;
@@ -136,4 +147,18 @@ void WalletInit::Construct(InitInterfaces& interfaces) const
     }
     gArgs.SoftSetArg("-wallet", "");
     interfaces.chain_clients.emplace_back(interfaces::MakeWalletClient(*interfaces.chain, gArgs.GetArgs("-wallet")));
+}
+
+
+void WalletInit::AutoLockMasternodeCollaterals()
+{
+    // we can't do this before DIP3 is fully initialized
+    for (auto& pwallet : GetWallets()) {
+        pwallet->AutoLockMasternodeCollaterals();
+    }
+}
+
+bool WalletInit::InitAutoBackup()
+{
+    return CWallet::InitAutoBackup();
 }

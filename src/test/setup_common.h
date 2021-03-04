@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2019 The Rain Core developers
+// Copyright (c) 2015-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -99,7 +99,7 @@ class CTxMemPoolEntry;
 struct TestMemPoolEntryHelper
 {
     // Default values
-    CAmount nFee;
+    CAmountMap nFee;
     int64_t nTime;
     unsigned int nHeight;
     bool spendsCoinbase;
@@ -107,14 +107,14 @@ struct TestMemPoolEntryHelper
     LockPoints lp;
 
     TestMemPoolEntryHelper() :
-        nFee(0), nTime(0), nHeight(1),
+        nFee(CAmountMap()), nTime(0), nHeight(1),
         spendsCoinbase(false), sigOpCost(4) { }
 
     CTxMemPoolEntry FromTx(const CMutableTransaction& tx);
     CTxMemPoolEntry FromTx(const CTransactionRef& tx);
 
     // Change the default value
-    TestMemPoolEntryHelper &Fee(CAmount _fee) { nFee = _fee; return *this; }
+    TestMemPoolEntryHelper &Fee(CAmountMap _fee) { nFee = _fee; return *this; }
     TestMemPoolEntryHelper &Time(int64_t _time) { nTime = _time; return *this; }
     TestMemPoolEntryHelper &Height(unsigned int _height) { nHeight = _height; return *this; }
     TestMemPoolEntryHelper &SpendsCoinbase(bool _flag) { spendsCoinbase = _flag; return *this; }

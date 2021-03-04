@@ -1,15 +1,18 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #ifndef RAIN_CONSENSUS_PARAMS_H
 #define RAIN_CONSENSUS_PARAMS_H
 
+#include <primitives/asset.h>
 #include <uint256.h>
 #include <limits>
 #include <map>
 #include <string>
+
+#include <script/script.h> // mandatory_coinbase_destination
 
 namespace Consensus {
 
@@ -17,11 +20,6 @@ enum DeploymentPos
 {
     DEPLOYMENT_TESTDUMMY,
     DEPLOYMENT_CSV, // Deployment of BIP68, BIP112, and BIP113.
-    DEPLOYMENT_SEGWIT, // Deployment of BIP141, BIP143, and BIP147.
-    DEPLOYMENT_DIP0001, // Deployment of DIP0001 and lower transaction fees.
-    DEPLOYMENT_BIP147, // Deployment of BIP147 (NULLDUMMY)
-    DEPLOYMENT_DIP0003, // Deployment of DIP0002 and DIP0003 (txv3 and deterministic MN lists)
-    DEPLOYMENT_DIP0008, // Deployment of ChainLock enforcement
     // NOTE: Also add new deployments to VersionBitsDeploymentInfo in versionbits.cpp
     MAX_VERSION_BITS_DEPLOYMENTS
 };
@@ -60,7 +58,7 @@ enum LLMQType : uint8_t
 };
 
 // Configures a LLMQ and its DKG
-// See https://github.com/rainpay/dips/blob/master/dip-0006.md for more details
+// See https://github.com/dashpay/dips/blob/master/dip-0006.md for more details
 struct LLMQParams {
     LLMQType type;
 
@@ -118,6 +116,9 @@ struct LLMQParams {
     // Used for inter-quorum communication. This is the number of quorums for which we should keep old connections. This
     // should be at least one more then the active quorums set.
     int keepOldConnections;
+
+    // How many members should we try to send all sigShares to before we give up.
+    int recoveryMembers;
 };
 
 /**
@@ -125,6 +126,7 @@ struct LLMQParams {
  */
 struct Params {
     uint256 hashGenesisBlock;
+    int64_t nMaxMoneyOut;
     int nSubsidyHalvingInterval;
     int nMasternodePaymentsStartBlock;
     int nMasternodePaymentsIncreaseBlock;
@@ -149,13 +151,15 @@ struct Params {
     int BIP65Height;
     /** Block height at which BIP66 becomes active */
     int BIP66Height;
-    /** Block height at which DIP0001 becomes active */
-    int DIP0001Height;
-    /** Block height at which DIP0003 becomes active */
-    int DIP0003Height;
-    /** Block height at which DIP0003 becomes enforced */
-    int DIP0003EnforcementHeight;
-    uint256 DIP0003EnforcementHash;
+    /** Block height at which CSV (BIP68, BIP112 and BIP113) becomes active */
+    int CSVHeight;
+    /** Block height at which Segwit (BIP141, BIP143 and BIP147) becomes active.
+     * Note that segwit v0 script rules are enforced on all blocks except the
+     * BIP 16 exception blocks. */
+    int SegwitHeight;
+    /** Don't warn about unknown BIP 9 activations below this height.
+     * This prevents us from warning about the CSV and segwit activations. */
+    int MinBIP9WarningHeight;
     /**
      * Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,
      * (nPowTargetTimespan / nPowTargetSpacing) which is also used for BIP9 deployments.
@@ -166,26 +170,29 @@ struct Params {
     BIP9Deployment vDeployments[MAX_VERSION_BITS_DEPLOYMENTS];
     /** Proof of work parameters */
     uint256 powLimit;
+    uint256 posLimit;
     bool fPowAllowMinDifficultyBlocks;
     bool fPowNoRetargeting;
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
     int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespan / nPowTargetSpacing; }
     uint256 nMinimumChainWork;
-    uint256 defaultAssumeValid;
-    uint256 posLimit;
     bool fPoSNoRetargeting;
     int nStakeTimestampMask;
-    unsigned int nLastPOWBlock;
-    
-
-    unsigned int nCONSENSUS_CHANGE_BLOCK;
     int64_t nCOIN_YEAR_REWARD;
-    int64_t nCOIN_YEAR_REWARD_NEW;
+    int nLastPOWBlock;
     int64_t nStakeMinAge;
     int64_t nStakeMaxAge;
     int64_t nModifierInterval;    
 
+    uint256 defaultAssumeValid;
+    CScript mandatory_coinbase_destination;
+    CAmount genesis_subsidy;
+    CAsset subsidy_asset;
+    CAsset masternode_asset;
+    CAsset founder_asset;
+    bool connect_genesis_outputs;
+    int64_t nMinColdStakingAmount;
     std::map<LLMQType, LLMQParams> llmqs;
     LLMQType llmqTypeChainLocks;
     LLMQType llmqTypeInstantSend{LLMQ_NONE};

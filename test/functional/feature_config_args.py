@@ -22,18 +22,18 @@ class ConfArgsTest(RainTestFramework):
             conf.write('includeconf={}\n'.format(inc_conf_file_path))
 
         self.nodes[0].assert_start_raises_init_error(
-            expected_msg='Error parsing command line arguments: Invalid parameter -rain_cli',
-            extra_args=['-rain_cli=1'],
+            expected_msg='Error parsing command line arguments: Invalid parameter -dash_cli',
+            extra_args=['-dash_cli=1'],
         )
         with open(inc_conf_file_path, 'w', encoding='utf-8') as conf:
-            conf.write('rain_conf=1\n')
-        with self.nodes[0].assert_debug_log(expected_msgs=['Ignoring unknown configuration value rain_conf']):
+            conf.write('dash_conf=1\n')
+        with self.nodes[0].assert_debug_log(expected_msgs=['Ignoring unknown configuration value dash_conf']):
             self.start_node(0)
         self.stop_node(0)
 
         with open(inc_conf_file_path, 'w', encoding='utf-8') as conf:
-            conf.write('-rain=1\n')
-        self.nodes[0].assert_start_raises_init_error(expected_msg='Error reading configuration file: parse error on line 1: -rain=1, options in configuration file must be specified without leading -')
+            conf.write('-dash=1\n')
+        self.nodes[0].assert_start_raises_init_error(expected_msg='Error reading configuration file: parse error on line 1: -dash=1, options in configuration file must be specified without leading -')
 
         with open(inc_conf_file_path, 'w', encoding='utf8') as conf:
             conf.write("wallet=foo\n")

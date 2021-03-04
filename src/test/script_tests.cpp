@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2019 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -144,7 +144,8 @@ CMutableTransaction BuildSpendingTransaction(const CScript& scriptSig, const CSc
     txSpend.nLockTime = 0;
     txSpend.vin.resize(1);
     txSpend.vout.resize(1);
-    txSpend.vin[0].scriptWitness = scriptWitness;
+    txSpend.witness.vtxinwit.resize(1);
+    txSpend.witness.vtxinwit[0].scriptWitness = scriptWitness;
     txSpend.vin[0].prevout.hash = txCredit.GetHash();
     txSpend.vin[0].prevout.n = 0;
     txSpend.vin[0].scriptSig = scriptSig;
@@ -182,13 +183,17 @@ void DoTest(const CScript& scriptPubKey, const CScript& scriptSig, const CScript
 #if defined(HAVE_CONSENSUS_LIB)
     CDataStream stream(SER_NETWORK, PROTOCOL_VERSION);
     stream << tx2;
+    CDataStream streamVal(SER_NETWORK, PROTOCOL_VERSION);
+    streamVal << txCredit.vout[0].nValue;
+    CDataStream streamVal0(SER_NETWORK, PROTOCOL_VERSION);
+    streamVal0 << CConfidentialValue(0);
     int libconsensus_flags = flags & rainconsensus_SCRIPT_FLAGS_VERIFY_ALL;
     if (libconsensus_flags == flags) {
         int expectedSuccessCode = expect ? 1 : 0;
         if (flags & rainconsensus_SCRIPT_FLAGS_VERIFY_WITNESS) {
-            BOOST_CHECK_MESSAGE(rainconsensus_verify_script_with_amount(scriptPubKey.data(), scriptPubKey.size(), txCredit.vout[0].nValue, (const unsigned char*)&stream[0], stream.size(), 0, libconsensus_flags, nullptr) == expectedSuccessCode, message);
+            BOOST_CHECK_MESSAGE(rainconsensus_verify_script_with_amount(scriptPubKey.data(), scriptPubKey.size(), (const unsigned char*)&streamVal[0], streamVal.size(), (const unsigned char*)&stream[0], stream.size(), 0, libconsensus_flags, nullptr) == expectedSuccessCode, message);
         } else {
-            BOOST_CHECK_MESSAGE(rainconsensus_verify_script_with_amount(scriptPubKey.data(), scriptPubKey.size(), 0, (const unsigned char*)&stream[0], stream.size(), 0, libconsensus_flags, nullptr) == expectedSuccessCode, message);
+            BOOST_CHECK_MESSAGE(rainconsensus_verify_script_with_amount(scriptPubKey.data(), scriptPubKey.size(), (const unsigned char*)&streamVal0[0], streamVal0.size(), (const unsigned char*)&stream[0], stream.size(), 0, libconsensus_flags, nullptr) == expectedSuccessCode, message);
             BOOST_CHECK_MESSAGE(rainconsensus_verify_script(scriptPubKey.data(), scriptPubKey.size(), (const unsigned char*)&stream[0], stream.size(), 0, libconsensus_flags, nullptr) == expectedSuccessCode, message);
         }
     }
@@ -1192,7 +1197,7 @@ SignatureData CombineSignatures(const CTxOut& txout, const CMutableTransaction& 
     SignatureData data;
     data.MergeSignatureData(scriptSig1);
     data.MergeSignatureData(scriptSig2);
-    ProduceSignature(DUMMY_SIGNING_PROVIDER, MutableTransactionSignatureCreator(&tx, 0, txout.nValue), txout.scriptPubKey, data);
+    ProduceSignature(DUMMY_SIGNING_PROVIDER, MutableTransactionSignatureCreator(&tx, 0, txout.nValue), txout.scriptPubKey, data, false);
     return data;
 }
 
@@ -1249,6 +1254,16 @@ BOOST_AUTO_TEST_CASE(script_combineSigs)
     scriptSig = DataFromTransaction(txTo, 0, txFrom.vout[0]);
     combined = CombineSignatures(txFrom.vout[0], txTo, scriptSigCopy, scriptSig);
     BOOST_CHECK(combined.scriptSig == scriptSigCopy.scriptSig || combined.scriptSig == scriptSig.scriptSig);
+
+    // Hardest case:  Multisig 2-of-3 with CLTV
+    scriptPubKey = GetScriptForMultisig(2, pubkeys, 0, 1455444340);
+    keystore.AddCScript(scriptPubKey);
+    SignSignature(keystore, CTransaction(txFrom), txTo, 0, SIGHASH_ALL);
+    combined = CombineSignatures(txFrom.vout[0], txTo, scriptSig, empty);
+    BOOST_CHECK(combined.scriptSig == scriptSig.scriptSig);
+    combined = CombineSignatures(txFrom.vout[0], txTo,empty, scriptSig);
+    BOOST_CHECK(combined.scriptSig == scriptSig.scriptSig);
+
 
     // Hardest case:  Multisig 2-of-3
     scriptPubKey = GetScriptForMultisig(2, pubkeys);
@@ -1499,7 +1514,7 @@ BOOST_AUTO_TEST_CASE(script_HasValidOps)
     BOOST_CHECK(script.HasValidOps());
     script = ScriptFromHex("ff88ac"); // Script with OP_INVALIDOPCODE explicit
     BOOST_CHECK(!script.HasValidOps());
-    script = ScriptFromHex("88acc0"); // Script with undefined opcode
+    script = ScriptFromHex("88acc4"); // Script with undefined opcode: one higher then MAX_OPCODE
     BOOST_CHECK(!script.HasValidOps());
 }
 
@@ -1659,6 +1674,28 @@ BOOST_AUTO_TEST_CASE(rainconsensus_verify_script_invalid_flags)
     int result = rainconsensus_verify_script(scriptPubKey.data(), scriptPubKey.size(), (const unsigned char*)&stream[0], stream.size(), nIn, libconsensus_flags, &err);
     BOOST_CHECK_EQUAL(result, 0);
     BOOST_CHECK_EQUAL(err, rainconsensus_ERR_INVALID_FLAGS);
+}
+
+BOOST_AUTO_TEST_CASE(script_multisig_cltv)
+{
+    std::string pubKey("03b0da749730dc9b4b1f4a14d6902877a92541f5368778853d9c4a0cb7802dcfb2");
+    std::vector<unsigned char> vchPubKey = ToByteVector(ParseHex(pubKey));
+    std::vector<CPubKey> pubkeys;
+    CScript script;
+    CPubKey pub(vchPubKey);
+
+    pubkeys.push_back(pub);
+
+    script = GetScriptForMultisig(1, pubkeys, 0, 1455444340);
+    BOOST_CHECK_EQUAL("1455444340 OP_CHECKLOCKTIMEVERIFY 1 " + pubKey + " 1 OP_CHECKMULTISIG", ScriptToAsmStr(script));
+
+    script = GetScriptForMultisig(1, pubkeys, 1234, 0);
+    BOOST_CHECK_EQUAL("1234 OP_CHECKLOCKTIMEVERIFY 1 " + pubKey + " 1 OP_CHECKMULTISIG", ScriptToAsmStr(script));
+
+    BOOST_REQUIRE_THROW(GetScriptForMultisig(1, pubkeys, 1455444340, 0), std::invalid_argument);
+    BOOST_REQUIRE_THROW(GetScriptForMultisig(1, pubkeys, 0, 1234), std::invalid_argument);
+    BOOST_REQUIRE_THROW(GetScriptForMultisig(1, pubkeys, 1234, 1455444340), std::invalid_argument);
+    BOOST_REQUIRE_THROW(GetScriptForMultisig(1, pubkeys, 0, -40), std::invalid_argument);
 }
 
 #endif

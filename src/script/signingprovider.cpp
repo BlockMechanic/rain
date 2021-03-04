@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2019 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -175,6 +175,33 @@ bool FillableSigningProvider::GetCScript(const CScriptID &hash, CScript& redeemS
     return false;
 }
 
+bool FillableSigningProvider::GetPreimage(
+    const std::vector<unsigned char>& image,
+    std::vector<unsigned char>& preimage
+) const
+{
+    LOCK(cs_KeyStore);
+
+    PreimageMap::const_iterator it = mapPreimages.find(image);
+    if (it != mapPreimages.end()) {
+        preimage = it->second;
+
+        return true;
+    }
+    return false;
+}
+
+bool FillableSigningProvider::AddPreimage(
+    const std::vector<unsigned char>& image,
+    const std::vector<unsigned char>& preimage
+)
+{
+    LOCK(cs_KeyStore);
+
+    mapPreimages[image] = preimage;
+    return true;
+}
+
 CKeyID GetKeyForDestination(const SigningProvider& store, const CTxDestination& dest)
 {
     // Only supports destinations which map to single public keys, i.e. P2PKH,
@@ -191,7 +218,7 @@ CKeyID GetKeyForDestination(const SigningProvider& store, const CTxDestination& 
         CTxDestination inner_dest;
         if (store.GetCScript(script_id, script) && ExtractDestination(script, inner_dest)) {
             if (auto inner_witness_id = boost::get<WitnessV0KeyHash>(&inner_dest)) {
-                return CKeyID(*inner_witness_id);
+                return CKeyID(*script_hash);
             }
         }
     }

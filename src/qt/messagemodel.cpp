@@ -636,7 +636,7 @@ void MessageModel::subscribeToCoreSignals()
     NotifySecMsgOutboxChanged.connect(boost::bind(NotifySecMsgOutbox, this, _1));
     NotifySecMsgWalletUnlocked.connect(boost::bind(NotifySecMsgWallet, this));
 
-    connect(walletModel, SIGNAL(encryptionStatusChanged()), this, SLOT(setEncryptionStatus(walletModel->getEncryptionStatus())));
+    connect(walletModel, &WalletModel::encryptionStatusChanged, this, &MessageModel::setEncryptionStatus);
 }
 
 void MessageModel::unsubscribeFromCoreSignals()

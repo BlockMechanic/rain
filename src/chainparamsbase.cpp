@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -36,11 +36,11 @@ const CBaseChainParams& BaseParams()
 std::unique_ptr<CBaseChainParams> CreateBaseChainParams(const std::string& chain)
 {
     if (chain == CBaseChainParams::MAIN)
-        return MakeUnique<CBaseChainParams>("", 8373);
+        return MakeUnique<CBaseChainParams>("", 2013);
     else if (chain == CBaseChainParams::TESTNET)
-        return MakeUnique<CBaseChainParams>("testnet3", 18332);
+        return MakeUnique<CBaseChainParams>("testnet3", 12013);
     else if (chain == CBaseChainParams::REGTEST)
-        return MakeUnique<CBaseChainParams>("regtest", 18443);
+        return MakeUnique<CBaseChainParams>("regtest", 12013);
     else
         throw std::runtime_error(strprintf("%s: Unknown chain %s.", __func__, chain));
 }

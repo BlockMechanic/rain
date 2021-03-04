@@ -1,10 +1,10 @@
-# Copyright (c) 2012-2018 The Rain Core developers
+# Copyright (c) 2012-2020 The Rain Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 '''
 Rain base58 encoding and decoding.
 
-Based on https://raintalk.org/index.php?topic=1026.0 (public domain)
+Based on https://bitcointalk.org/index.php?topic=1026.0 (public domain)
 '''
 import hashlib
 

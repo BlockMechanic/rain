@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -53,7 +53,8 @@ public:
         SECRET_KEY,
         EXT_PUBLIC_KEY,
         EXT_SECRET_KEY,
-
+        STAKING_ADDRESS,
+        BLINDED_ADDRESS,
         MAX_BASE58_TYPES
     };
 
@@ -68,6 +69,11 @@ public:
     bool RequireStandard() const { return fRequireStandard; }
     /** Require addresses specified with "-externalip" parameter to be routable */
     bool RequireRoutableExternalIP() const { return fRequireRoutableExternalIP; }
+
+    /** returns the coinstake maturity (min depth required) **/
+    int COINSTAKE_MIN_AGE() const { return nStakeMinAge; }
+    int COINSTAKE_MAX_AGE() const { return nStakeMaxAge; }
+
     /** If this chain is exclusively used for testing */
     bool IsTestChain() const { return m_is_test_chain; }
     uint64_t PruneAfterHeight() const { return nPruneAfterHeight; }
@@ -81,6 +87,8 @@ public:
     bool MineBlocksOnDemand() const { return consensus.fPowNoRetargeting; }
     /** Allow nodes with the same address and multiple ports */
     bool AllowMultiplePorts() const { return fAllowMultiplePorts; }
+    /** How long to wait until we allow retrying of a LLMQ connection  */
+    int LLMQConnectionRetryTimeout() const { return nLLMQConnectionRetryTimeout; }
     /** Return the BIP70 network string (main, test or regtest) */
     std::string NetworkIDString() const { return strNetworkID; }
     /** Return true if the fallback fee is by default enabled for this network */
@@ -89,6 +97,7 @@ public:
     const std::vector<std::string>& DNSSeeds() const { return vSeeds; }
     const std::vector<unsigned char>& Base58Prefix(Base58Type type) const { return base58Prefixes[type]; }
     const std::string& Bech32HRP() const { return bech32_hrp; }
+    const std::string& Blech32HRP() const { return blech32_hrp; }
     const std::vector<SeedSpec6>& FixedSeeds() const { return vFixedSeeds; }
     const CCheckpointData& Checkpoints() const { return checkpointData; }
     const ChainTxData& TxData() const { return chainTxData; }
@@ -98,21 +107,32 @@ public:
     int FulfilledRequestExpireTime() const { return nFulfilledRequestExpireTime; }
     const std::vector<std::string>& SporkAddresses() const { return vSporkAddresses; }
     int MinSporkKeys() const { return nMinSporkKeys; }
+
+    CAmount MasternodeCollateral() const { return nMasternodeCollateral; }
+    bool NewSigsActive() const { return true; }
+    bool anyonecanspend_aremine;
+
 protected:
     CChainParams() {}
 
     Consensus::Params consensus;
     CMessageHeader::MessageStartChars pchMessageStart;
     int nDefaultPort;
+    int nStakeMinAge;
+    int nStakeMaxAge;
     uint64_t nPruneAfterHeight;
     uint64_t m_assumed_blockchain_size;
     uint64_t m_assumed_chain_state_size;
     std::vector<std::string> vSeeds;
+    CAmount nMasternodeCollateral;
     std::vector<unsigned char> base58Prefixes[MAX_BASE58_TYPES];
     int nExtCoinType;
     std::string bech32_hrp;
+    std::string blech32_hrp;
     std::string strNetworkID;
     CBlock genesis;
+    CAmount initialFreeCoins;
+    CAmount initial_reissuance_tokens;
     std::vector<SeedSpec6> vFixedSeeds;
     bool fDefaultConsistencyChecks;
     bool fRequireStandard;
@@ -120,6 +140,7 @@ protected:
     bool fAllowMultipleAddressesFromGroup;
     bool m_is_test_chain;
     bool fAllowMultiplePorts;
+    int nLLMQConnectionRetryTimeout;
     CCheckpointData checkpointData;
     ChainTxData chainTxData;
     bool m_fallback_fee_enabled;

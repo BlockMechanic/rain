@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -6,25 +6,30 @@
 #define RAIN_QT_WALLETVIEW_H
 
 #include <amount.h>
-#include <qt/masternodelist.h>
-#include <QStackedWidget>
+#include <qt/qslidestakingwidget.h>
 
 class RainGUI;
 class ClientModel;
 class MessagePage;
-class OverviewPage;
+class DashboardWidget;
 class PlatformStyle;
-class ReceiveCoinsDialog;
-class SendCoinsDialog;
 class SendCoinsRecipient;
 class SendMessagesPage;
-class TransactionView;
 class WalletModel;
 class AddressBookPage;
 class MessageModel;
-class RPCConsole;
+class ChartsWidget;
+class AddressesWidget;
+class AssetPage;
+class HistoryWidget;
+class SendWidget;
+class ReceiveWidget;
+class SettingsWidget;
+
+class MasterNodesWidget;
+class ColdStakingWidget;
+
 QT_BEGIN_NAMESPACE
-class QLabel;
 class QModelIndex;
 class QProgressDialog;
 QT_END_NAMESPACE
@@ -35,7 +40,7 @@ QT_END_NAMESPACE
   It communicates with both the client and the wallet models to give the user an up-to-date view of the
   current core state.
 */
-class WalletView : public QStackedWidget
+class WalletView : public QSlideStackedWidget
 {
     Q_OBJECT
 
@@ -65,32 +70,35 @@ private:
     MessageModel *messageModel;
     WalletModel *walletModel;
 
-    OverviewPage *overviewPage;
-    QWidget *transactionsPage;
-    ReceiveCoinsDialog *receiveCoinsPage;
-    SendCoinsDialog *sendCoinsPage;
     AddressBookPage *usedSendingAddressesPage;
     AddressBookPage *usedReceivingAddressesPage;
-    MasternodeList *masternodeListPage;
-    RPCConsole* rpcConsole = nullptr;
-
-    TransactionView *transactionView;
     SendMessagesPage *sendMessagesPage;
     MessagePage *messagePage;
 
     QProgressDialog *progressDialog;
-    QLabel *transactionSum;
     const PlatformStyle *platformStyle;
+
+    ChartsWidget *chartsWidget;
+    AddressesWidget *addressesWidget;
+    AssetPage *assetPage;
+    HistoryWidget *historyWidget;
+    
+    SendWidget *sendWidget;
+    ReceiveWidget *receiveWidget;
+    
+    DashboardWidget *dashboard;
+    SettingsWidget *settingsWidget;
+
+    MasterNodesWidget *masterNodesWidget = nullptr;
+    ColdStakingWidget *coldStakingWidget = nullptr;
+
+    RainGUI * fgui;
 
 public Q_SLOTS:
     /** Switch to overview (home) page */
-    void gotoOverviewPage();
+    void gotoDashbord();
     /** Switch to history (transactions) page */
     void gotoHistoryPage();
-    /** Switch to masternode page */
-    void gotoMasternodePage();
-    /** Switch to rpc page (non dialog)*/
-    void gotoRpcPage();
     /** Switch to receive coins page */
     void gotoReceiveCoinsPage();
     /** Switch to send coins page */
@@ -99,6 +107,21 @@ public Q_SLOTS:
     /** Switch to view messages page */
     void gotoMessagesPage();
 
+    /** Switch to view charts page */
+    void gotoChartsPage();
+    
+    /** Switch to view contacts page */
+    void gotoContactsPage();    
+    
+    /** Switch to view explorer page */
+    void gotoAssetPage();  
+
+    void gotoMasterNodes();
+
+    void gotoColdStaking();
+
+    void gotoSettings();
+    
     /** Show Sign/Verify Message dialog and switch to sign message tab */
     void gotoSignMessageTab(QString addr = "");
     /** Show Sign/Verify Message dialog and switch to verify message tab */
@@ -119,7 +142,8 @@ public Q_SLOTS:
     /** Change encrypted wallet passphrase */
     void changePassphrase();
     /** Ask for passphrase to unlock wallet temporarily */
-    void unlockWallet(bool fAnonymizeOnly=false);
+
+    void unlockWallet(/*bool fromMenu = false*/);
     /** Lock the wallet */
     void lockWallet();
 
@@ -162,6 +186,8 @@ Q_SIGNALS:
 
     /** Notify that the out of sync warning icon has been pressed */
     void outOfSyncWarningClicked();
+    /** Show the assets GUI */
+    void checkAssets();
 };
 
 #endif // RAIN_QT_WALLETVIEW_H

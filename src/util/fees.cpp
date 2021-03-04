@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -25,7 +25,7 @@ std::string StringForFeeReason(FeeReason reason) {
 
     return reason_string->second;
 }
-
+/*
 bool FeeModeFromString(const std::string& mode_string, FeeEstimateMode& fee_estimate_mode) {
     static const std::map<std::string, FeeEstimateMode> fee_modes = {
         {"UNSET", FeeEstimateMode::UNSET},
@@ -39,3 +39,4 @@ bool FeeModeFromString(const std::string& mode_string, FeeEstimateMode& fee_esti
     fee_estimate_mode = mode->second;
     return true;
 }
+*/

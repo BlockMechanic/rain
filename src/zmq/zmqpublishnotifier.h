@@ -1,4 +1,4 @@
-// Copyright (c) 2015-2018 The Rain Core developers
+// Copyright (c) 2015-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -48,12 +48,6 @@ public:
     bool NotifyTransaction(const CTransaction &transaction) override;
 };
 
-class CZMQPublishHashTransactionLockNotifier : public CZMQAbstractPublishNotifier
-{
-public:
-    bool NotifyTransactionLock(const CTransaction &transaction, const llmq::CInstantSendLock& islock) override;
-};
-
 class CZMQPublishHashGovernanceVoteNotifier : public CZMQAbstractPublishNotifier
 {
 public:
@@ -64,12 +58,6 @@ class CZMQPublishHashGovernanceObjectNotifier : public CZMQAbstractPublishNotifi
 {
 public:
     bool NotifyGovernanceObject(const CGovernanceObject &object) override;
-};
-
-class CZMQPublishHashInstantSendDoubleSpendNotifier : public CZMQAbstractPublishNotifier
-{
-public:
-    bool NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) override;
 };
 
 class CZMQPublishRawBlockNotifier : public CZMQAbstractPublishNotifier
@@ -96,18 +84,6 @@ public:
     bool NotifyTransaction(const CTransaction &transaction) override;
 };
 
-class CZMQPublishRawTransactionLockNotifier : public CZMQAbstractPublishNotifier
-{
-public:
-    bool NotifyTransactionLock(const CTransaction &transaction, const llmq::CInstantSendLock& islock) override;
-};
-
-class CZMQPublishRawTransactionLockSigNotifier : public CZMQAbstractPublishNotifier
-{
-public:
-    bool NotifyTransactionLock(const CTransaction &transaction, const llmq::CInstantSendLock& islock) override;
-};
-
 class CZMQPublishRawGovernanceVoteNotifier : public CZMQAbstractPublishNotifier
 {
 public:
@@ -118,11 +94,5 @@ class CZMQPublishRawGovernanceObjectNotifier : public CZMQAbstractPublishNotifie
 {
 public:
     bool NotifyGovernanceObject(const CGovernanceObject &object) override;
-};
-
-class CZMQPublishRawInstantSendDoubleSpendNotifier : public CZMQAbstractPublishNotifier
-{
-public:
-    bool NotifyInstantSendDoubleSpendAttempt(const CTransaction &currentTx, const CTransaction &previousTx) override;
 };
 #endif // RAIN_ZMQ_ZMQPUBLISHNOTIFIER_H

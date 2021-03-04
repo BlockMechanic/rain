@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -8,14 +8,11 @@
 #include <amount.h>
 
 #include <QAbstractListModel>
+#include <QSettings>
 
 namespace interfaces {
 class Node;
 }
-
-QT_BEGIN_NAMESPACE
-class QNetworkProxy;
-QT_END_NAMESPACE
 
 extern const char *DEFAULT_GUI_PROXY_HOST;
 static constexpr unsigned short DEFAULT_GUI_PROXY_PORT = 9050;
@@ -47,6 +44,7 @@ public:
         ProxyPortTor,           // int
         DisplayUnit,            // RainUnits::Unit
         ThirdPartyTxUrls,       // QString
+        Digits,              // QString
         Language,               // QString
         CoinControlFeatures,    // bool
         ThreadsScriptVerif,     // int
@@ -54,17 +52,15 @@ public:
         PruneSize,              // int
         DatabaseCache,          // int
         SpendZeroConfChange,    // bool
-        ShowMasternodesTab,     // bool
-        ShowAdvancedPSUI,       // bool
-        ShowPrivateSendPopups,  // bool
-        LowKeysWarning,         // bool
-        PrivateSendRounds,      // int
-        PrivateSendAmount,      // int
-        PrivateSendMultiSession,// bool
         Listen,                 // bool
-		EnableMessageSendConf, // bool
+	EnableMessageSendConf, // bool
         NotUseChangeAddress,    // bool
         ReserveBalance,         // CAmount
+        HideCharts,          // bool
+        HideZeroBalances,    // bool
+        ShowMasternodesTab,  // bool
+        StakeSplitThreshold,    // CAmount (LongLong)
+        ShowColdStakingScreen,  // bool
         OptionIDRowCount,
     };
 
@@ -74,32 +70,54 @@ public:
     int rowCount(const QModelIndex & parent = QModelIndex()) const;
     QVariant data(const QModelIndex & index, int role = Qt::DisplayRole) const;
     bool setData(const QModelIndex & index, const QVariant & value, int role = Qt::EditRole);
+    void refreshDataView();
     /** Updates current unit in memory, settings and emits displayUnitChanged(newUnit) signal */
     void setDisplayUnit(const QVariant &value);
 
+    /* Update StakeSplitThreshold's value in wallet */
+    void setStakeSplitThreshold(const CAmount value);
+    double getSSTMinimum() const;
+    bool isSSTValid();
+
     /* Explicit getters */
+    bool isHideCharts() { return fHideCharts; }
     bool getHideTrayIcon() const { return fHideTrayIcon; }
     bool getMinimizeToTray() const { return fMinimizeToTray; }
     bool getMinimizeOnClose() const { return fMinimizeOnClose; }
     int getDisplayUnit() const { return nDisplayUnit; }
     QString getThirdPartyTxUrls() const { return strThirdPartyTxUrls; }
-    bool getProxySettings(QNetworkProxy& proxy) const;
+   // bool getProxySettings(QNetworkProxy& proxy) const;
     bool getCoinControlFeatures() const { return fCoinControlFeatures; }
-    bool getShowAdvancedPSUI() { return fShowAdvancedPSUI; }
     const QString& getOverriddenByCommandLine() { return strOverriddenByCommandLine; }
 
     /* Explicit setters */
     void SetPrune(bool prune, bool force = false);
 
-#ifdef ENABLE_SECURE_MESSAGING
 	bool getEnableMessageSendConf();
-#endif
+
     /* Restart flag helper */
     void setRestartRequired(bool fRequired);
     bool isRestartRequired() const;
-
+    void setSSTChanged(bool fChanged);
+    bool isSSTChanged();
     interfaces::Node& node() const { return m_node; }
 
+    bool isColdStakingScreenEnabled() { return showColdStakingScreen; }
+    bool invertColdStakingScreenStatus() {
+        setData(
+                createIndex(ShowColdStakingScreen, 0),
+                !isColdStakingScreenEnabled(),
+                Qt::EditRole
+        );
+        return showColdStakingScreen;
+    }
+
+    // Reset
+    void setMainDefaultOptions(QSettings& settings, bool reset = false);
+    void setWalletDefaultOptions(QSettings& settings, bool reset = false);
+    void setNetworkDefaultOptions(QSettings& settings, bool reset = false);
+    void setWindowDefaultOptions(QSettings& settings, bool reset = false);
+    void setDisplayDefaultOptions(QSettings& settings, bool reset = false);
 private:
     interfaces::Node& m_node;
     /* Qt-only settings */
@@ -110,12 +128,13 @@ private:
     int nDisplayUnit;
     QString strThirdPartyTxUrls;
     bool fCoinControlFeatures;
-    bool fShowAdvancedPSUI;
+    bool showColdStakingScreen;
+    bool fHideCharts;
+    bool fHideZeroBalances;
     /* settings that were overridden by command-line */
     QString strOverriddenByCommandLine;
-#ifdef ENABLE_SECURE_MESSAGING
 	bool fEnableMessageSendConf;
-#endif
+
     // Add option to list of GUI options overridden through command line/config file
     void addOverriddenOption(const std::string &option);
 
@@ -123,10 +142,10 @@ private:
     void checkAndMigrate();
 Q_SIGNALS:
     void displayUnitChanged(int unit);
-    void privateSendRoundsChanged();
-    void privateSentAmountChanged();
-    void advancedPSUIChanged(bool);
     void coinControlFeaturesChanged(bool);
+    void showHideColdStakingScreen(bool);
+    void hideChartsChanged(bool);
+    void hideZeroBalancesChanged(bool);
     void hideTrayIconChanged(bool);
     void enableMessageSendConfChanged(bool);
 };

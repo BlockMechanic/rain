@@ -176,7 +176,7 @@ static CBLSSecretKey ParseBLSSecretKey(const std::string& hexKey, const std::str
 #ifdef ENABLE_WALLET
 
 template<typename SpecialTxPayload>
-static void FundSpecialTx(CWallet* pwallet, CMutableTransaction& tx, const SpecialTxPayload& payload, const CTxDestination& fundDest)
+static void FundSpecialTx(CWallet* pwallet, CMutableTransaction& tx, const SpecialTxPayload& payload, const CTxDestination& fundDest, CAsset asset)
 {
     assert(pwallet != nullptr);
     LOCK2(cs_main, pwallet->cs_wallet);
@@ -190,7 +190,7 @@ static void FundSpecialTx(CWallet* pwallet, CMutableTransaction& tx, const Speci
     ds << payload;
     tx.vExtraPayload.assign(ds.begin(), ds.end());
 
-    static CTxOut dummyTxOut(0, CScript() << OP_RETURN);
+    static CTxOut dummyTxOut(asset, 0, CScript() << OP_RETURN);
     std::vector<CRecipient> vecSend;
     bool dummyTxOutAdded = false;
 
@@ -201,14 +201,14 @@ static void FundSpecialTx(CWallet* pwallet, CMutableTransaction& tx, const Speci
     }
 
     for (const auto& txOut : tx.vout) {
-        CRecipient recipient = {txOut.scriptPubKey, txOut.nValue, false};
+        CRecipient recipient = {txOut.scriptPubKey, txOut.nValue.GetAmount(), asset};
         vecSend.push_back(recipient);
     }
 
 
     auto locked_chain = pwallet->chain().lock();
     CCoinControl coinControl;
-    coinControl.destChange = fundDest;
+    coinControl.destChange[asset] = fundDest;
     coinControl.fRequireAllInputs = false;
 
     std::vector<COutput> vecOutputs;
@@ -226,13 +226,12 @@ static void FundSpecialTx(CWallet* pwallet, CMutableTransaction& tx, const Speci
     }
 
     CTransactionRef tx_new;
-    CAmount nFee;
+    CAmountMap nFee;
     int nChangePos = -1;
     std::string strFailReason;
 
-    if (!pwallet->CreateTransaction(*locked_chain, vecSend, tx_new, nFee, nChangePos, strFailReason, coinControl, false, tx.vExtraPayload.size())) {
+    if (!pwallet->CreateTransaction(*locked_chain, vecSend, tx_new, nFee, nChangePos, strFailReason, coinControl, false, CoinType::ALL_COINS))
         throw JSONRPCError(RPC_INTERNAL_ERROR, strFailReason);
-    }
 
     tx.vin = tx_new->vin;
     tx.vout = tx_new->vout;
@@ -290,7 +289,8 @@ static std::string SignAndSendSpecialTx(const CMutableTransaction& tx)
     LOCK(cs_main);
 
     CValidationState state;
-    if (!CheckSpecialTx(CTransaction(tx), ::ChainActive().Tip(), state)) {
+    //MakeTransactionRef(std::move(tx));
+    if (!CheckSpecialTx(MakeTransactionRef(tx), ::ChainActive().Tip(), state)) {
         throw std::runtime_error(FormatStateMessage(state));
     }
 
@@ -300,12 +300,16 @@ static std::string SignAndSendSpecialTx(const CMutableTransaction& tx)
     JSONRPCRequest signRequest;
     signRequest.params.setArray();
     signRequest.params.push_back(HexStr(ds.begin(), ds.end()));
+    
     UniValue signResult = signrawtransaction(signRequest);
 
     JSONRPCRequest sendRequest;
     sendRequest.params.setArray();
     sendRequest.params.push_back(signResult["hex"].get_str());
-    return sendrawtransaction(sendRequest).get_str();
+ 
+    UniValue sendResult = sendrawtransaction(sendRequest);
+    
+    return sendResult.get_str();
 }
 
 void protx_register_fund_help(CWallet* const pwallet)
@@ -430,25 +434,24 @@ UniValue protx_register(const JSONRPCRequest& request)
 
     size_t paramIdx = 1;
 
-    CAmount collateralAmount = 2000000 * COIN;
-
+    CAmount collateralAmount = Params().MasternodeCollateral();
+    
+    CAsset asset = Params().GetConsensus().masternode_asset;
     CMutableTransaction tx;
-    tx.nVersion = 3;
+    tx.nVersion = 1;
     tx.nType = TRANSACTION_PROVIDER_REGISTER;
 
     CProRegTx ptx;
     ptx.nVersion = CProRegTx::CURRENT_VERSION;
 
     if (isFundRegister) {
-
-        CTxDestination dest = DecodeDestination(request.params[paramIdx].get_str());
-		if (!IsValidDestination(dest)) {
-			
+        CTxDestination collateralDest = DecodeDestination(request.params[paramIdx].get_str());
+        if (!IsValidDestination(collateralDest)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("invalid collaterall address: %s", request.params[paramIdx].get_str()));
         }
-        CScript collateralScript = GetScriptForDestination(dest);
+        CScript collateralScript = GetScriptForDestination(collateralDest);
 
-        CTxOut collateralTxOut(collateralAmount, collateralScript);
+        CTxOut collateralTxOut(asset, collateralAmount, collateralScript);
         tx.vout.emplace_back(collateralTxOut);
 
         paramIdx++;
@@ -489,36 +492,35 @@ UniValue protx_register(const JSONRPCRequest& request)
     }
     ptx.nOperatorReward = operatorReward;
 
-	CTxDestination dest2 = DecodeDestination(request.params[paramIdx + 5].get_str());
-	if (!IsValidDestination(dest2)) {
+    CTxDestination payoutDest = DecodeDestination(request.params[paramIdx + 5].get_str());
+    if (!IsValidDestination(payoutDest)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("invalid payout address: %s", request.params[paramIdx + 5].get_str()));
     }
 
     ptx.keyIDOwner = keyOwner.GetPubKey().GetID();
     ptx.pubKeyOperator = pubKeyOperator;
     ptx.keyIDVoting = keyIDVoting;
-    ptx.scriptPayout = GetScriptForDestination(dest2);
+    ptx.scriptPayout = GetScriptForDestination(payoutDest);
 
     if (!isFundRegister) {
         // make sure fee calculation works
         ptx.vchSig.resize(65);
     }
-    
-    CTxDestination dest3;
 
-    if (request.params.size() > paramIdx + 6) {
-        dest3 = DecodeDestination(request.params[paramIdx + 6].get_str());
-        if (IsValidDestination(dest3))
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Rain address: ") + request.params[paramIdx + 6].get_str());
+    CTxDestination fundDest = payoutDest;
+    if (!request.params[paramIdx + 6].isNull()) {
+        fundDest = DecodeDestination(request.params[paramIdx + 6].get_str());
+        if (!IsValidDestination(fundDest))
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Dash address: ") + request.params[paramIdx + 6].get_str());
     }
 
-    FundSpecialTx(pwallet.get(), tx, ptx, dest3);
+    FundSpecialTx(pwallet.get(), tx, ptx, fundDest, asset);
     UpdateSpecialTxInputsHash(tx, ptx);
 
     if (isFundRegister) {
         uint32_t collateralIndex = (uint32_t) -1;
         for (uint32_t i = 0; i < tx.vout.size(); i++) {
-            if (tx.vout[i].nValue == collateralAmount) {
+            if (tx.vout[i].nValue.GetAmount() == collateralAmount) {
                 collateralIndex = i;
                 break;
             }
@@ -536,9 +538,9 @@ UniValue protx_register(const JSONRPCRequest& request)
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("collateral not found: %s", ptx.collateralOutpoint.ToStringShort()));
         }
         CTxDestination txDest;
+        ExtractDestination(coin.out.scriptPubKey, txDest);
         CKeyID keyID = CKeyID(*boost::get<PKHash>(&txDest));
-
-        if (!ExtractDestination(coin.out.scriptPubKey, txDest) || keyID.IsNull()) {
+        if (keyID.IsNull()) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("collateral type not supported: %s", ptx.collateralOutpoint.ToStringShort()));
         }
 
@@ -556,7 +558,7 @@ UniValue protx_register(const JSONRPCRequest& request)
             // lets prove we own the collateral
             CKey key;
             if (!pwallet->GetKey(keyID, key)) {
-                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("collateral key not in wallet: %s", EncodeDestination(PKHash(keyID))));
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("collateral key not in wallet: %s", EncodeDestination(txDest)));
             }
             SignSpecialTxPayloadByString(tx, ptx, key);
             SetTxPayload(tx, ptx);
@@ -595,7 +597,9 @@ UniValue protx_register_submit(const JSONRPCRequest& request)
     ptx.vchSig = DecodeBase64(request.params[2].get_str().c_str());
 
     SetTxPayload(tx, ptx);
-    return SignAndSendSpecialTx(tx);
+    uint256 hash(ParseHashV(SignAndSendSpecialTx(tx), "txid"));
+
+    return hash.GetHex();
 }
 
 void protx_update_service_help(CWallet* const pwallet)
@@ -631,7 +635,7 @@ UniValue protx_update_service(const JSONRPCRequest& request)
     EnsureWalletIsUnlocked(pwallet.get());
 
     CProUpServTx ptx;
-    ptx.nVersion = CProRegTx::CURRENT_VERSION;
+    ptx.nVersion = CProUpServTx::CURRENT_VERSION;
     ptx.proTxHash = ParseHashV(request.params[1], "proTxHash");
 
     if (!Lookup(request.params[2].get_str().c_str(), ptx.addr, Params().GetDefaultPort(), false)) {
@@ -650,19 +654,19 @@ UniValue protx_update_service(const JSONRPCRequest& request)
     }
 
     CMutableTransaction tx;
-    tx.nVersion = 3;
+    tx.nVersion = 1;
     tx.nType = TRANSACTION_PROVIDER_UPDATE_SERVICE;
 
     // param operatorPayoutAddress
-    if (request.params.size() >= 5) {
+    if (!request.params[4].isNull()) {
         if (request.params[4].get_str().empty()) {
             ptx.scriptOperatorPayout = dmn->pdmnState->scriptOperatorPayout;
         } else {
-			CTxDestination payoutDest2 = DecodeDestination(request.params[4].get_str());
-            if (!IsValidDestination(payoutDest2)) {
+            CTxDestination payoutDest = DecodeDestination(request.params[4].get_str());
+            if (!IsValidDestination(payoutDest)) {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("invalid operator payout address: %s", request.params[4].get_str()));
             }
-            ptx.scriptOperatorPayout = GetScriptForDestination(payoutDest2);
+            ptx.scriptOperatorPayout = GetScriptForDestination(payoutDest);
         }
     } else {
         ptx.scriptOperatorPayout = dmn->pdmnState->scriptOperatorPayout;
@@ -671,11 +675,10 @@ UniValue protx_update_service(const JSONRPCRequest& request)
     CTxDestination feeSource;
 
     // param feeSourceAddress
-    if (request.params.size() >= 6) {
-		CTxDestination payoutDest2 = DecodeDestination(request.params[5].get_str());
-        if (!IsValidDestination(payoutDest2)) 
+    if (!request.params[5].isNull()) {
+        feeSource = DecodeDestination(request.params[5].get_str());
+        if (!IsValidDestination(feeSource))
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Rain address: ") + request.params[5].get_str());
-        feeSource = payoutDest2;
     } else {
         if (ptx.scriptOperatorPayout != CScript()) {
             // use operator reward address as default source for fees
@@ -686,7 +689,7 @@ UniValue protx_update_service(const JSONRPCRequest& request)
         }
     }
     LOCK(pwallet->cs_wallet);
-    FundSpecialTx(pwallet.get(), tx, ptx, feeSource);
+    FundSpecialTx(pwallet.get(), tx, ptx, feeSource, Params().GetConsensus().masternode_asset);
 
     SignSpecialTxPayloadByHash(tx, ptx, keyOperator);
     SetTxPayload(tx, ptx);
@@ -728,7 +731,7 @@ UniValue protx_update_registrar(const JSONRPCRequest& request)
     EnsureWalletIsUnlocked(pwallet.get());
 
     CProUpRegTx ptx;
-    ptx.nVersion = CProRegTx::CURRENT_VERSION;
+    ptx.nVersion = CProUpRegTx::CURRENT_VERSION;
     ptx.proTxHash = ParseHashV(request.params[1], "proTxHash");
 
     auto dmn = deterministicMNManager->GetListAtChainTip().GetMN(ptx.proTxHash);
@@ -749,11 +752,11 @@ UniValue protx_update_registrar(const JSONRPCRequest& request)
     CTxDestination payoutDest;
     ExtractDestination(ptx.scriptPayout, payoutDest);
     if (request.params[4].get_str() != "") {
-		CTxDestination payoutDest2 = DecodeDestination(request.params[4].get_str());
-        if (!IsValidDestination(payoutDest2)) {
+        payoutDest = DecodeDestination(request.params[4].get_str());
+        if (!IsValidDestination(payoutDest)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("invalid payout address: %s", request.params[4].get_str()));
         }
-        ptx.scriptPayout = GetScriptForDestination(payoutDest2);
+        ptx.scriptPayout = GetScriptForDestination(payoutDest);
     }
 
     CKey keyOwner;
@@ -762,21 +765,20 @@ UniValue protx_update_registrar(const JSONRPCRequest& request)
     }
 
     CMutableTransaction tx;
-    tx.nVersion = 3;
+    tx.nVersion = 1;
     tx.nType = TRANSACTION_PROVIDER_UPDATE_REGISTRAR;
 
     // make sure we get anough fees added
     ptx.vchSig.resize(65);
 
     CTxDestination feeSourceDest = payoutDest;
-    if (request.params.size() > 5) {
-		CTxDestination dest = DecodeDestination(request.params[5].get_str());
-		if (IsValidDestination(dest))
+    if (!request.params[5].isNull()) {
+        feeSourceDest = DecodeDestination(request.params[5].get_str());
+        if (!IsValidDestination(feeSourceDest))
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Rain address: ") + request.params[5].get_str());
-        feeSourceDest = dest;
     }
 
-    FundSpecialTx(pwallet.get(), tx, ptx, feeSourceDest);
+    FundSpecialTx(pwallet.get(), tx, ptx, feeSourceDest, Params().GetConsensus().masternode_asset);
     SignSpecialTxPayloadByHash(tx, ptx, keyOwner);
     SetTxPayload(tx, ptx);
 
@@ -817,12 +819,12 @@ UniValue protx_revoke(const JSONRPCRequest& request)
     EnsureWalletIsUnlocked(pwallet.get());
 
     CProUpRevTx ptx;
-    ptx.nVersion = CProRegTx::CURRENT_VERSION;
+    ptx.nVersion = CProUpRevTx::CURRENT_VERSION;
     ptx.proTxHash = ParseHashV(request.params[1], "proTxHash");
 
     CBLSSecretKey keyOperator = ParseBLSSecretKey(request.params[2].get_str(), "operatorKey");
 
-    if (request.params.size() > 3) {
+    if (!request.params[3].isNull()) {
         int32_t nReason = ParseInt32V(request.params[3], "reason");
         if (nReason < 0 || nReason > CProUpRevTx::REASON_LAST) {
             throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("invalid reason %d, must be between 0 and %d", nReason, CProUpRevTx::REASON_LAST));
@@ -840,24 +842,24 @@ UniValue protx_revoke(const JSONRPCRequest& request)
     }
 
     CMutableTransaction tx;
-    tx.nVersion = 3;
+    tx.nVersion = 1;
     tx.nType = TRANSACTION_PROVIDER_UPDATE_REVOKE;
 
     if (request.params.size() > 4) {
-		CTxDestination dest = DecodeDestination(request.params[4].get_str());
-		if (IsValidDestination(dest)) 
+        CTxDestination feeSourceDest = DecodeDestination(request.params[4].get_str());
+        if (!IsValidDestination(feeSourceDest))
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Rain address: ") + request.params[4].get_str());
-        FundSpecialTx(pwallet.get(), tx, ptx, dest);
+        FundSpecialTx(pwallet.get(), tx, ptx, feeSourceDest, Params().GetConsensus().masternode_asset);
     } else if (dmn->pdmnState->scriptOperatorPayout != CScript()) {
         // Using funds from previousely specified operator payout address
         CTxDestination txDest;
         ExtractDestination(dmn->pdmnState->scriptOperatorPayout, txDest);
-        FundSpecialTx(pwallet.get(), tx, ptx, txDest);
+        FundSpecialTx(pwallet.get(), tx, ptx, txDest, Params().GetConsensus().masternode_asset);
     } else if (dmn->pdmnState->scriptPayout != CScript()) {
         // Using funds from previousely specified masternode payout address
         CTxDestination txDest;
         ExtractDestination(dmn->pdmnState->scriptPayout, txDest);
-        FundSpecialTx(pwallet.get(), tx, ptx, txDest);
+        FundSpecialTx(pwallet.get(), tx, ptx, txDest, Params().GetConsensus().masternode_asset);
     } else {
         throw JSONRPCError(RPC_INTERNAL_ERROR, "No payout or fee source addresses found, can't revoke");
     }
@@ -970,7 +972,7 @@ UniValue protx_list(const JSONRPCRequest& request)
 #endif
 
     std::string type = "registered";
-    if (request.params.size() > 1) {
+    if (!request.params[1].isNull()) {
         type = request.params[1].get_str();
     }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012-2018 The Rain Core developers
+// Copyright (c) 2012-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -252,7 +252,7 @@ bool CBloomFilter::IsRelevantAndUpdate(const CTransaction& tx)
                     std::vector<std::vector<unsigned char> > vSolutions;
                     txnouttype type;
                     if (Solver(txout.scriptPubKey, type, vSolutions))
-                        if(type == TX_PUBKEY || type == TX_MULTISIG)
+                        if(type == TX_PUBKEY || type == TX_MULTISIG  || type == TX_MULTISIG_CLTV)
                             insert(COutPoint(hash, i));
                 }
                 break;

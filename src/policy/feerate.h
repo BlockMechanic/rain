@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,6 +7,7 @@
 #define RAIN_POLICY_FEERATE_H
 
 #include <amount.h>
+#include <primitives/asset.h>
 #include <serialize.h>
 
 #include <string>
@@ -19,26 +20,26 @@ extern const std::string CURRENCY_UNIT;
 class CFeeRate
 {
 private:
-    CAmount nSatoshisPerK; // unit is satoshis-per-1,000-bytes
+    CAmountMap nSatoshisPerK; // unit is satoshis-per-1,000-bytes
 
 public:
     /** Fee rate of 0 satoshis per kB */
-    CFeeRate() : nSatoshisPerK(0) { }
+    CFeeRate() : nSatoshisPerK(CAmountMap()) { }
     template<typename I>
     CFeeRate(const I _nSatoshisPerK): nSatoshisPerK(_nSatoshisPerK) {
         // We've previously had bugs creep in from silent double->int conversion...
-        static_assert(std::is_integral<I>::value, "CFeeRate should be used without floats");
+       // static_assert(std::is_integral<I>::value, "CFeeRate should be used without floats");
     }
     /** Constructor for a fee rate in satoshis per kB. The size in bytes must not exceed (2^63 - 1)*/
-    CFeeRate(const CAmount& nFeePaid, size_t nBytes);
+    CFeeRate(const CAmountMap& nFeePaid, size_t nBytes);
     /**
      * Return the fee in satoshis for the given size in bytes.
      */
-    CAmount GetFee(size_t nBytes) const;
+    CAmountMap GetFee(size_t nBytes) const;
     /**
      * Return the fee in satoshis for a size of 1000 bytes
      */
-    CAmount GetFeePerK() const { return GetFee(1000); }
+    CAmountMap GetFeePerK() const { return GetFee(1000); }
     friend bool operator<(const CFeeRate& a, const CFeeRate& b) { return a.nSatoshisPerK < b.nSatoshisPerK; }
     friend bool operator>(const CFeeRate& a, const CFeeRate& b) { return a.nSatoshisPerK > b.nSatoshisPerK; }
     friend bool operator==(const CFeeRate& a, const CFeeRate& b) { return a.nSatoshisPerK == b.nSatoshisPerK; }

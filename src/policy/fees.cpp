@@ -1,10 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <policy/fees.h>
-
+#include <policy/policy.h>
 #include <clientversion.h>
 #include <primitives/transaction.h>
 #include <streams.h>
@@ -24,6 +24,40 @@ std::string StringForFeeEstimateHorizon(FeeEstimateHorizon horizon) {
     if (horizon_string == horizon_strings.end()) return "unknown";
 
     return horizon_string->second;
+}
+/*
+std::string StringForFeeReason(FeeReason reason) {
+    static const std::map<FeeReason, std::string> fee_reason_strings = {
+        {FeeReason::NONE, "None"},
+        {FeeReason::HALF_ESTIMATE, "Half Target 60% Threshold"},
+        {FeeReason::FULL_ESTIMATE, "Target 85% Threshold"},
+        {FeeReason::DOUBLE_ESTIMATE, "Double Target 95% Threshold"},
+        {FeeReason::CONSERVATIVE, "Conservative Double Target longer horizon"},
+        {FeeReason::MEMPOOL_MIN, "Mempool Min Fee"},
+        {FeeReason::PAYTXFEE, "PayTxFee set"},
+        {FeeReason::FALLBACK, "Fallback fee"},
+        {FeeReason::REQUIRED, "Minimum Required Fee"},
+        {FeeReason::MAXTXFEE, "MaxTxFee limit"}
+    };
+    auto reason_string = fee_reason_strings.find(reason);
+
+    if (reason_string == fee_reason_strings.end()) return "Unknown";
+
+    return reason_string->second;
+}
+*/
+bool FeeModeFromString(const std::string& mode_string, FeeEstimateMode& fee_estimate_mode) {
+    static const std::map<std::string, FeeEstimateMode> fee_modes = {
+        {"UNSET", FeeEstimateMode::UNSET},
+        {"ECONOMICAL", FeeEstimateMode::ECONOMICAL},
+        {"CONSERVATIVE", FeeEstimateMode::CONSERVATIVE},
+    };
+    auto mode = fee_modes.find(mode_string);
+
+    if (mode == fee_modes.end()) return false;
+
+    fee_estimate_mode = mode->second;
+    return true;
 }
 
 /**
@@ -95,10 +129,10 @@ public:
      * @param val the feerate of the transaction
      * @warning blocksToConfirm is 1-based and has to be >= 1
      */
-    void Record(int blocksToConfirm, double val);
+    void Record(int blocksToConfirm, CAmountMap val);
 
     /** Record a new transaction entering the mempool*/
-    unsigned int NewTx(unsigned int nBlockHeight, double val);
+    unsigned int NewTx(unsigned int nBlockHeight, CAmountMap val);
 
     /** Remove a transaction from mempool tracking stats*/
     void removeTx(unsigned int entryHeight, unsigned int nBestSeenHeight,
@@ -179,20 +213,23 @@ void TxConfirmStats::ClearCurrent(unsigned int nBlockHeight)
 }
 
 
-void TxConfirmStats::Record(int blocksToConfirm, double val)
+void TxConfirmStats::Record(int blocksToConfirm, CAmountMap val)
 {
     // blocksToConfirm is 1-based
     if (blocksToConfirm < 1)
         return;
     int periodsToConfirm = (blocksToConfirm + scale - 1)/scale;
-    unsigned int bucketindex = bucketMap.lower_bound(val)->second;
-    for (size_t i = periodsToConfirm; i <= confAvg.size(); i++) {
-        confAvg[i - 1][bucketindex]++;
+    for(auto& a : val){
+        unsigned int bucketindex = bucketMap.lower_bound(a.second)->second;
+        for (size_t i = periodsToConfirm; i <= confAvg.size(); i++) {
+            confAvg[i - 1][bucketindex]++;
+        }
+        txCtAvg[bucketindex]++;
+        avg[bucketindex] += a.second;
     }
-    txCtAvg[bucketindex]++;
-    avg[bucketindex] += val;
-}
 
+}
+    
 void TxConfirmStats::UpdateMovingAverages()
 {
     for (unsigned int j = 0; j < buckets.size(); j++) {
@@ -424,12 +461,16 @@ void TxConfirmStats::Read(CAutoFile& filein, int nFileVersion, size_t numBuckets
              numBuckets, maxConfirms);
 }
 
-unsigned int TxConfirmStats::NewTx(unsigned int nBlockHeight, double val)
+unsigned int TxConfirmStats::NewTx(unsigned int nBlockHeight, CAmountMap val)
 {
-    unsigned int bucketindex = bucketMap.lower_bound(val)->second;
-    unsigned int blockIndex = nBlockHeight % unconfTxs.size();
-    unconfTxs[blockIndex][bucketindex]++;
-    return bucketindex;
+    unsigned int b =0;
+    for(auto &a : val){
+        unsigned int bucketindex = bucketMap.lower_bound((double)a.second)->second;
+        unsigned int blockIndex = nBlockHeight % unconfTxs.size();
+        unconfTxs[blockIndex][bucketindex]++;
+        b=bucketindex;
+    }
+    return b;
 }
 
 void TxConfirmStats::removeTx(unsigned int entryHeight, unsigned int nBestSeenHeight, unsigned int bucketindex, bool inBlock)
@@ -538,15 +579,15 @@ void CBlockPolicyEstimator::processTransaction(const CTxMemPoolEntry& entry, boo
     }
     trackedTxs++;
 
-    // Feerates are stored and reported as RAIN-per-kb:
+    // Feerates are stored and reported as XQM-per-kb:
     CFeeRate feeRate(entry.GetFee(), entry.GetTxSize());
 
     mapMemPoolTxs[hash].blockHeight = txHeight;
-    unsigned int bucketIndex = feeStats->NewTx(txHeight, (double)feeRate.GetFeePerK());
+    unsigned int bucketIndex = feeStats->NewTx(txHeight, feeRate.GetFeePerK());
     mapMemPoolTxs[hash].bucketIndex = bucketIndex;
-    unsigned int bucketIndex2 = shortStats->NewTx(txHeight, (double)feeRate.GetFeePerK());
+    unsigned int bucketIndex2 = shortStats->NewTx(txHeight, feeRate.GetFeePerK());
     assert(bucketIndex == bucketIndex2);
-    unsigned int bucketIndex3 = longStats->NewTx(txHeight, (double)feeRate.GetFeePerK());
+    unsigned int bucketIndex3 = longStats->NewTx(txHeight, feeRate.GetFeePerK());
     assert(bucketIndex == bucketIndex3);
 }
 
@@ -568,12 +609,12 @@ bool CBlockPolicyEstimator::processBlockTx(unsigned int nBlockHeight, const CTxM
         return false;
     }
 
-    // Feerates are stored and reported as RAIN-per-kb:
+    // Feerates are stored and reported as XQM-per-kb:
     CFeeRate feeRate(entry->GetFee(), entry->GetTxSize());
 
-    feeStats->Record(blocksToConfirm, (double)feeRate.GetFeePerK());
-    shortStats->Record(blocksToConfirm, (double)feeRate.GetFeePerK());
-    longStats->Record(blocksToConfirm, (double)feeRate.GetFeePerK());
+    feeStats->Record(blocksToConfirm, feeRate.GetFeePerK());
+    shortStats->Record(blocksToConfirm, feeRate.GetFeePerK());
+    longStats->Record(blocksToConfirm, feeRate.GetFeePerK());
     return true;
 }
 
@@ -630,7 +671,7 @@ CFeeRate CBlockPolicyEstimator::estimateFee(int confTarget) const
 {
     // It's not possible to get reasonable estimates for confTarget of 1
     if (confTarget <= 1)
-        return CFeeRate(0);
+        return CFeeRate(CAmountMap());
 
     return estimateRawFee(confTarget, DOUBLE_SUCCESS_PCT, FeeEstimateHorizon::MED_HALFLIFE);
 }
@@ -661,16 +702,18 @@ CFeeRate CBlockPolicyEstimator::estimateRawFee(int confTarget, double successThr
     LOCK(m_cs_fee_estimator);
     // Return failure if trying to analyze a target we're not tracking
     if (confTarget <= 0 || (unsigned int)confTarget > stats->GetMaxConfirms())
-        return CFeeRate(0);
+        return CFeeRate(CAmountMap());
     if (successThreshold > 1)
-        return CFeeRate(0);
+        return CFeeRate(CAmountMap());
 
     double median = stats->EstimateMedianVal(confTarget, sufficientTxs, successThreshold, true, nBestSeenHeight, result);
 
     if (median < 0)
-        return CFeeRate(0);
+        return CFeeRate(CAmountMap());
 
-    return CFeeRate(llround(median));
+    CAmountMap MAP_MEDIAN_FEE = populateMap(llround(median));
+
+    return CFeeRate(MAP_MEDIAN_FEE);
 }
 
 unsigned int CBlockPolicyEstimator::HighestTargetTracked(FeeEstimateHorizon horizon) const
@@ -797,7 +840,7 @@ CFeeRate CBlockPolicyEstimator::estimateSmartFee(int confTarget, FeeCalculation 
 
     // Return failure if trying to analyze a target we're not tracking
     if (confTarget <= 0 || (unsigned int)confTarget > longStats->GetMaxConfirms()) {
-        return CFeeRate(0);  // error condition
+        return CFeeRate(CAmountMap());  // error condition
     }
 
     // It's not possible to get reasonable estimates for confTarget of 1
@@ -809,7 +852,7 @@ CFeeRate CBlockPolicyEstimator::estimateSmartFee(int confTarget, FeeCalculation 
     }
     if (feeCalc) feeCalc->returnedTarget = confTarget;
 
-    if (confTarget <= 1) return CFeeRate(0); // error condition
+    if (confTarget <= 1) return CFeeRate(CAmountMap()); // error condition
 
     assert(confTarget > 0); //estimateCombinedFee and estimateConservativeFee take unsigned ints
     /** true is passed to estimateCombined fee for target/2 and target so
@@ -856,9 +899,11 @@ CFeeRate CBlockPolicyEstimator::estimateSmartFee(int confTarget, FeeCalculation 
         }
     }
 
-    if (median < 0) return CFeeRate(0); // error condition
+    if (median < 0) return CFeeRate(CAmountMap()); // error condition
 
-    return CFeeRate(llround(median));
+    CAmountMap MAP_MEDIAN_FEE = populateMap(llround(median));
+
+    return CFeeRate(MAP_MEDIAN_FEE);
 }
 
 
@@ -866,7 +911,7 @@ bool CBlockPolicyEstimator::Write(CAutoFile& fileout) const
 {
     try {
         LOCK(m_cs_fee_estimator);
-        fileout << 149900; // version required to read: 0.14.99 or later
+        fileout << 180107; // version required to read: 0.14.99 or later
         fileout << CLIENT_VERSION; // version that wrote the file
         fileout << nBestSeenHeight;
         if (BlockSpan() > HistoricalBlockSpan()/2) {
@@ -903,6 +948,9 @@ bool CBlockPolicyEstimator::Read(CAutoFile& filein)
 
         if (nVersionRequired < 149900) {
             LogPrintf("%s: incompatible old fee estimation data (non-fatal). Version: %d\n", __func__, nVersionRequired);
+        } else if (nVersionThatWrote < 180107) {
+            //ELEMENTS: we changed the buckets in 0.18.1.7
+            LogPrintf("%s: incompatible old fee estimation data (non-fatal). Version: %d\n", __func__, nVersionThatWrote);
         } else { // New format introduced in 149900
             unsigned int nFileHistoricalFirst, nFileHistoricalBest;
             filein >> nFileHistoricalFirst >> nFileHistoricalBest;
@@ -962,18 +1010,45 @@ void CBlockPolicyEstimator::FlushUnconfirmed() {
 
 FeeFilterRounder::FeeFilterRounder(const CFeeRate& minIncrementalFee)
 {
-    CAmount minFeeLimit = std::max(CAmount(1), minIncrementalFee.GetFeePerK() / 2);
+	CAmount a = 1;
+    CAmountMap map1 = populateMap(a);
+
+    CAmountMap minFeeLimit = std::max(map1, minIncrementalFee.GetFeePerK() / 2);
     feeset.insert(0);
-    for (double bucketBoundary = minFeeLimit; bucketBoundary <= MAX_FILTER_FEERATE; bucketBoundary *= FEE_FILTER_SPACING) {
+    for (double bucketBoundary = a; bucketBoundary <= MAX_FILTER_FEERATE; bucketBoundary *= FEE_FILTER_SPACING) {
         feeset.insert(bucketBoundary);
     }
 }
 
-CAmount FeeFilterRounder::round(CAmount currentMinFee)
+CAmountMap FeeFilterRounder::round(CAmountMap currentMinFee)
 {
-    std::set<double>::iterator it = feeset.lower_bound(currentMinFee);
-    if ((it != feeset.begin() && insecure_rand.rand32() % 3 != 0) || it == feeset.end()) {
-        it--;
+    CAmountMap tmp;
+    for(auto& a : currentMinFee){
+        std::set<double>::iterator it = feeset.lower_bound(a.second);
+        if ((it != feeset.begin() && insecure_rand.rand32() % 3 != 0) || it == feeset.end()) {
+            it--;
+        }
+        tmp[a.first] =  static_cast<CAmount>(*it);
     }
-    return static_cast<CAmount>(*it);
+    return tmp;
+}
+
+
+int getConfTargetForIndex(int index) {
+    if (index+1 > static_cast<int>(confTargets.size())) {
+        return confTargets.back();
+    }
+    if (index < 0) {
+        return confTargets[0];
+    }
+    return confTargets[index];
+}
+
+int getIndexForConfTarget(int target) {
+    for (unsigned int i = 0; i < confTargets.size(); i++) {
+        if (confTargets[i] >= target) {
+            return i;
+        }
+    }
+    return confTargets.size() - 1;
 }

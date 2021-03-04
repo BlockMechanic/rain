@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -68,7 +68,8 @@ EXPORT_SYMBOL int rainconsensus_verify_script(const unsigned char *scriptPubKey,
                                                  const unsigned char *txTo        , unsigned int txToLen,
                                                  unsigned int nIn, unsigned int flags, rainconsensus_error* err);
 
-EXPORT_SYMBOL int rainconsensus_verify_script_with_amount(const unsigned char *scriptPubKey, unsigned int scriptPubKeyLen, int64_t amount,
+EXPORT_SYMBOL int rainconsensus_verify_script_with_amount(const unsigned char *scriptPubKey, unsigned int scriptPubKeyLen,
+                                    const unsigned char *amount, unsigned int amountLen,
                                     const unsigned char *txTo        , unsigned int txToLen,
                                     unsigned int nIn, unsigned int flags, rainconsensus_error* err);
 

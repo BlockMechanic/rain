@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -6,6 +6,7 @@
 #define RAIN_CORE_IO_H
 
 #include <amount.h>
+#include <primitives/asset.h>
 #include <attributes.h>
 
 #include <string>
@@ -41,7 +42,12 @@ std::vector<unsigned char> ParseHexUV(const UniValue& v, const std::string& strN
 int ParseSighashString(const UniValue& sighash);
 
 // core_write.cpp
+std::string ValueFromAmountString(const CAmount& amount, const int8_t units);
+std::string ValueFromAmountMapString(const CAmountMap& amount, const int8_t units);
+
+UniValue ValueFromAmount(const CAmount& amount, const int8_t units);
 UniValue ValueFromAmount(const CAmount& amount);
+UniValue ValueFromAmountMap(const CAmountMap& amount);
 std::string FormatScript(const CScript& script);
 std::string EncodeHexTx(const CTransaction& tx, const int serializeFlags = 0);
 std::string SighashToStr(unsigned char sighash_type);

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,7 +14,7 @@
 
 class CChainParams;
 
-extern CCriticalSection cs_main;
+extern RecursiveMutex cs_main;
 
 /** Default for -maxorphantx, maximum number of orphan transactions kept in memory */
 static const unsigned int DEFAULT_MAX_ORPHAN_TRANSACTIONS = 100;
@@ -130,5 +130,21 @@ bool ProcessNetBlock(const CChainParams& chainparams, const std::shared_ptr<cons
 void RelayTransaction(const uint256&, const CConnman& connman);
 /** Increase a node's misbehavior score. */
 void Misbehaving(NodeId nodeid, int howmuch, const std::string& message="") EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+void PushGetBlocks(CNode* pnode, const CBlockIndex* pindexBegin, const uint256& hashEnd, CConnman& connman);
 bool IsBanned(NodeId nodeid);
+
+void EraseObjectRequest(NodeId nodeId, const CInv& inv);
+void RequestObject(NodeId nodeId, const CInv& inv, std::chrono::microseconds current_time, bool fForce=false);
+size_t GetRequestedObjectCount(NodeId nodeId);
+
+struct COrphanBlock {
+    uint256 hashBlock;
+    uint256 hashPrev;
+    std::pair<COutPoint, unsigned int> stake;
+    std::vector<unsigned char> vchBlock;
+};
+
+void PruneOrphanBlocks() EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+uint256 GetOrphanRoot(const uint256& hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+uint256 WantedByOrphan(const COrphanBlock* pblockOrphan) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 #endif // RAIN_NET_PROCESSING_H

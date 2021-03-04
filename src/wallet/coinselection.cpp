@@ -1,13 +1,29 @@
-// Copyright (c) 2017-2018 The Rain Core developers
+// Copyright (c) 2017-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <wallet/coinselection.h>
+#include <wallet/wallet.h>
 
 #include <util/system.h>
 #include <util/moneystr.h>
 
 #include <boost/optional.hpp>
+
+CInputCoin::CInputCoin(const CWalletTx* wtx, unsigned int i) {
+    if (!wtx || !wtx->tx)
+        throw std::invalid_argument("tx should not be null");
+    if (i >= wtx->tx->vout.size())
+        throw std::out_of_range("The output index is out of range");
+
+    outpoint = COutPoint(wtx->tx->GetHash(), i);
+    txout = wtx->tx->vout[i];
+    effective_value = std::max<CAmount>(0, wtx->GetOutputValueOut(i));
+    value = wtx->GetOutputValueOut(i);
+    asset = wtx->GetOutputAsset(i);
+    bf_value = wtx->GetOutputAmountBlindingFactor(i);
+    bf_asset = wtx->GetOutputAssetBlindingFactor(i);
+}
 
 // Descending order comparator
 struct {
@@ -81,7 +97,6 @@ bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& target_v
     if (curr_available_value < actual_target) {
         return false;
     }
-
     // Sort the utxo_pool
     std::sort(utxo_pool.begin(), utxo_pool.end(), descending);
 
@@ -149,12 +164,10 @@ bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& target_v
             }
         }
     }
-
     // Check for solution
     if (best_selection.empty()) {
         return false;
     }
-
     // Set output set
     value_ret = 0;
     for (size_t i = 0; i < best_selection.size(); ++i) {
@@ -211,6 +224,59 @@ static void ApproximateBestSubset(const std::vector<OutputGroup>& groups, const 
             }
         }
     }
+}
+
+// ELEMENTS:
+bool KnapsackSolver(const CAmountMap& mapTargetValue, std::vector<OutputGroup>& groups, std::set<CInputCoin>& setCoinsRet, CAmountMap& mapValueRet) {
+    setCoinsRet.clear();
+    mapValueRet.clear();
+    std::vector<OutputGroup> inner_groups;
+    std::set<CInputCoin> inner_coinsret;
+    // Perform the standard Knapsack solver for every asset individually.
+    for(std::map<CAsset, CAmount>::const_iterator it = mapTargetValue.begin(); it != mapTargetValue.end(); ++it) {
+        inner_groups.clear();
+        inner_coinsret.clear();
+
+        if (it->second == 0) {
+            continue;
+        }
+
+        // We filter the groups on two conditions:
+        // - only groups that have (exclusively) coins of the asset we're solving for
+        // - no groups that are already used in setCoinsRet
+        for (const OutputGroup& g : groups) {
+            bool add = true;
+            for (const CInputCoin& c : g.m_outputs) {
+                if (setCoinsRet.find(c) != setCoinsRet.end()) {
+                    add = false;
+                    break;
+                }
+
+                if (c.asset != it->first) {
+                    add = false;
+                    break;
+                }
+            }
+
+            if (add) {
+                inner_groups.push_back(g);
+            }
+        }
+        if (inner_groups.size() == 0) {
+            // No output groups for this asset.
+            return false;
+        }
+        CAmount outValue;
+        if (!KnapsackSolver(it->second, inner_groups, inner_coinsret, outValue)) {
+            return false;
+        }
+        mapValueRet[it->first] = outValue;
+        for (const CInputCoin& ic : inner_coinsret) {
+            setCoinsRet.insert(ic);
+        }
+    }
+
+    return true;
 }
 
 bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& groups, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet)

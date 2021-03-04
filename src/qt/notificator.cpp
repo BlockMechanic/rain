@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2018 The Rain Core developers
+// Copyright (c) 2011-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -32,9 +32,7 @@
 const int FREEDESKTOP_NOTIFICATION_ICON_SIZE = 128;
 #endif
 
-Notificator::Notificator(const QString &_programName, QSystemTrayIcon *_trayIcon, QWidget *_parent) :
-    QObject(_parent),
-    parent(_parent),
+Notificator::Notificator(const QString &_programName, QSystemTrayIcon *_trayIcon) :
     programName(_programName),
     mode(None),
     trayIcon(_trayIcon)
@@ -250,7 +248,7 @@ void Notificator::notify(Class cls, const QString &title, const QString &text, c
         if(cls == Critical)
         {
             // Fall back to old fashioned pop-up dialog if critical and no other notification available
-            QMessageBox::critical(parent, title, text, QMessageBox::Ok, QMessageBox::Ok);
+           // QMessageBox::critical(parent, title, text, QMessageBox::Ok, QMessageBox::Ok);
         }
         break;
     }

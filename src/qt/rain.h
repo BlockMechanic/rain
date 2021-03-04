@@ -12,11 +12,7 @@
 #include <QApplication>
 #include <memory>
 
-#ifdef MOBILE_GUI
-class RainMobileGUI;
-#else
 class RainGUI;
-#endif
 class ClientModel;
 class NetworkStyle;
 class OptionsModel;
@@ -75,8 +71,7 @@ public:
     void SetPrune(bool prune, bool force = false);
     /// Create main window
     void createWindow(const NetworkStyle *networkStyle);
-    /// Create splash screen
-    void createSplashScreen(const NetworkStyle *networkStyle);
+
     /// Basic initialization, before starting initialization/shutdown thread. Return true on success.
     bool baseInitialize();
 
@@ -104,6 +99,7 @@ Q_SIGNALS:
     void requestedInitialize();
     void requestedShutdown();
     void splashFinished();
+
     void windowShown(RainGUI* window);
 
 private:
@@ -111,11 +107,8 @@ private:
     interfaces::Node& m_node;
     OptionsModel *optionsModel;
     ClientModel *clientModel;
-#ifdef MOBILE_GUI
-    RainMobileGUI *window;
-#else
     RainGUI *window;
-#endif
+
     QTimer *pollShutdownTimer;
 #ifdef ENABLE_WALLET
     PaymentServer* paymentServer{nullptr};
