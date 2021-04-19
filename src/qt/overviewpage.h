@@ -1,18 +1,28 @@
-#ifndef OVERVIEWPAGE_H
-#define OVERVIEWPAGE_H
+// Copyright (c) 2011-2020 The Rain Core developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
+#ifndef RAIN_QT_OVERVIEWPAGE_H
+#define RAIN_QT_OVERVIEWPAGE_H
+
+#include <interfaces/wallet.h>
 
 #include <QWidget>
+#include <memory>
 
-QT_BEGIN_NAMESPACE
-class QModelIndex;
-QT_END_NAMESPACE
+class ClientModel;
+class TransactionFilterProxy;
+class TxViewDelegate;
+class PlatformStyle;
+class WalletModel;
 
 namespace Ui {
     class OverviewPage;
 }
-class WalletModel;
-class TxViewDelegate;
-class TransactionFilterProxy;
+
+QT_BEGIN_NAMESPACE
+class QModelIndex;
+QT_END_NAMESPACE
 
 /** Overview ("home") page widget */
 class OverviewPage : public QWidget
@@ -20,32 +30,38 @@ class OverviewPage : public QWidget
     Q_OBJECT
 
 public:
-    explicit OverviewPage(QWidget *parent = 0);
+    explicit OverviewPage(const PlatformStyle *platformStyle, QWidget *parent = nullptr);
     ~OverviewPage();
 
-    void setModel(WalletModel *model);
+    void setClientModel(ClientModel *clientModel);
+    void setWalletModel(WalletModel *walletModel);
     void showOutOfSyncWarning(bool fShow);
 
-public slots:
-    void setBalance(qint64 balance, qint64 stake, qint64 unconfirmedBalance, qint64 immatureBalance);
+public Q_SLOTS:
+    void setBalance(const interfaces::WalletBalances& balances);
+    void setPrivacy(bool privacy);
 
-signals:
+Q_SIGNALS:
     void transactionClicked(const QModelIndex &index);
+    void outOfSyncWarningClicked();
 
 private:
     Ui::OverviewPage *ui;
-    WalletModel *model;
-    qint64 currentBalance;
-    qint64 currentStake;
-    qint64 currentUnconfirmedBalance;
-    qint64 currentImmatureBalance;
+    ClientModel *clientModel;
+    WalletModel *walletModel;
+    interfaces::WalletBalances m_balances;
+    bool m_privacy{false};
 
     TxViewDelegate *txdelegate;
-    TransactionFilterProxy *filter;
+    std::unique_ptr<TransactionFilterProxy> filter;
 
-private slots:
+private Q_SLOTS:
     void updateDisplayUnit();
     void handleTransactionClicked(const QModelIndex &index);
+    void updateAlerts(const QString &warnings);
+    void updateWatchOnlyLabels(bool showWatchOnly);
+    void handleOutOfSyncWarningClicks();
+    void setMonospacedFont(bool use_embedded_font);
 };
 
-#endif // OVERVIEWPAGE_H
+#endif // RAIN_QT_OVERVIEWPAGE_H

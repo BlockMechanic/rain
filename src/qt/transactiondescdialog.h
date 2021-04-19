@@ -1,11 +1,16 @@
-#ifndef TRANSACTIONDESCDIALOG_H
-#define TRANSACTIONDESCDIALOG_H
+// Copyright (c) 2011-2020 The Rain Core developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
+#ifndef RAIN_QT_TRANSACTIONDESCDIALOG_H
+#define RAIN_QT_TRANSACTIONDESCDIALOG_H
 
 #include <QDialog>
 
 namespace Ui {
     class TransactionDescDialog;
 }
+
 QT_BEGIN_NAMESPACE
 class QModelIndex;
 QT_END_NAMESPACE
@@ -16,11 +21,11 @@ class TransactionDescDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit TransactionDescDialog(const QModelIndex &idx, QWidget *parent = 0);
+    explicit TransactionDescDialog(const QModelIndex &idx, QWidget *parent = nullptr);
     ~TransactionDescDialog();
 
 private:
     Ui::TransactionDescDialog *ui;
 };
 
-#endif // TRANSACTIONDESCDIALOG_H
+#endif // RAIN_QT_TRANSACTIONDESCDIALOG_H

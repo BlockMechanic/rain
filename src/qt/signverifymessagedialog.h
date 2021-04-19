@@ -1,39 +1,43 @@
-#ifndef SIGNVERIFYMESSAGEDIALOG_H
-#define SIGNVERIFYMESSAGEDIALOG_H
+// Copyright (c) 2011-2020 The Rain Core developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+
+#ifndef RAIN_QT_SIGNVERIFYMESSAGEDIALOG_H
+#define RAIN_QT_SIGNVERIFYMESSAGEDIALOG_H
 
 #include <QDialog>
+
+class PlatformStyle;
+class WalletModel;
 
 namespace Ui {
     class SignVerifyMessageDialog;
 }
-class WalletModel;
-
-QT_BEGIN_NAMESPACE
-QT_END_NAMESPACE
 
 class SignVerifyMessageDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit SignVerifyMessageDialog(QWidget *parent = 0);
+    explicit SignVerifyMessageDialog(const PlatformStyle *platformStyle, QWidget *parent);
     ~SignVerifyMessageDialog();
 
     void setModel(WalletModel *model);
-    void setAddress_SM(QString address);
-    void setAddress_VM(QString address);
+    void setAddress_SM(const QString &address);
+    void setAddress_VM(const QString &address);
 
     void showTab_SM(bool fShow);
     void showTab_VM(bool fShow);
 
 protected:
-    bool eventFilter(QObject *object, QEvent *event);
+    bool eventFilter(QObject *object, QEvent *event) override;
 
 private:
     Ui::SignVerifyMessageDialog *ui;
     WalletModel *model;
+    const PlatformStyle *platformStyle;
 
-private slots:
+private Q_SLOTS:
     /* sign message */
     void on_addressBookButton_SM_clicked();
     void on_pasteButton_SM_clicked();
@@ -46,4 +50,4 @@ private slots:
     void on_clearButton_VM_clicked();
 };
 
-#endif // SIGNVERIFYMESSAGEDIALOG_H
+#endif // RAIN_QT_SIGNVERIFYMESSAGEDIALOG_H
