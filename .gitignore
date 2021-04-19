@@ -1,47 +1,153 @@
-# Windows image file caches
-Thumbs.db
-ehthumbs.db
+*.tar.gz
 
-# Folder config file
-Desktop.ini
+*.exe
+*.pdb
+src/rain
+src/raind
+src/rain-cli
+src/rain-gui
+src/rain-node
+src/rain-tx
+src/rain-util
+src/rain-wallet
+src/test/fuzz/fuzz
+src/test/test_rain
+src/qt/test/test_rain-qt
 
-# Recycle Bin used on file shares
-$RECYCLE.BIN/
+# autoreconf
+Makefile.in
+aclocal.m4
+autom4te.cache/
+build-aux/config.guess
+build-aux/config.sub
+build-aux/depcomp
+build-aux/install-sh
+build-aux/ltmain.sh
+build-aux/m4/libtool.m4
+build-aux/m4/lt~obsolete.m4
+build-aux/m4/ltoptions.m4
+build-aux/m4/ltsugar.m4
+build-aux/m4/ltversion.m4
+build-aux/missing
+build-aux/compile
+build-aux/test-driver
+config.cache
+config.log
+config.status
+configure
+libtool
+src/config/rain-config.h
+src/config/rain-config.h.in
+src/config/stamp-h1
+src/obj
+share/setup.nsi
+share/qt/Info.plist
 
-# Windows Installer files
-*.cab
-*.msi
-*.msm
-*.msp
+src/univalue/gen
 
-# Windows shortcuts
-*.lnk
+src/qt/*.moc
+src/qt/moc_*.cpp
+src/qt/forms/ui_*.h
 
-# =========================
-# Operating System Files
-# =========================
+src/qt/test/moc*.cpp
 
-# OSX
-# =========================
+src/qt/rain-qt.config
+src/qt/rain-qt.creator
+src/qt/rain-qt.creator.user
+src/qt/rain-qt.files
+src/qt/rain-qt.includes
 
+.deps
+.dirstamp
+.libs
+.*.swp
+*.*~*
+*.bak
+*.rej
+*.orig
+*.pyc
+*.o
+*.o-*
+*.a
+*.pb.cc
+*.pb.h
+*.dat
+
+*.log
+*.trs
+*.dmg
+*.iso
+
+*.json.h
+*.raw.h
+
+# Only ignore unexpected patches
+*.patch
+!depends/patches/**/*.patch
+
+#libtool object files
+*.lo
+*.la
+
+# Compilation and Qt preprocessor part
+*.qm
+Makefile
+!depends/Makefile
+src/qt/rain-qt
+Rain-Qt.app
+background.tiff*
+
+# Qt Creator
+Makefile.am.user
+
+# Unit-tests
+Makefile.test
+rain-qt_test
+
+# Resources cpp
+qrc_*.cpp
+
+# Mac specific
 .DS_Store
-.AppleDouble
-.LSOverride
+build
 
-# Thumbnails
-._*
+# Previous releases
+releases
 
-# Files that might appear in the root of a volume
-.DocumentRevisions-V100
-.fseventsd
-.Spotlight-V100
-.TemporaryItems
-.Trashes
-.VolumeIcon.icns
+#lcov
+*.gcno
+*.gcda
+/*.info
+test_rain.coverage/
+total.coverage/
+fuzz.coverage/
+coverage_percent.txt
+/cov_tool_wrapper.sh
+qa-assets/
 
-# Directories potentially created on remote AFP share
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
+#build tests
+linux-coverage-build
+linux-build
+win32-build
+test/config.ini
+test/cache/*
+test/.mypy_cache/
+
+!src/leveldb*/Makefile
+
+/doc/doxygen/
+
+librainconsensus.pc
+contrib/devtools/split-debug.sh
+
+# Output from running db4 installation
+db4/
+
+# clang-check
+*.plist
+
+osx_volname
+dist/
+*.background.tiff
+
+/guix-build-*
