@@ -7,6 +7,8 @@
 
 #include <amount.h>
 
+#include <confidential_validation.h>
+
 #include <stdint.h>
 #include <vector>
 
@@ -24,7 +26,7 @@ namespace Consensus {
  * @param[out] txfee Set to the transaction fee if successful.
  * Preconditions: tx.IsCoinBase() is false.
  */
-bool CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, CAmount& txfee);
+bool CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, CAmountMap& fee_map, std::vector<CCheck*> *pvChecks, const bool cacheStore, bool fScriptChecks);
 } // namespace Consensus
 
 /** Auxiliary functions for transaction validation (ideally should not be exposed) */

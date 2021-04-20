@@ -33,9 +33,9 @@ class Node;
 class Wallet;
 } // namespace interfaces
 
-class AskPassphraseDialog;
+//class AskPassphraseDialog;
 class CreateWalletActivity;
-class CreateWalletDialog;
+//class CreateWalletDialog;
 class OpenWalletActivity;
 class WalletControllerActivity;
 
@@ -68,7 +68,7 @@ Q_SIGNALS:
     void walletAdded(WalletModel* wallet_model);
     void walletRemoved(WalletModel* wallet_model);
 
-    void coinsSent(WalletModel* wallet_model, SendCoinsRecipient recipient, QByteArray transaction);
+    void coinsSent(WalletModel* wallet_model, SendAssetsRecipient recipient, QByteArray transaction);
 
 private:
     QThread* const m_activity_thread;
@@ -130,8 +130,8 @@ private:
     void finish();
 
     SecureString m_passphrase;
-    CreateWalletDialog* m_create_wallet_dialog{nullptr};
-    AskPassphraseDialog* m_passphrase_dialog{nullptr};
+   // CreateWalletDialog* m_create_wallet_dialog{nullptr};
+   // AskPassphraseDialog* m_passphrase_dialog{nullptr};
 };
 
 class OpenWalletActivity : public WalletControllerActivity

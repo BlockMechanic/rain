@@ -69,7 +69,7 @@ T get_pure_r_value(T&& val)
 #ifdef ABORT_ON_FAILED_ASSUME
 #define Assume(val) Assert(val)
 #else
-#define Assume(val) ([&]() -> decltype(get_pure_r_value(val)) { auto&& check = (val); return std::forward<decltype(get_pure_r_value(val))>(check); }())
+#define Assume(val) ((void)(val))
 #endif
 
 #endif // RAIN_UTIL_CHECK_H

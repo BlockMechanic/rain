@@ -15,9 +15,9 @@
 #include <qt/optionsmodel.h>
 #include <qt/paymentserver.h>
 #include <qt/recentrequeststablemodel.h>
-#include <qt/sendcoinsdialog.h>
 #include <qt/transactiontablemodel.h>
-
+#include <consensus/validation.h>
+#include <consensus/tx_check.h>
 #include <interfaces/handler.h>
 #include <interfaces/node.h>
 #include <key_io.h>
@@ -47,7 +47,8 @@ WalletModel::WalletModel(std::unique_ptr<interfaces::Wallet> wallet, ClientModel
     transactionTableModel(nullptr),
     recentRequestsTableModel(nullptr),
     cachedEncryptionStatus(Unencrypted),
-    timer(new QTimer(this))
+    timer(new QTimer(this)),
+    updateStakeWeight(true)
 {
     fHaveWatchOnly = m_wallet->haveWatchOnly();
     addressTableModel = new AddressTableModel(this);
@@ -65,10 +66,7 @@ WalletModel::~WalletModel()
 void WalletModel::startPollBalance()
 {
     // This timer will be fired repeatedly to update the balance
-    // Since the QTimer::timeout is a private signal, it cannot be used
-    // in the GUIUtil::ExceptionSafeConnect directly.
-    connect(timer, &QTimer::timeout, this, &WalletModel::timerTimeout);
-    GUIUtil::ExceptionSafeConnect(this, &WalletModel::timerTimeout, this, &WalletModel::pollBalanceChanged);
+    connect(timer, &QTimer::timeout, this, &WalletModel::pollBalanceChanged);
     timer->start(MODEL_UPDATE_DELAY);
 }
 
@@ -85,6 +83,18 @@ void WalletModel::updateStatus()
     if(cachedEncryptionStatus != newEncryptionStatus) {
         Q_EMIT encryptionStatusChanged();
     }
+}
+
+bool WalletModel::isWalletUnlocked() const
+{
+    EncryptionStatus status = getEncryptionStatus();
+    return (status == Unencrypted || status == Unlocked);
+}
+
+bool WalletModel::isWalletLocked(bool fFullUnlocked) const
+{
+    EncryptionStatus status = getEncryptionStatus();
+    return (status == Locked || (!fFullUnlocked && status == UnlockedForStaking));
 }
 
 void WalletModel::pollBalanceChanged()
@@ -149,9 +159,9 @@ bool WalletModel::validateAddress(const QString &address)
 
 WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransaction &transaction, const CCoinControl& coinControl)
 {
-    CAmount total = 0;
+    CAmountMap total;
     bool fSubtractFeeFromAmount = false;
-    QList<SendCoinsRecipient> recipients = transaction.getRecipients();
+    QList<SendAssetsRecipient> recipients = transaction.getRecipients();
     std::vector<CRecipient> vecSend;
 
     if(recipients.empty())
@@ -159,11 +169,15 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
         return OK;
     }
 
+    if (isStakingOnlyUnlocked()) {
+        return StakingOnlyUnlocked;
+    }
+
     QSet<QString> setAddress; // Used to detect duplicates
     int nAddresses = 0;
 
     // Pre-check input data for validity
-    for (const SendCoinsRecipient &rcp : recipients)
+    for (const SendAssetsRecipient &rcp : recipients)
     {
         if (rcp.fSubtractFeeFromAmount)
             fSubtractFeeFromAmount = true;
@@ -180,7 +194,9 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
             ++nAddresses;
 
             CScript scriptPubKey = GetScriptForDestination(DecodeDestination(rcp.address.toStdString()));
-            CRecipient recipient = {scriptPubKey, rcp.amount, rcp.fSubtractFeeFromAmount};
+            CTxDestination out = DecodeDestination(rcp.address.toStdString()); 
+            CPubKey confidentiality_pubkey = m_wallet->getBlindingPubKey(GetScriptForDestination(out));
+            CRecipient recipient = {scriptPubKey, rcp.amount, rcp.asset, confidentiality_pubkey, rcp.fSubtractFeeFromAmount};
             vecSend.push_back(recipient);
 
             total += rcp.amount;
@@ -191,7 +207,7 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
         return DuplicateAddress;
     }
 
-    CAmount nBalance = m_wallet->getAvailableBalance(coinControl);
+    CAmountMap nBalance = m_wallet->getAvailableBalance(coinControl);
 
     if(total > nBalance)
     {
@@ -199,13 +215,14 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
     }
 
     {
-        CAmount nFeeRequired = 0;
+        CAmountMap nFeeRequired;
         int nChangePosRet = -1;
         bilingual_str error;
 
         auto& newTx = transaction.getWtx();
         newTx = m_wallet->createTransaction(vecSend, coinControl, !wallet().privateKeysDisabled() /* sign */, nChangePosRet, nFeeRequired, error);
-        transaction.setTransactionFee(nFeeRequired);
+        CAsset asset = vecSend[0].asset;
+        transaction.setTransactionFee(nFeeRequired[asset]);
         if (fSubtractFeeFromAmount && newTx)
             transaction.reassignAmounts(nChangePosRet);
 
@@ -223,9 +240,8 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
         // Reject absurdly high fee. (This can never happen because the
         // wallet never creates transactions with fee greater than
         // m_default_max_tx_fee. This merely a belt-and-suspenders check).
-        if (nFeeRequired > m_wallet->getDefaultMaxTxFee()) {
+        if (nFeeRequired[asset] > m_wallet->getDefaultMaxTxFee())
             return AbsurdFee;
-        }
     }
 
     return SendCoinsReturn(OK);
@@ -235,9 +251,23 @@ WalletModel::SendCoinsReturn WalletModel::sendCoins(WalletModelTransaction &tran
 {
     QByteArray transaction_array; /* store serialized transaction */
 
+    if (isStakingOnlyUnlocked()) {
+		LogPrintf(" StakingOnlyUnlocked \n");
+        return StakingOnlyUnlocked;
+    }
+
+    //bool fColdStakingActive = true;
+
+    // Double check tx before do anything
+    TxValidationState state;
+    if (!CheckTransaction(*transaction.getWtx().get(), state)) {
+		LogPrintf(" TransactionCheckFailed \n");
+        return TransactionCheckFailed;
+    }
+
     {
         std::vector<std::pair<std::string, std::string>> vOrderForm;
-        for (const SendCoinsRecipient &rcp : transaction.getRecipients())
+        for (const SendAssetsRecipient &rcp : transaction.getRecipients())
         {
             if (!rcp.message.isEmpty()) // Message from normal rain:URI (rain:123...?message=example)
                 vOrderForm.emplace_back("Message", rcp.message.toStdString());
@@ -253,7 +283,7 @@ WalletModel::SendCoinsReturn WalletModel::sendCoins(WalletModelTransaction &tran
 
     // Add addresses / update labels that we've sent to the address book,
     // and emit coinsSent signal for each recipient
-    for (const SendCoinsRecipient &rcp : transaction.getRecipients())
+    for (const SendAssetsRecipient &rcp : transaction.getRecipients())
     {
         {
             std::string strAddress = rcp.address.toStdString();
@@ -296,6 +326,16 @@ TransactionTableModel *WalletModel::getTransactionTableModel()
     return transactionTableModel;
 }
 
+AssetTableModel *WalletModel::getAssetTableModel()
+{
+    return assetTableModel;
+}
+
+CoinControlModel *WalletModel::getCoinControlModel()
+{
+    return coinControlModel;
+}
+
 RecentRequestsTableModel *WalletModel::getRecentRequestsTableModel()
 {
     return recentRequestsTableModel;
@@ -306,6 +346,8 @@ WalletModel::EncryptionStatus WalletModel::getEncryptionStatus() const
     if(!m_wallet->isCrypted())
     {
         return Unencrypted;
+    } else if (m_wallet->getWalletUnlockStakingOnly()) {
+        return UnlockedForStaking;
     }
     else if(m_wallet->isLocked())
     {
@@ -322,19 +364,37 @@ bool WalletModel::setWalletEncrypted(const SecureString& passphrase)
     return m_wallet->encryptWallet(passphrase);
 }
 
-bool WalletModel::setWalletLocked(bool locked, const SecureString &passPhrase)
+bool WalletModel::setWalletLocked(bool locked, const SecureString &passPhrase, bool stakingOnly)
 {
     if(locked)
     {
         // Lock
+        m_wallet->setWalletUnlockStakingOnly(false);
         return m_wallet->lock();
     }
     else
     {
         // Unlock
-        return m_wallet->unlock(passPhrase);
+        return m_wallet->unlock(passPhrase, stakingOnly);
     }
 }
+
+bool WalletModel::lockForStakingOnly(const SecureString& passPhrase)
+{
+    if (!m_wallet->isLocked()) {
+        m_wallet->setWalletUnlockStakingOnly(true);
+        return true;
+    } else {
+        setWalletLocked(false, passPhrase, true);
+    }
+    return false;
+}
+
+bool WalletModel::isStakingOnlyUnlocked()
+{
+    return m_wallet->getWalletUnlockStakingOnly();
+}
+
 
 bool WalletModel::changePassphrase(const SecureString &oldPass, const SecureString &newPass)
 {
@@ -432,30 +492,32 @@ void WalletModel::unsubscribeFromCoreSignals()
 // WalletModel::UnlockContext implementation
 WalletModel::UnlockContext WalletModel::requestUnlock()
 {
-    bool was_locked = getEncryptionStatus() == Locked;
-    if(was_locked)
+    const WalletModel::EncryptionStatus status_before = getEncryptionStatus();
+    if (status_before == Locked || status_before == UnlockedForStaking)
     {
         // Request UI to unlock wallet
         Q_EMIT requireUnlock();
     }
     // If wallet is still locked, unlock was failed or cancelled, mark context as invalid
-    bool valid = getEncryptionStatus() != Locked;
+    bool valid = isWalletUnlocked();
 
-    return UnlockContext(this, valid, was_locked);
+    return UnlockContext(this, valid, status_before);
 }
 
-WalletModel::UnlockContext::UnlockContext(WalletModel *_wallet, bool _valid, bool _relock):
+WalletModel::UnlockContext::UnlockContext(WalletModel *_wallet, bool _valid, const WalletModel::EncryptionStatus& status_before):
         wallet(_wallet),
         valid(_valid),
-        relock(_relock)
+        was_status(status_before),
+        relock(status_before == Locked || status_before == UnlockedForStaking)
 {
 }
 
 WalletModel::UnlockContext::~UnlockContext()
 {
-    if(valid && relock)
-    {
-        wallet->setWalletLocked(true);
+    if (valid && relock && wallet) {
+        if (was_status == Locked) wallet->setWalletLocked(true);
+        else if (was_status == UnlockedForStaking) wallet->lockForStakingOnly();
+        wallet->updateStatus();
     }
 }
 
@@ -519,21 +581,6 @@ bool WalletModel::bumpFee(uint256 hash, uint256& new_hash)
     questionString.append(RainUnits::formatHtmlWithUnit(getOptionsModel()->getDisplayUnit(), new_fee));
     questionString.append("</td></tr></table>");
 
-    // Display warning in the "Confirm fee bump" window if the "Coin Control Features" option is enabled
-    if (getOptionsModel()->getCoinControlFeatures()) {
-        questionString.append("<br><br>");
-        questionString.append(tr("Warning: This may pay the additional fee by reducing change outputs or adding inputs, when necessary. It may add a new change output if one does not already exist. These changes may potentially leak privacy."));
-    }
-
-    SendConfirmationDialog confirmationDialog(tr("Confirm fee bump"), questionString);
-    confirmationDialog.exec();
-    QMessageBox::StandardButton retval = static_cast<QMessageBox::StandardButton>(confirmationDialog.result());
-
-    // cancel sign&broadcast if user doesn't want to bump the fee
-    if (retval != QMessageBox::Yes) {
-        return false;
-    }
-
     WalletModel::UnlockContext ctx(requestUnlock());
     if(!ctx.isValid())
     {
@@ -576,6 +623,27 @@ bool WalletModel::isWalletEnabled()
    return !gArgs.GetBoolArg("-disablewallet", DEFAULT_DISABLE_WALLET);
 }
 
+bool WalletModel::isLockedCoin(uint256 hash, unsigned int n) const
+{
+	COutPoint output(hash,n);
+    return m_wallet->isLockedCoin(output);
+}
+
+void WalletModel::lockCoin(COutPoint& output)
+{
+    m_wallet->lockCoin(output);
+}
+
+void WalletModel::unlockCoin(COutPoint& output)
+{
+    m_wallet->unlockCoin(output);
+}
+
+void WalletModel::listLockedCoins(std::vector<COutPoint>& vOutpts)
+{
+    m_wallet->listLockedCoins(vOutpts);
+}
+
 QString WalletModel::getWalletName() const
 {
     return QString::fromStdString(m_wallet->getWalletName());
@@ -590,6 +658,29 @@ QString WalletModel::getDisplayName() const
 bool WalletModel::isMultiwallet()
 {
     return m_node.walletClient().getWallets().size() > 1;
+}
+
+uint64_t WalletModel::getStakeWeight()
+{
+    return nWeight;
+}
+
+bool WalletModel::getWalletUnlockStakingOnly()
+{
+    return m_wallet->getWalletUnlockStakingOnly();
+}
+
+void WalletModel::setWalletUnlockStakingOnly(bool unlock)
+{
+    m_wallet->setWalletUnlockStakingOnly(unlock);
+}
+
+void WalletModel::checkStakeWeightChanged()
+{
+    if(updateStakeWeight && m_wallet->tryGetStakeWeight(nWeight))
+    {
+        updateStakeWeight = false;
+    }
 }
 
 void WalletModel::refresh(bool pk_hash_only)

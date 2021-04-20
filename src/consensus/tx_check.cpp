@@ -7,6 +7,20 @@
 #include <primitives/transaction.h>
 #include <consensus/validation.h>
 
+static bool CheckDataOutput(TxValidationState &state, const CTxData p)
+{
+//    if (p.vData.size() < 1) {
+//        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-output-data-size");
+//    }
+
+    const size_t MAX_DATA_OUTPUT_SIZE = 1024; // (max 1024 bytes) 1kb
+    if (p.vData.size() > MAX_DATA_OUTPUT_SIZE) {
+        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-output-data-size");
+    }
+
+    return true;
+}
+
 bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
 {
     // Basic checks that don't depend on any context
@@ -22,14 +36,30 @@ bool CheckTransaction(const CTransaction& tx, TxValidationState& state)
     CAmount nValueOut = 0;
     for (const auto& txout : tx.vout)
     {
-        if (txout.nValue < 0)
+        if ((txout.IsEmpty() && !tx.IsCoinBase() && !tx.IsCoinStake()) || !txout.nValue.IsValid())
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-vout-empty-or-invalid");
+
+        if (txout.nValue.GetAmount() < 0)
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-vout-negative");
-        if (txout.nValue > MAX_MONEY)
+
+       if (txout.nValue.GetAmount() > MAX_MONEY)
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-vout-toolarge");
-        nValueOut += txout.nValue;
+
+        nValueOut += txout.nValue.GetAmount();
         if (!MoneyRange(nValueOut))
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-txouttotal-toolarge");
+
+        if(!txout.nValue.IsExplicit())
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-vout-not-explicit-value",
+                         strprintf("%s: %s", __func__, txout.ToString()));
+
+        if(!txout.nAsset.IsExplicit())
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-vout-not-explicit-asset",
+                         strprintf("%s: %s", __func__, txout.ToString()));
     }
+
+    if (!CheckDataOutput(state, tx.data))
+        return false;
 
     // Check for duplicate inputs (see CVE-2018-17144)
     // While Consensus::CheckTxInputs does check if all inputs of a tx are available, and UpdateCoins marks all inputs

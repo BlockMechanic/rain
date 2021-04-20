@@ -13,10 +13,7 @@
 
 #include <boost/test/unit_test.hpp>
 
-bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
-                       const CCoinsViewCache& inputs, unsigned int flags, bool cacheSigStore,
-                       bool cacheFullScriptStore, PrecomputedTransactionData& txdata,
-                       std::vector<CScriptCheck>* pvChecks) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+bool CheckInputScripts(const CTransaction& tx, TxValidationState &state, const CCoinsViewCache &inputs, unsigned int flags, bool cacheSigStore, bool cacheFullScriptStore, PrecomputedTransactionData& txdata, std::vector<CScriptCheck> *pvChecks);
 
 BOOST_AUTO_TEST_SUITE(txvalidationcache_tests)
 
@@ -31,7 +28,7 @@ BOOST_FIXTURE_TEST_CASE(tx_mempool_block_doublespend, TestChain100Setup)
     const auto ToMemPool = [this](const CMutableTransaction& tx) {
         LOCK(cs_main);
 
-        const MempoolAcceptResult result = AcceptToMemoryPool(::ChainstateActive(), *m_node.mempool, MakeTransactionRef(tx),
+        const MempoolAcceptResult result = AcceptToMemoryPool(*m_node.mempool, MakeTransactionRef(tx),
             true /* bypass_limits */);
         return result.m_result_type == MempoolAcceptResult::ResultType::VALID;
     };
@@ -327,7 +324,7 @@ BOOST_FIXTURE_TEST_CASE(checkinputs_test, TestChain100Setup)
         ValidateCheckInputsForAllFlags(CTransaction(valid_with_witness_tx), 0, true);
 
         // Remove the witness, and check that it is now invalid.
-        valid_with_witness_tx.vin[0].scriptWitness.SetNull();
+       // valid_with_witness_tx.vin[0].scriptWitness.SetNull();
         ValidateCheckInputsForAllFlags(CTransaction(valid_with_witness_tx), SCRIPT_VERIFY_WITNESS, true);
     }
 
@@ -358,7 +355,7 @@ BOOST_FIXTURE_TEST_CASE(checkinputs_test, TestChain100Setup)
         // Check that if the second input is invalid, but the first input is
         // valid, the transaction is not cached.
         // Invalidate vin[1]
-        tx.vin[1].scriptWitness.SetNull();
+       // tx.vin[1].scriptWitness.SetNull();
 
         TxValidationState state;
         PrecomputedTransactionData txdata;

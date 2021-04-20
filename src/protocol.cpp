@@ -5,6 +5,7 @@
 
 #include <protocol.h>
 
+#include <util/strencodings.h>
 #include <util/system.h>
 
 static std::atomic<bool> g_initial_block_download_completed(false);
@@ -44,6 +45,16 @@ const char *CFHEADERS="cfheaders";
 const char *GETCFCHECKPT="getcfcheckpt";
 const char *CFCHECKPT="cfcheckpt";
 const char *WTXIDRELAY="wtxidrelay";
+const char *SMSGIGNORE = "smsgIgnore";
+const char *SMSGPING = "smsgPing";
+const char *SMSGPONG = "smsgPong";
+const char *SMSGDISABLED = "smsgDisabled";
+const char *SMSGSHOW = "smsgShow";
+const char *SMSGMATCH = "smsgMatch";
+const char *SMSGHAVE = "smsgHave";
+const char *SMSGWANT = "smsgWant";
+const char *SMSGMSG = "smsgMsg";
+const char *SMSGINV = "smsgInv";
 } // namespace NetMsgType
 
 /** All known message types. Keep this in the same order as the list of
@@ -84,8 +95,18 @@ const static std::string allNetMessageTypes[] = {
     NetMsgType::GETCFCHECKPT,
     NetMsgType::CFCHECKPT,
     NetMsgType::WTXIDRELAY,
+    NetMsgType::SMSGIGNORE,
+    NetMsgType::SMSGPING,
+    NetMsgType::SMSGPONG,
+    NetMsgType::SMSGDISABLED,
+    NetMsgType::SMSGSHOW,
+    NetMsgType::SMSGMATCH,
+    NetMsgType::SMSGHAVE,
+    NetMsgType::SMSGWANT,
+    NetMsgType::SMSGMSG,
+    NetMsgType::SMSGINV,
 };
-const static std::vector<std::string> allNetMessageTypesVec(std::begin(allNetMessageTypes), std::end(allNetMessageTypes));
+const static std::vector<std::string> allNetMessageTypesVec(allNetMessageTypes, allNetMessageTypes+ARRAYLEN(allNetMessageTypes));
 
 CMessageHeader::CMessageHeader()
 {
@@ -191,6 +212,23 @@ const std::vector<std::string> &getAllNetMessageTypes()
     return allNetMessageTypesVec;
 }
 
+CInvAsset::CInvAsset()
+{
+    name = "";
+}
+
+CInvAsset::CInvAsset(std::string strName) : name(strName){}
+
+bool operator<(const CInvAsset& a, const CInvAsset& b)
+{
+    return a.name < b.name;
+}
+
+std::string CInvAsset::ToString() const
+{
+    return strprintf("%s %s", "CInvAsset for asset: ", name);
+}
+
 /**
  * Convert a service flag (NODE_*) to a human readable string.
  * It supports unknown service flags which will be returned as "UNKNOWN[...]".
@@ -206,6 +244,7 @@ static std::string serviceFlagToStr(size_t bit)
     case NODE_WITNESS:         return "WITNESS";
     case NODE_COMPACT_FILTERS: return "COMPACT_FILTERS";
     case NODE_NETWORK_LIMITED: return "NETWORK_LIMITED";
+    case NODE_SMSG:            return "SMSG";
     // Not using default, so we get warned when a case is missing
     }
 

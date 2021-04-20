@@ -7,7 +7,7 @@
 #include <crypto/aes.h>
 #include <crypto/sha512.h>
 #include <util/system.h>
-
+#include <logging.h>
 #include <vector>
 
 int CCrypter::BytesToKeySHA512AES(const std::vector<unsigned char>& chSalt, const SecureString& strKeyData, int count, unsigned char *key,unsigned char *iv) const
@@ -70,8 +70,10 @@ bool CCrypter::SetKey(const CKeyingMaterial& chNewKey, const std::vector<unsigne
 
 bool CCrypter::Encrypt(const CKeyingMaterial& vchPlaintext, std::vector<unsigned char> &vchCiphertext) const
 {
-    if (!fKeySet)
+    if (!fKeySet){
+		LogPrintf("NO KEY SET\n");
         return false;
+	}
 
     // max ciphertext len for a n bytes of plaintext is
     // n + AES_BLOCKSIZE bytes
@@ -79,8 +81,10 @@ bool CCrypter::Encrypt(const CKeyingMaterial& vchPlaintext, std::vector<unsigned
 
     AES256CBCEncrypt enc(vchKey.data(), vchIV.data(), true);
     size_t nLen = enc.Encrypt(&vchPlaintext[0], vchPlaintext.size(), vchCiphertext.data());
-    if(nLen < vchPlaintext.size())
+    if(nLen < vchPlaintext.size()){
+		LogPrintf("LENGTH ISSUE \n");
         return false;
+	}
     vchCiphertext.resize(nLen);
 
     return true;

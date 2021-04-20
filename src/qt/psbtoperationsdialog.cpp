@@ -141,11 +141,11 @@ void PSBTOperationsDialog::saveTransaction() {
     filename_suggestion.append(".psbt");
     QString filename = GUIUtil::getSaveFileName(this,
         tr("Save Transaction Data"), filename_suggestion,
-        tr("Partially Signed Transaction (Binary)", "Name of binary PSBT file format") + QLatin1String(" (*.psbt)"), &selected_filter);
+        tr("Partially Signed Transaction (Binary) (*.psbt)"), &selected_filter);
     if (filename.isEmpty()) {
         return;
     }
-    std::ofstream out(filename.toLocal8Bit().data(), std::ofstream::out | std::ofstream::binary);
+    std::ofstream out(filename.toLocal8Bit().data());
     out << ssTx.str();
     out.close();
     showStatus(tr("PSBT saved to disk."), StatusLevel::INFO);
@@ -165,7 +165,7 @@ std::string PSBTOperationsDialog::renderTransaction(const PartiallySignedTransac
         ExtractDestination(out.scriptPubKey, address);
         totalAmount += out.nValue;
         tx_description.append(tr(" * Sends %1 to %2")
-            .arg(RainUnits::formatWithUnit(RainUnits::RAIN, out.nValue))
+            .arg(RainUnits::formatWithUnit(RainUnits::BTC, out.nValue))
             .arg(QString::fromStdString(EncodeDestination(address))));
         tx_description.append("<br>");
     }
@@ -177,7 +177,7 @@ std::string PSBTOperationsDialog::renderTransaction(const PartiallySignedTransac
         tx_description.append(tr("Unable to calculate transaction fee or total transaction amount."));
     } else {
         tx_description.append(tr("Pays transaction fee: "));
-        tx_description.append(RainUnits::formatWithUnit(RainUnits::RAIN, *analysis.fee));
+        tx_description.append(RainUnits::formatWithUnit(RainUnits::BTC, *analysis.fee));
 
         // add total amount in all subdivision units
         tx_description.append("<hr />");

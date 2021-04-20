@@ -2,9 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <netaddress.h>
-#include <util/asmap.h>
 #include <test/fuzz/fuzz.h>
+#include <util/asmap.h>
 
 #include <cstdint>
 #include <optional>

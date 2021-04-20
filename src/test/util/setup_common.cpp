@@ -4,7 +4,6 @@
 
 #include <test/util/setup_common.h>
 
-#include <addrman.h>
 #include <banman.h>
 #include <chainparams.h>
 #include <consensus/consensus.h>
@@ -77,7 +76,6 @@ BasicTestingSetup::BasicTestingSetup(const std::string& chainName, const std::ve
         {
             "dummy",
             "-printtoconsole=0",
-            "-logsourcelocations",
             "-logtimemicros",
             "-logthreadnames",
             "-debug",
@@ -120,7 +118,6 @@ BasicTestingSetup::BasicTestingSetup(const std::string& chainName, const std::ve
 
 BasicTestingSetup::~BasicTestingSetup()
 {
-    SetMockTime(0s); // Reset mocktime for following tests
     LogInstance().DisconnectTestLogger();
     fs::remove_all(m_path_root);
     gArgs.ClearArgs();
@@ -157,7 +154,6 @@ ChainTestingSetup::~ChainTestingSetup()
     GetMainSignals().UnregisterBackgroundSignalScheduler();
     m_node.connman.reset();
     m_node.banman.reset();
-    m_node.addrman.reset();
     m_node.args = nullptr;
     UnloadBlockIndex(m_node.mempool.get(), *m_node.chainman);
     m_node.mempool.reset();
@@ -181,7 +177,7 @@ TestingSetup::TestingSetup(const std::string& chainName, const std::vector<const
     assert(!::ChainstateActive().CanFlushToDisk());
     ::ChainstateActive().InitCoinsCache(1 << 23);
     assert(::ChainstateActive().CanFlushToDisk());
-    if (!::ChainstateActive().LoadGenesisBlock(chainparams)) {
+    if (!LoadGenesisBlock(chainparams)) {
         throw std::runtime_error("LoadGenesisBlock failed.");
     }
 
@@ -190,12 +186,11 @@ TestingSetup::TestingSetup(const std::string& chainName, const std::vector<const
         throw std::runtime_error(strprintf("ActivateBestChain failed. (%s)", state.ToString()));
     }
 
-    m_node.addrman = std::make_unique<CAddrMan>();
     m_node.banman = std::make_unique<BanMan>(GetDataDir() / "banlist.dat", nullptr, DEFAULT_MISBEHAVING_BANTIME);
-    m_node.connman = std::make_unique<CConnman>(0x1337, 0x1337, *m_node.addrman); // Deterministic randomness for tests.
-    m_node.peerman = PeerManager::make(chainparams, *m_node.connman, *m_node.addrman,
-                                       m_node.banman.get(), *m_node.scheduler, *m_node.chainman,
-                                       *m_node.mempool, false);
+    m_node.connman = std::make_unique<CConnman>(0x1337, 0x1337); // Deterministic randomness for tests.
+    m_node.peerman = PeerManager::make(chainparams, *m_node.connman, m_node.banman.get(),
+                                       *m_node.scheduler, *m_node.chainman, *m_node.mempool,
+                                       false);
     {
         CConnman::Options options;
         options.m_msgproc = m_node.peerman.get();
@@ -203,31 +198,43 @@ TestingSetup::TestingSetup(const std::string& chainName, const std::vector<const
     }
 }
 
-TestChain100Setup::TestChain100Setup()
+TestChain100Setup::TestChain100Setup(bool deterministic)
 {
-    SetMockTime(1598887952);
-    constexpr std::array<unsigned char, 32> vchKey = {
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}};
-    coinbaseKey.Set(vchKey.begin(), vchKey.end(), true);
+    m_deterministic = deterministic;
+
+    if (m_deterministic) {
+        SetMockTime(1598887952);
+        constexpr std::array<unsigned char, 32> vchKey = {
+            {
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+            }
+        };
+        coinbaseKey.Set(vchKey.begin(), vchKey.end(), false);
+    } else {
+        coinbaseKey.MakeNewKey(true);
+    }
 
     // Generate a 100-block chain:
     this->mineBlocks(COINBASE_MATURITY);
 
-    {
+    if (m_deterministic) {
         LOCK(::cs_main);
         assert(
             m_node.chainman->ActiveChain().Tip()->GetBlockHash().ToString() ==
-            "571d80a9967ae599cec0448b0b0ba1cfb606f584d8069bd7166b86854ba7a191");
+            "49c95db1e470fed04496d801c9d8fbb78155d2c7f855232c918823d2c17d0cf6");
     }
 }
 
 void TestChain100Setup::mineBlocks(int num_blocks)
 {
     CScript scriptPubKey = CScript() << ToByteVector(coinbaseKey.GetPubKey()) << OP_CHECKSIG;
-    for (int i = 0; i < num_blocks; i++) {
+    for (int i = 0; i < num_blocks; i++)
+    {
         std::vector<CMutableTransaction> noTxns;
         CBlock b = CreateAndProcessBlock(noTxns, scriptPubKey);
-        SetMockTime(GetTime() + 1);
+        if (m_deterministic) {
+            SetMockTime(GetTime() + 1);
+        }
         m_coinbase_txns.push_back(b.vtx[0]);
     }
 }
@@ -236,14 +243,13 @@ CBlock TestChain100Setup::CreateAndProcessBlock(const std::vector<CMutableTransa
 {
     const CChainParams& chainparams = Params();
     CTxMemPool empty_pool;
-    CBlock block = BlockAssembler(::ChainstateActive(), empty_pool, chainparams).CreateNewBlock(scriptPubKey)->block;
+    CBlock block = BlockAssembler(empty_pool, chainparams).CreateNewBlock(scriptPubKey)->block;
 
     Assert(block.vtx.size() == 1);
     for (const CMutableTransaction& tx : txns) {
         block.vtx.push_back(MakeTransactionRef(tx));
     }
-    CBlockIndex* prev_block = WITH_LOCK(::cs_main, return g_chainman.m_blockman.LookupBlockIndex(block.hashPrevBlock));
-    RegenerateCommitments(block, prev_block);
+    RegenerateCommitments(block);
 
     while (!CheckProofOfWork(block.GetHash(), block.nBits, chainparams.GetConsensus())) ++block.nNonce;
 
@@ -270,7 +276,7 @@ CMutableTransaction TestChain100Setup::CreateValidMempoolTransaction(CTransactio
     mempool_txn.vin.push_back(input);
 
     // Create an output
-    CTxOut output(output_amount, output_destination);
+    CTxOut output(CAsset(), output_amount, output_destination);
     mempool_txn.vout.push_back(output);
 
     // Sign the transaction
@@ -295,7 +301,7 @@ CMutableTransaction TestChain100Setup::CreateValidMempoolTransaction(CTransactio
     // Add transaction to the mempool
     {
         LOCK(cs_main);
-        const MempoolAcceptResult result = AcceptToMemoryPool(::ChainstateActive(), *m_node.mempool.get(), MakeTransactionRef(mempool_txn), /* bypass_limits */ false);
+        const MempoolAcceptResult result = AcceptToMemoryPool(*m_node.mempool.get(), MakeTransactionRef(mempool_txn), /* bypass_limits */ false);
         assert(result.m_result_type == MempoolAcceptResult::ResultType::VALID);
     }
 
@@ -305,6 +311,9 @@ CMutableTransaction TestChain100Setup::CreateValidMempoolTransaction(CTransactio
 TestChain100Setup::~TestChain100Setup()
 {
     gArgs.ForceSetArg("-segwitheight", "0");
+    if (m_deterministic) {
+        SetMockTime(0);
+    }
 }
 
 CTxMemPoolEntry TestMemPoolEntryHelper::FromTx(const CMutableTransaction& tx) const

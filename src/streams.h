@@ -239,6 +239,38 @@ public:
         ::SerializeMany(*this, std::forward<Args>(args)...);
     }
 
+    CDataStream(const_iterator pbegin, const_iterator pend, int nTypeIn, int nVersionIn) : vch(pbegin, pend)
+    {
+        Init(nTypeIn, nVersionIn);
+    }
+
+    CDataStream(const char* pbegin, const char* pend, int nTypeIn, int nVersionIn) : vch(pbegin, pend)
+    {
+        Init(nTypeIn, nVersionIn);
+    }
+
+    CDataStream(const vector_type& vchIn, int nTypeIn, int nVersionIn) : vch(vchIn.begin(), vchIn.end())
+    {
+        Init(nTypeIn, nVersionIn);
+    }
+
+    CDataStream(const std::vector<char>& vchIn, int nTypeIn, int nVersionIn) : vch(vchIn.begin(), vchIn.end())
+    {
+        Init(nTypeIn, nVersionIn);
+    }
+
+    CDataStream(const std::vector<unsigned char>& vchIn, int nTypeIn, int nVersionIn) : vch(vchIn.begin(), vchIn.end())
+    {
+        Init(nTypeIn, nVersionIn);
+    }
+
+    void Init(int nTypeIn, int nVersionIn)
+    {
+        nReadPos = 0;
+        nType = nTypeIn;
+        nVersion = nVersionIn;
+    }
+
     std::string str() const
     {
         return (std::string(begin(), end()));

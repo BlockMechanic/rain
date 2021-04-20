@@ -21,10 +21,10 @@ class NetworkStyle;
 class OptionsModel;
 class PaymentServer;
 class PlatformStyle;
-class SplashScreen;
 class WalletController;
 class WalletModel;
 
+static const bool DEFAULT_CHOOSE_DATADIR = false;
 
 /** Class encapsulating Rain Core startup and shutdown.
  * Allows running startup and shutdown in a different thread from the UI thread.
@@ -71,8 +71,7 @@ public:
     void InitializePruneSetting(bool prune);
     /// Create main window
     void createWindow(const NetworkStyle *networkStyle);
-    /// Create splash screen
-    void createSplashScreen(const NetworkStyle *networkStyle);
+
     /// Basic initialization, before starting initialization/shutdown thread. Return true on success.
     bool baseInitialize();
 
@@ -99,12 +98,6 @@ public Q_SLOTS:
     /// Handle runaway exceptions. Shows a message box with the problem and quits the program.
     void handleRunawayException(const QString &message);
 
-    /**
-     * A helper function that shows a message box
-     * with details about a non-fatal exception.
-     */
-    void handleNonFatalException(const QString& message);
-
 Q_SIGNALS:
     void requestedInitialize();
     void requestedShutdown();
@@ -124,7 +117,6 @@ private:
     int returnValue;
     const PlatformStyle *platformStyle;
     std::unique_ptr<QWidget> shutdownWindow;
-    SplashScreen* m_splash = nullptr;
     interfaces::Node* m_node = nullptr;
 
     void startThread();

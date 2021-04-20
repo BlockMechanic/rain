@@ -34,7 +34,7 @@ FUZZ_TARGET_INIT(pow, initialize_pow)
         }
         CBlockIndex current_block{*block_header};
         {
-            CBlockIndex* previous_block = blocks.empty() ? nullptr : &PickValue(fuzzed_data_provider, blocks);
+            CBlockIndex* previous_block = !blocks.empty() ? &blocks[fuzzed_data_provider.ConsumeIntegralInRange<size_t>(0, blocks.size() - 1)] : nullptr;
             const int current_height = (previous_block != nullptr && previous_block->nHeight != std::numeric_limits<int>::max()) ? previous_block->nHeight + 1 : 0;
             if (fuzzed_data_provider.ConsumeBool()) {
                 current_block.pprev = previous_block;
@@ -62,13 +62,13 @@ FUZZ_TARGET_INIT(pow, initialize_pow)
             (void)GetBlockProof(current_block);
             (void)CalculateNextWorkRequired(&current_block, fuzzed_data_provider.ConsumeIntegralInRange<int64_t>(0, std::numeric_limits<int64_t>::max()), consensus_params);
             if (current_block.nHeight != std::numeric_limits<int>::max() && current_block.nHeight - (consensus_params.DifficultyAdjustmentInterval() - 1) >= 0) {
-                (void)GetNextWorkRequired(&current_block, &(*block_header), consensus_params);
+                (void)GetNextWorkRequired(&current_block, consensus_params,  block_header->IsProofOfStake());
             }
         }
         {
-            const CBlockIndex* to = &PickValue(fuzzed_data_provider, blocks);
-            const CBlockIndex* from = &PickValue(fuzzed_data_provider, blocks);
-            const CBlockIndex* tip = &PickValue(fuzzed_data_provider, blocks);
+            const CBlockIndex* to = &blocks[fuzzed_data_provider.ConsumeIntegralInRange<size_t>(0, blocks.size() - 1)];
+            const CBlockIndex* from = &blocks[fuzzed_data_provider.ConsumeIntegralInRange<size_t>(0, blocks.size() - 1)];
+            const CBlockIndex* tip = &blocks[fuzzed_data_provider.ConsumeIntegralInRange<size_t>(0, blocks.size() - 1)];
             try {
                 (void)GetBlockProofEquivalentTime(*to, *from, *tip, consensus_params);
             } catch (const uint_error&) {

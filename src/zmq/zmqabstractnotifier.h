@@ -11,6 +11,10 @@
 
 class CBlockIndex;
 class CTransaction;
+namespace smsg {
+class SecureMessage;
+}
+class uint160;
 class CZMQAbstractNotifier;
 
 using CZMQNotifierFactory = std::unique_ptr<CZMQAbstractNotifier> (*)();
@@ -55,6 +59,8 @@ public:
     virtual bool NotifyTransactionRemoval(const CTransaction &transaction, uint64_t mempool_sequence);
     // Notifies of transactions added to mempool or appearing in blocks
     virtual bool NotifyTransaction(const CTransaction &transaction);
+
+    virtual bool NotifySecureMessage(const smsg::SecureMessage *psmsg, const uint160 &hash);
 
 protected:
     void *psocket;

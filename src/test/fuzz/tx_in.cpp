@@ -25,8 +25,8 @@ FUZZ_TARGET(tx_in)
         return;
     }
 
-    (void)GetTransactionInputWeight(tx_in);
-    (void)GetVirtualTransactionInputSize(tx_in);
+//    (void)GetTransactionInputWeight(tx_in);
+//    (void)GetVirtualTransactionInputSize(tx_in);
     (void)RecursiveDynamicUsage(tx_in);
 
     (void)tx_in.ToString();

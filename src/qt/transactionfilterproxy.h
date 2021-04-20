@@ -35,6 +35,10 @@ public:
     };
 
     void setDateRange(const QDateTime &from, const QDateTime &to);
+    void clearDateRange() {
+        if (dateFrom != MIN_DATE || dateTo == MAX_DATE)
+            setDateRange(MIN_DATE, MAX_DATE);
+    }
     void setSearchString(const QString &);
     /**
       @note Type filter takes a bit field created with TYPE() or ALL_TYPES
@@ -48,6 +52,9 @@ public:
 
     /** Set whether to show conflicted transactions. */
     void setShowInactive(bool showInactive);
+
+    /** Only stakes txes **/
+    void setOnlyStakes(bool fOnlyStakes);
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 
@@ -63,6 +70,8 @@ private:
     CAmount minAmount;
     int limitRows;
     bool showInactive;
+    bool fOnlyStakes = false;
+    bool isStakeTx(int type) const;
 };
 
 #endif // RAIN_QT_TRANSACTIONFILTERPROXY_H

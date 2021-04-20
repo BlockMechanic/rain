@@ -25,12 +25,19 @@ static void AddTx(const CTransactionRef& tx, const CAmount& nFee, CTxMemPool& po
 // unique transactions for a more meaningful performance measurement.
 static void MempoolEviction(benchmark::Bench& bench)
 {
-    const auto testing_setup = MakeNoLogFileContext<const TestingSetup>();
+    TestingSetup test_setup{
+        CBaseChainParams::REGTEST,
+        /* extra_args */ {
+            "-nodebuglogfile",
+            "-nodebug",
+        },
+    };
 
     CMutableTransaction tx1 = CMutableTransaction();
     tx1.vin.resize(1);
     tx1.vin[0].scriptSig = CScript() << OP_1;
-    tx1.vin[0].scriptWitness.stack.push_back({1});
+    tx1.witness.vtxinwit.resize(1);
+    tx1.witness.vtxinwit[0].scriptWitness.stack.push_back({1});
     tx1.vout.resize(1);
     tx1.vout[0].scriptPubKey = CScript() << OP_1 << OP_EQUAL;
     tx1.vout[0].nValue = 10 * COIN;
@@ -38,7 +45,8 @@ static void MempoolEviction(benchmark::Bench& bench)
     CMutableTransaction tx2 = CMutableTransaction();
     tx2.vin.resize(1);
     tx2.vin[0].scriptSig = CScript() << OP_2;
-    tx2.vin[0].scriptWitness.stack.push_back({2});
+    tx2.witness.vtxinwit.resize(1);
+    tx2.witness.vtxinwit[0].scriptWitness.stack.push_back({2});
     tx2.vout.resize(1);
     tx2.vout[0].scriptPubKey = CScript() << OP_2 << OP_EQUAL;
     tx2.vout[0].nValue = 10 * COIN;
@@ -47,7 +55,8 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx3.vin.resize(1);
     tx3.vin[0].prevout = COutPoint(tx2.GetHash(), 0);
     tx3.vin[0].scriptSig = CScript() << OP_2;
-    tx3.vin[0].scriptWitness.stack.push_back({3});
+    tx3.witness.vtxinwit.resize(1);
+    tx3.witness.vtxinwit[0].scriptWitness.stack.push_back({3});
     tx3.vout.resize(1);
     tx3.vout[0].scriptPubKey = CScript() << OP_3 << OP_EQUAL;
     tx3.vout[0].nValue = 10 * COIN;
@@ -56,10 +65,12 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx4.vin.resize(2);
     tx4.vin[0].prevout.SetNull();
     tx4.vin[0].scriptSig = CScript() << OP_4;
-    tx4.vin[0].scriptWitness.stack.push_back({4});
+    tx4.witness.vtxinwit.resize(1);
+    tx4.witness.vtxinwit[0].scriptWitness.stack.push_back({4});
     tx4.vin[1].prevout.SetNull();
     tx4.vin[1].scriptSig = CScript() << OP_4;
-    tx4.vin[1].scriptWitness.stack.push_back({4});
+    tx4.witness.vtxinwit.resize(2);
+    tx4.witness.vtxinwit[1].scriptWitness.stack.push_back({4});
     tx4.vout.resize(2);
     tx4.vout[0].scriptPubKey = CScript() << OP_4 << OP_EQUAL;
     tx4.vout[0].nValue = 10 * COIN;
@@ -70,10 +81,12 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx5.vin.resize(2);
     tx5.vin[0].prevout = COutPoint(tx4.GetHash(), 0);
     tx5.vin[0].scriptSig = CScript() << OP_4;
-    tx5.vin[0].scriptWitness.stack.push_back({4});
+    tx5.witness.vtxinwit.resize(1);
+    tx5.witness.vtxinwit[0].scriptWitness.stack.push_back({4});
     tx5.vin[1].prevout.SetNull();
     tx5.vin[1].scriptSig = CScript() << OP_5;
-    tx5.vin[1].scriptWitness.stack.push_back({5});
+    tx5.witness.vtxinwit.resize(2);
+    tx5.witness.vtxinwit[1].scriptWitness.stack.push_back({5});
     tx5.vout.resize(2);
     tx5.vout[0].scriptPubKey = CScript() << OP_5 << OP_EQUAL;
     tx5.vout[0].nValue = 10 * COIN;
@@ -84,10 +97,12 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx6.vin.resize(2);
     tx6.vin[0].prevout = COutPoint(tx4.GetHash(), 1);
     tx6.vin[0].scriptSig = CScript() << OP_4;
-    tx6.vin[0].scriptWitness.stack.push_back({4});
+    tx6.witness.vtxinwit.resize(1);
+    tx6.witness.vtxinwit[0].scriptWitness.stack.push_back({4});
     tx6.vin[1].prevout.SetNull();
     tx6.vin[1].scriptSig = CScript() << OP_6;
-    tx6.vin[1].scriptWitness.stack.push_back({6});
+    tx6.witness.vtxinwit.resize(2);
+    tx6.witness.vtxinwit[1].scriptWitness.stack.push_back({6});
     tx6.vout.resize(2);
     tx6.vout[0].scriptPubKey = CScript() << OP_6 << OP_EQUAL;
     tx6.vout[0].nValue = 10 * COIN;
@@ -98,10 +113,12 @@ static void MempoolEviction(benchmark::Bench& bench)
     tx7.vin.resize(2);
     tx7.vin[0].prevout = COutPoint(tx5.GetHash(), 0);
     tx7.vin[0].scriptSig = CScript() << OP_5;
-    tx7.vin[0].scriptWitness.stack.push_back({5});
+    tx7.witness.vtxinwit.resize(1);
+    tx7.witness.vtxinwit[0].scriptWitness.stack.push_back({5});
     tx7.vin[1].prevout = COutPoint(tx6.GetHash(), 0);
     tx7.vin[1].scriptSig = CScript() << OP_6;
-    tx7.vin[1].scriptWitness.stack.push_back({6});
+    tx7.witness.vtxinwit.resize(2);
+    tx7.witness.vtxinwit[1].scriptWitness.stack.push_back({6});
     tx7.vout.resize(2);
     tx7.vout[0].scriptPubKey = CScript() << OP_7 << OP_EQUAL;
     tx7.vout[0].nValue = 10 * COIN;

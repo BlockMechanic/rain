@@ -37,7 +37,8 @@ public:
         Date = 2,
         Type = 3,
         ToAddress = 4,
-        Amount = 5
+        Amount = 5, 
+        Asset = 6
     };
 
     /** Roles to get specific information from a transaction row.
@@ -74,10 +75,33 @@ public:
         StatusRole,
         /** Unprocessed icon */
         RawDecorationRole,
+        AssetRole,
     };
+
+    QHash<int, QByteArray> roleNames() const {
+        QHash<int, QByteArray> roles;
+        roles[TypeRole] = "type";
+        roles[DateRole] = "date";
+        roles[WatchonlyRole] = "watchonly";
+        roles[WatchonlyDecorationRole] = "watchonlydecoration";
+        roles[LongDescriptionRole] = "longdescription";
+        roles[AddressRole] = "address";
+        roles[LabelRole] = "label";
+        roles[AmountRole] = "amount";
+        roles[TxHashRole] = "txhash";
+        roles[TxHexRole] = "txhex";
+        roles[TxPlainTextRole] = "txplaintext";
+        roles[ConfirmedRole] = "confirmed";
+        roles[FormattedAmountRole] = "formattedamount";
+        roles[StatusRole] = "status";
+        roles[RawDecorationRole] = "rawdecoration";
+        roles[AssetRole] = "asset";
+        return roles;
+    }
 
     int rowCount(const QModelIndex &parent) const override;
     int columnCount(const QModelIndex &parent) const override;
+    int size() const;
     QVariant data(const QModelIndex &index, int role) const override;
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
     QModelIndex index(int row, int column, const QModelIndex & parent = QModelIndex()) const override;
@@ -106,6 +130,7 @@ private:
     QVariant txStatusDecoration(const TransactionRecord *wtx) const;
     QVariant txWatchonlyDecoration(const TransactionRecord *wtx) const;
     QVariant txAddressDecoration(const TransactionRecord *wtx) const;
+    QVariant typeDecoration(const TransactionRecord *wtx) const;
 
 public Q_SLOTS:
     /* New transaction, or transaction changed status */

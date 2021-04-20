@@ -6,11 +6,12 @@
 
 #include <chain.h>
 #include <chainparams.h>
-#include <node/blockstorage.h>
 #include <rpc/server.h>
 #include <streams.h>
 #include <util/system.h>
-#include <validation.h> // For cs_main
+#include <util/strencodings.h>
+#include <smsg/smessage.h>
+#include <validation.h>
 #include <zmq/zmqutil.h>
 
 #include <zmq.h>
@@ -29,6 +30,7 @@ static const char *MSG_HASHTX    = "hashtx";
 static const char *MSG_RAWBLOCK  = "rawblock";
 static const char *MSG_RAWTX     = "rawtx";
 static const char *MSG_SEQUENCE  = "sequence";
+static const char *MSG_SMSG      = "smsg";
 
 // Internal function to send multipart message
 static int zmq_send_multipart(void *sock, const void* data, size_t size, ...)
@@ -268,4 +270,16 @@ bool CZMQPublishSequenceNotifier::NotifyTransactionRemoval(const CTransaction &t
     uint256 hash = transaction.GetHash();
     LogPrint(BCLog::ZMQ, "zmq: Publish hashtx mempool removal %s to %s\n", hash.GetHex(), this->address);
     return SendSequenceMsg(*this, hash, /* Mempool (R)emoval */ 'R', mempool_sequence);
+}
+
+bool CZMQPublishSMSGNotifier::NotifySecureMessage(const smsg::SecureMessage *psmsg, const uint160 &hash)
+{
+    LogPrint(BCLog::ZMQ, "zmq: Publish smsg %s\n", hash.GetHex());
+    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION | RPCSerializationFlags());
+    ss << psmsg->version[0];
+    ss << psmsg->version[1];
+    int64_t timestamp_be = bswap_64(psmsg->timestamp);
+    ss << timestamp_be;
+    ss << hash;
+    return SendZmqMessage(MSG_SMSG, &(*ss.begin()), ss.size());
 }

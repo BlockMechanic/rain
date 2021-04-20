@@ -241,6 +241,12 @@ public:
 
     virtual void SetInternal(bool internal) {}
 
+    // First looks in imported blinding key store, then derives on its own
+    virtual CKey GetBlindingKey(const CScript* script) const { return CKey(); };
+    // Pubkey accessor for GetBlindingKey
+    virtual CPubKey GetBlindingPubKey(const CScript& script) const { return CPubKey(); };
+
+
     /** Prepends the wallet name in logging output to ease debugging in multi-wallet use cases */
     template<typename... Params>
     void WalletLogPrintf(std::string fmt, Params... parameters) const {
@@ -319,6 +325,9 @@ private:
 
     //! Fetches a key from the keypool
     bool GetKeyFromPool(CPubKey &key, const OutputType type, bool internal = false);
+
+    // Specifically imported blinding keys
+    std::map<CScriptID, uint256> mapSpecificBlindingKeys;
 
     /**
      * Reserves a key from the keypool and sets nIndex to its index
@@ -400,6 +409,9 @@ public:
 
     void SetInternal(bool internal) override;
 
+    // Master derivation blinding key
+    uint256 blinding_derivation_key;
+
     // Map from Key ID to key metadata.
     std::map<CKeyID, CKeyMetadata> mapKeyMetadata GUARDED_BY(cs_KeyStore);
 
@@ -449,6 +461,15 @@ public:
     bool GetPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const override;
     bool AddCScript(const CScript& redeemScript) override;
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
+
+    // First looks in imported blinding key store, then derives on its own
+    CKey GetBlindingKey(const CScript* script) const override;
+    // Pubkey accessor for GetBlindingKey
+    CPubKey GetBlindingPubKey(const CScript& script) const override;
+
+    bool LoadSpecificBlindingKey(const CScriptID& scriptid, const uint256& key);
+    bool AddSpecificBlindingKey(const CScriptID& scriptid, const uint256& key);
+    bool SetMasterBlindingKey(const uint256& key);
 
     //! Load a keypool entry
     void LoadKeyPool(int64_t nIndex, const CKeyPool &keypool);

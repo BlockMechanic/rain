@@ -11,6 +11,7 @@
 #include <consensus/consensus.h>
 #include <primitives/transaction.h>
 #include <primitives/block.h>
+#include <consensus/params.h>
 
 /** Index marker for when no witness commitment is present in a coinbase transaction. */
 static constexpr int NO_WITNESS_COMMITMENT{-1};
@@ -134,6 +135,9 @@ public:
 
         return m_reject_reason;
     }
+    bool fEnforceSmsgFees = true;
+    const Consensus::Params *m_consensus_params = nullptr;
+    bool m_funds_smsg = false;
 };
 
 class TxValidationState : public ValidationState<TxValidationResult> {};
@@ -151,10 +155,19 @@ static inline int64_t GetBlockWeight(const CBlock& block)
 {
     return ::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(block, PROTOCOL_VERSION);
 }
-static inline int64_t GetTransactionInputWeight(const CTxIn& txin)
+
+static inline int64_t GetTransactionInputWeight(const CTransaction& tx, const size_t nIn)
 {
     // scriptWitness size is added here because witnesses and txins are split up in segwit serialization.
-    return ::GetSerializeSize(txin, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(txin, PROTOCOL_VERSION) + ::GetSerializeSize(txin.scriptWitness.stack, PROTOCOL_VERSION);
+    assert(tx.witness.vtxinwit.size() > nIn);
+    // ELEMENTS: This is only used for change size calculation in wallet, assert if
+    // anything is unexpected for this call e.g. issuances, rangeproofs
+    assert(tx.witness.vtxinwit[nIn].vchIssuanceAmountRangeproof.empty());
+    assert(tx.witness.vtxinwit[nIn].vchInflationKeysRangeproof.empty());
+
+    return ::GetSerializeSize(tx.vin[nIn], PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1)
+    + ::GetSerializeSize(tx.vin[nIn], PROTOCOL_VERSION)
+    + ::GetSerializeSize(tx.witness.vtxinwit[nIn].scriptWitness.stack, PROTOCOL_VERSION);
 }
 
 /** Compute at which vout of the block's coinbase transaction the witness commitment occurs, or -1 if not found */

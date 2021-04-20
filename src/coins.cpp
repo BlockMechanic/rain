@@ -107,12 +107,13 @@ void CCoinsViewCache::EmplaceCoinInternalDANGER(COutPoint&& outpoint, Coin&& coi
 
 void AddCoins(CCoinsViewCache& cache, const CTransaction &tx, int nHeight, bool check_for_overwrite) {
     bool fCoinbase = tx.IsCoinBase();
+    bool fCoinstake = tx.IsCoinStake();
     const uint256& txid = tx.GetHash();
     for (size_t i = 0; i < tx.vout.size(); ++i) {
         bool overwrite = check_for_overwrite ? cache.HaveCoin(COutPoint(txid, i)) : fCoinbase;
         // Coinbase transactions can always be overwritten, in order to correctly
         // deal with the pre-BIP30 occurrences of duplicate coinbase transactions.
-        cache.AddCoin(COutPoint(txid, i), Coin(tx.vout[i], nHeight, fCoinbase), overwrite);
+        cache.AddCoin(COutPoint(txid, i), Coin(tx.vout[i], nHeight, fCoinbase, fCoinstake, tx.nTime), overwrite);
     }
 }
 
@@ -239,6 +240,30 @@ unsigned int CCoinsViewCache::GetCacheSize() const {
     return cacheCoins.size();
 }
 
+CAmount CCoinsViewCache::GetValueIn(const CTransaction& tx) const
+{
+    if (tx.IsCoinBase())
+        return 0;
+
+    CAmount nResult = 0;
+    for (unsigned int i = 0; i < tx.vin.size(); i++)
+        nResult += AccessCoin(tx.vin[i].prevout).out.nValue.GetAmount();
+
+    return nResult;
+}
+
+CAmountMap CCoinsViewCache::GetValueInMap(const CTransaction& tx) const
+{
+    if (tx.IsCoinBase())
+        return CAmountMap();
+
+    CAmountMap nResult;
+    for (unsigned int i = 0; i < tx.vin.size(); i++)
+        nResult[AccessCoin(tx.vin[i].prevout).out.nAsset.GetAsset()] += AccessCoin(tx.vin[i].prevout).out.nValue.GetAmount();
+
+    return nResult;
+}
+
 bool CCoinsViewCache::HaveInputs(const CTransaction& tx) const
 {
     if (!tx.IsCoinBase()) {
@@ -261,6 +286,14 @@ void CCoinsViewCache::ReallocateCache()
 
 static const size_t MIN_TRANSACTION_OUTPUT_WEIGHT = WITNESS_SCALE_FACTOR * ::GetSerializeSize(CTxOut(), PROTOCOL_VERSION);
 static const size_t MAX_OUTPUTS_PER_BLOCK = MAX_BLOCK_WEIGHT / MIN_TRANSACTION_OUTPUT_WEIGHT;
+
+int CCoinsViewCache::GetCoinDepthAtHeight(const COutPoint& output, int nHeight) const
+{
+    const Coin& coin = AccessCoin(output);
+    if (!coin.IsSpent())
+        return nHeight - coin.nHeight + 1;
+    return -1;
+}
 
 const Coin& AccessByTxid(const CCoinsViewCache& view, const uint256& txid)
 {

@@ -1,11 +1,10 @@
-// Copyright (c) 2020-2021 The Rain Core developers
+// Copyright (c) 2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <blockfilter.h>
 #include <clientversion.h>
 #include <logging.h>
-#include <netaddress.h>
 #include <netbase.h>
 #include <outputtype.h>
 #include <rpc/client.h>
@@ -68,7 +67,6 @@ FUZZ_TARGET(string)
     }
     OutputType output_type;
     (void)ParseOutputType(random_string_1, output_type);
-    (void)RemovePrefix(random_string_1, random_string_2);
     (void)ResolveErrMsg(random_string_1, random_string_2);
     try {
         (void)RPCConvertNamedValues(random_string_1, random_string_vector);
@@ -83,7 +81,7 @@ FUZZ_TARGET(string)
 #ifndef WIN32
     (void)ShellEscape(random_string_1);
 #endif // WIN32
-    uint16_t port_out;
+    int port_out;
     std::string host_out;
     SplitHostPort(random_string_1, port_out, host_out);
     (void)TimingResistantEqual(random_string_1, random_string_2);

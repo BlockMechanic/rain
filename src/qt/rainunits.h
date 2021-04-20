@@ -6,6 +6,7 @@
 #define RAIN_QT_RAINUNITS_H
 
 #include <amount.h>
+#include <primitives/asset.h>
 
 #include <QAbstractListModel>
 #include <QString>
@@ -40,9 +41,9 @@ public:
      */
     enum Unit
     {
-        RAIN,
-        mRAIN,
-        uRAIN,
+        COIN,
+        CENT,
+        BIT,
         SAT
     };
 
@@ -73,6 +74,8 @@ public:
     static int decimals(int unit);
     //! Format as string
     static QString format(int unit, const CAmount& amount, bool plussign = false, SeparatorStyle separators = SeparatorStyle::STANDARD, bool justify = false);
+    static QString simpleFormat(int unit, const CAmount& amount, bool plussign = false, SeparatorStyle separators = SeparatorStyle::STANDARD);
+    static QString simplestFormat(int unit, const CAmount& amount, int digits = 2, bool plussign = false, SeparatorStyle separators =SeparatorStyle::STANDARD);
     //! Format as string (with unit)
     static QString formatWithUnit(int unit, const CAmount& amount, bool plussign=false, SeparatorStyle separators=SeparatorStyle::STANDARD);
     //! Format as HTML string (with unit)
@@ -110,5 +113,14 @@ private:
     QList<RainUnits::Unit> unitlist;
 };
 typedef RainUnits::Unit RainUnit;
+
+/* Format an amount of assets in a user-friendly style */
+QString formatAssetAmount(const CAsset&, const CAmount&, int rain_unit, RainUnits::SeparatorStyle, bool include_asset_name = true);
+
+/* Format one or more asset+amounts in a user-friendly style */
+QString formatMultiAssetAmount(const CAmountMap&, int rain_unit, RainUnits::SeparatorStyle, QString line_separator);
+
+/* Parse an amount of a given asset from text */
+bool parseAssetAmount(const CAsset&, const QString& text, int rain_unit, CAmount *val_out);
 
 #endif // RAIN_QT_RAINUNITS_H

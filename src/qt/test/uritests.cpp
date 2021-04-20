@@ -11,7 +11,7 @@
 
 void URITests::uriTests()
 {
-    SendCoinsRecipient rv;
+    SendAssetsRecipient rv;
     QUrl uri;
     uri.setUrl(QString("rain:175tWpb8K1S7NmH4Zx6rewF9WQrcZv245W?req-dontexist="));
     QVERIFY(!GUIUtil::parseRainURI(uri, &rv));

@@ -15,7 +15,6 @@
 #include <txmempool.h>
 #include <util/check.h>
 #include <util/string.h>
-#include <util/vector.h>
 
 #include <type_traits>
 #include <vector>
@@ -67,7 +66,18 @@ static inline uint64_t InsecureRandBits(int bits) { return g_insecure_rand_ctx.r
 static inline uint64_t InsecureRandRange(uint64_t range) { return g_insecure_rand_ctx.randrange(range); }
 static inline bool InsecureRandBool() { return g_insecure_rand_ctx.randbool(); }
 
-static constexpr CAmount CENT{1000000};
+static inline void InsecureNewKey(CKey &key, bool fCompressed)
+{
+    uint256 i = InsecureRand256();
+    key.Set(i.begin(), fCompressed);
+    assert(key.IsValid()); // Failure should be very rare
+}
+static inline void InsecureRandBytes(uint8_t *p, size_t n)
+{
+    assert(n <= 32);
+    uint256 i = InsecureRand256();
+    memcpy(p, i.begin(), n);
+}
 
 /** Basic testing setup.
  * This just configures logging, data dir and chain parameters.
@@ -112,7 +122,7 @@ class CScript;
  * Testing fixture that pre-creates a 100-block REGTEST-mode block chain
  */
 struct TestChain100Setup : public RegTestingSetup {
-    TestChain100Setup();
+    TestChain100Setup(bool deterministic = false);
 
     /**
      * Create a new block with just given transactions, coinbase paying to
@@ -143,26 +153,15 @@ struct TestChain100Setup : public RegTestingSetup {
 
     ~TestChain100Setup();
 
+    bool m_deterministic;
     std::vector<CTransactionRef> m_coinbase_txns; // For convenience, coinbase transactions
     CKey coinbaseKey; // private/public key needed to spend coinbase transactions
 };
 
-/**
- * Make a test setup that has disk access to the debug.log file disabled. Can
- * be used in "hot loops", for example fuzzing or benchmarking.
- */
-template <class T = const BasicTestingSetup>
-std::unique_ptr<T> MakeNoLogFileContext(const std::string& chain_name = CBaseChainParams::REGTEST, const std::vector<const char*>& extra_args = {})
-{
-    const std::vector<const char*> arguments = Cat(
-        {
-            "-nodebuglogfile",
-            "-nodebug",
-        },
-        extra_args);
 
-    return std::make_unique<T>(chain_name, arguments);
-}
+struct TestChain100DeterministicSetup : public TestChain100Setup {
+    TestChain100DeterministicSetup() : TestChain100Setup(true) { }
+};
 
 class CTxMemPoolEntry;
 

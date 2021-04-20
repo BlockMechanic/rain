@@ -7,10 +7,11 @@
 #ifndef RAIN_PUBKEY_H
 #define RAIN_PUBKEY_H
 
-#include <hash.h>
 #include <serialize.h>
 #include <span.h>
 #include <uint256.h>
+
+#include <boost/range/adaptor/sliced.hpp>
 
 #include <stdexcept>
 #include <vector>
@@ -112,6 +113,10 @@ public:
     const unsigned char* begin() const { return vch; }
     const unsigned char* end() const { return vch + size(); }
     const unsigned char& operator[](unsigned int pos) const { return vch[pos]; }
+    std::vector<unsigned char> getvch() const
+    {
+        return std::vector<unsigned char>(begin(), end());
+    }
 
     //! Comparator implementation.
     friend bool operator==(const CPubKey& a, const CPubKey& b)
@@ -156,16 +161,10 @@ public:
     }
 
     //! Get the KeyID of this public key (hash of its serialization)
-    CKeyID GetID() const
-    {
-        return CKeyID(Hash160(MakeSpan(vch).first(size())));
-    }
+    CKeyID GetID() const;
 
     //! Get the 256-bit hash of this public key.
-    uint256 GetHash() const
-    {
-        return Hash(MakeSpan(vch).first(size()));
-    }
+    uint256 GetHash() const;
 
     /*
      * Check syntactic correctness.
@@ -204,7 +203,12 @@ public:
     /**
      * Check whether a signature is normalized (lower-S).
      */
+    static bool CheckLowS(const boost::sliced_range<const std::vector<uint8_t>> &vchSig);
+
     static bool CheckLowS(const std::vector<unsigned char>& vchSig);
+
+    //! Recover a public key from a compact signature.
+    bool RecoverLaxDER(const uint256 &hash, const std::vector<unsigned char>& vchSig, uint8_t recid, bool fComp);
 
     //! Recover a public key from a compact signature.
     bool RecoverCompact(const uint256& hash, const std::vector<unsigned char>& vchSig);

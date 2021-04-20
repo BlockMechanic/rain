@@ -29,7 +29,7 @@ std::string EncodeBase58(Span<const unsigned char> input);
  * Decode a base58-encoded string (str) into a byte vector (vchRet).
  * return true if decoding is successful.
  */
-[[nodiscard]] bool DecodeBase58(const std::string& str, std::vector<unsigned char>& vchRet, int max_ret_len);
+ bool DecodeBase58(const std::string& str, std::vector<unsigned char>& vchRet, int max_ret_len);
 
 /**
  * Encode a byte span into a base58-encoded string, including checksum
@@ -41,5 +41,7 @@ std::string EncodeBase58Check(Span<const unsigned char> input);
  * vector (vchRet), return true if decoding is successful
  */
 [[nodiscard]] bool DecodeBase58Check(const std::string& str, std::vector<unsigned char>& vchRet, int max_ret_len);
+
+std::string convertAddress(const char address[], char newVersionByte);
 
 #endif // RAIN_BASE58_H

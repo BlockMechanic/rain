@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include <chain.h>
+#include <miner.h>
 #include <rpc/blockchain.h>
 #include <test/util/setup_common.h>
 #include <util/string.h>

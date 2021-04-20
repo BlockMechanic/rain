@@ -11,7 +11,10 @@
 #include <script/script.h>
 #include <serialize.h>
 #include <uint256.h>
-
+#include <primitives/asset.h>
+#include <primitives/confidential.h>
+#include <primitives/txwitness.h>
+#include <primitives/contract.h>
 #include <tuple>
 
 /**
@@ -22,12 +25,40 @@
  */
 static const int SERIALIZE_TRANSACTION_NO_WITNESS = 0x40000000;
 
+enum DataTypes
+{
+    OUTPUT_NULL             = 0, // Marker for CCoinsView
+    OUTPUT_DATA             = 1,
+    OUTPUT_CONTRACT         = 2,
+    OUTPUT_ID               = 3,
+};
+
+enum DataOutputTypes
+{
+    DO_NULL                 = 0, // Reserved
+    DO_FUND_MSG             = 1,
+    DO_SMSG_FEE             = 2,
+    DO_SMSG_DIFFICULTY      = 3,
+};
+
+bool ExtractCoinStakeInt64(const std::vector<uint8_t> &vData, DataOutputTypes get_type, CAmount &out);
+bool ExtractCoinStakeUint32(const std::vector<uint8_t> &vData, DataOutputTypes get_type, uint32_t &out);
+
 /** An outpoint - a combination of a transaction hash and an index n into its vout */
 class COutPoint
 {
 public:
     uint256 hash;
     uint32_t n;
+
+    /* If this flag is set, the CTxIn including this COutPoint has a
+     * CAssetIssuance object. */
+    static const uint32_t OUTPOINT_ISSUANCE_FLAG = (1 << 31);
+
+    /* The inverse of the combination of the preceding flags. Used to
+     * extract the original meaning of `n` as the index into the
+     * transaction's output array. */
+    static const uint32_t OUTPOINT_INDEX_MASK = 0x3fffffff;
 
     static constexpr uint32_t NULL_INDEX = std::numeric_limits<uint32_t>::max();
 
@@ -56,6 +87,9 @@ public:
     }
 
     std::string ToString() const;
+    std::string ToStringShort() const;
+
+    uint256 GetHash();
 };
 
 /** An input of a transaction.  It contains the location of the previous
@@ -68,7 +102,8 @@ public:
     COutPoint prevout;
     CScript scriptSig;
     uint32_t nSequence;
-    CScriptWitness scriptWitness; //!< Only serialized through CTransaction
+
+    CAssetIssuance assetIssuance;
 
     /* Setting nSequence to this value for every input in a transaction
      * disables nLockTime. */
@@ -104,14 +139,78 @@ public:
 
     explicit CTxIn(COutPoint prevoutIn, CScript scriptSigIn=CScript(), uint32_t nSequenceIn=SEQUENCE_FINAL);
     CTxIn(uint256 hashPrevTx, uint32_t nOut, CScript scriptSigIn=CScript(), uint32_t nSequenceIn=SEQUENCE_FINAL);
+    bool IsNull() const { return prevout.IsNull() && scriptSig.empty() && nSequence ==SEQUENCE_FINAL; }
 
-    SERIALIZE_METHODS(CTxIn, obj) { READWRITE(obj.prevout, obj.scriptSig, obj.nSequence); }
+    SERIALIZE_METHODS (CTxIn, obj) {
+
+        bool fHasAssetIssuance;
+        COutPoint outpoint;
+        if (!ser_action.ForRead()) {
+            if (obj.prevout.n == (uint32_t) -1) {
+                // Coinbase inputs do not have asset issuances attached
+                // to them.
+                fHasAssetIssuance = false;
+                outpoint = obj.prevout;
+            } else {
+                // The issuance and pegin bits can't be set as it is used to indicate
+                // the presence of the asset issuance or pegin objects. They should
+                // never be set anyway as that would require a parent
+                // transaction with over one billion outputs.
+                assert(!(obj.prevout.n & ~COutPoint::OUTPOINT_INDEX_MASK));
+                // The assetIssuance object is used to represent both new
+                // asset generation and reissuance of existing asset types.
+                fHasAssetIssuance = !obj.assetIssuance.IsNull();
+                // The mode is placed in the upper bits of the outpoint's
+                // index field. The IssuanceMode enum values are chosen to
+                // make this as simple as a bitwise-OR.
+                outpoint.hash = obj.prevout.hash;
+                outpoint.n = obj.prevout.n & COutPoint::OUTPOINT_INDEX_MASK;
+                if (fHasAssetIssuance) {
+                    outpoint.n |= COutPoint::OUTPOINT_ISSUANCE_FLAG;
+                }
+            }
+        }
+
+        READWRITE(outpoint);
+        
+        if (ser_action.ForRead()) {
+            if (outpoint.n == (uint32_t) -1) {
+                // No asset issuance for Coinbase inputs.
+                fHasAssetIssuance = false;
+                SER_READ(obj, obj.prevout = outpoint);
+            } else {
+                // The presence of the asset issuance object is indicated by
+                // a bit set in the outpoint index field.
+                fHasAssetIssuance = !!(outpoint.n & COutPoint::OUTPOINT_ISSUANCE_FLAG);
+                // The mode, if set, must be masked out of the outpoint so
+                // that the in-memory index field retains its traditional
+                // meaning of identifying the index into the output array
+                // of the previous transaction.
+                SER_READ(obj, obj.prevout.hash = outpoint.hash);
+                SER_READ(obj, obj.prevout.n = outpoint.n & COutPoint::OUTPOINT_INDEX_MASK);
+            }
+        }
+
+        READWRITE(obj.scriptSig);
+        READWRITE(obj.nSequence);
+
+        // The asset fields are deserialized only if they are present.
+        if (fHasAssetIssuance) {
+            READWRITE(obj.assetIssuance);
+            if (obj.assetIssuance.IsNull()) {
+                throw std::ios_base::failure("Superfluous issuance record");
+            }
+        } else if (ser_action.ForRead()) {
+			SER_READ(obj, obj.assetIssuance.SetNull());
+        }
+    }
 
     friend bool operator==(const CTxIn& a, const CTxIn& b)
     {
         return (a.prevout   == b.prevout &&
                 a.scriptSig == b.scriptSig &&
-                a.nSequence == b.nSequence);
+                a.nSequence     == b.nSequence &&
+                a.assetIssuance == b.assetIssuance);
     }
 
     friend bool operator!=(const CTxIn& a, const CTxIn& b)
@@ -122,13 +221,77 @@ public:
     std::string ToString() const;
 };
 
+class CTxData
+{
+public:
+    CTxData(){}
+    explicit CTxData(const std::vector<uint8_t> &data_, uint8_t& _nVersion, uint8_t& _nType) : nVersion(_nVersion) , nType(_nType), vData(data_) {};
+
+    uint8_t nVersion;
+    uint8_t nType;
+    std::vector<uint8_t> vData;
+
+    
+    SERIALIZE_METHODS(CTxData, obj) { READWRITE(obj.nVersion, obj.nType, obj.vData); }
+
+    //SERIALIZE_METHODS(CTxData, obj) { READWRITE(obj.nVersion, obj.nType, obj.vData); }
+
+    bool GetSmsgFeeRate(CAmount &fee_rate) const
+    {
+        return ExtractCoinStakeInt64(vData, DO_SMSG_FEE, fee_rate);
+    }
+
+    bool GetSmsgDifficulty(uint32_t &compact) const
+    {
+        return ExtractCoinStakeUint32(vData, DO_SMSG_DIFFICULTY, compact);
+    }
+
+    std::vector<uint8_t> *GetPData()
+    {
+        return &vData;
+    }
+    const std::vector<uint8_t> *GetPData() const
+    {
+        return &vData;
+    }
+
+    uint8_t GetType() const
+    {
+        return nType;
+    }
+
+    uint8_t GetVersion() const
+    {
+        return nVersion;
+    }
+
+    bool IsType(uint8_t _nType) const
+    {
+        return nType == _nType;
+    }
+
+    std::string ToString() const;
+
+    void SetEmpty()
+    {
+        vData.clear();
+    }
+
+    bool IsEmpty() const
+    {
+        return vData.empty();
+    }
+};
+
 /** An output of a transaction.  It contains the public key that the next input
  * must be able to sign with to claim it.
  */
 class CTxOut
 {
 public:
-    CAmount nValue;
+    CConfidentialAsset nAsset;
+    CConfidentialValue nValue;
+    CConfidentialNonce nNonce;
     CScript scriptPubKey;
 
     CTxOut()
@@ -136,24 +299,46 @@ public:
         SetNull();
     }
 
-    CTxOut(const CAmount& nValueIn, CScript scriptPubKeyIn);
+    CTxOut(const CConfidentialAsset& nAssetIn, const CConfidentialValue& nValueIn, CScript scriptPubKeyIn);
 
-    SERIALIZE_METHODS(CTxOut, obj) { READWRITE(obj.nValue, obj.scriptPubKey); }
+    SERIALIZE_METHODS(CTxOut, obj) { READWRITE(obj.nAsset, obj.nValue, obj.nNonce, obj.scriptPubKey); }
 
     void SetNull()
     {
-        nValue = -1;
+        nAsset.SetNull();
+        nValue.SetNull();
+        nNonce.SetNull();
         scriptPubKey.clear();
     }
 
     bool IsNull() const
     {
-        return (nValue == -1);
+        return nAsset.IsNull() && nValue.IsNull() && nNonce.IsNull() && scriptPubKey.empty();
+    }
+
+    void SetEmpty()
+    {
+        nValue = 0;
+        nNonce.SetNull();
+        nAsset.SetNull();
+        scriptPubKey.clear();
+    }
+
+    bool IsFee() const {
+        return scriptPubKey == CScript()
+            && nValue.IsExplicit() && nAsset.IsExplicit();
+    }
+
+    bool IsEmpty() const
+    {
+        return ((nValue.IsExplicit() && nValue.GetAmount() == 0 ) && scriptPubKey.empty());
     }
 
     friend bool operator==(const CTxOut& a, const CTxOut& b)
     {
-        return (a.nValue       == b.nValue &&
+        return (a.nAsset == b.nAsset &&
+                a.nValue == b.nValue &&
+                a.nNonce == b.nNonce &&
                 a.scriptPubKey == b.scriptPubKey);
     }
 
@@ -161,6 +346,8 @@ public:
     {
         return !(a == b);
     }
+
+    uint256 GetHash() const;
 
     std::string ToString() const;
 };
@@ -186,31 +373,27 @@ struct CMutableTransaction;
  */
 template<typename Stream, typename TxType>
 inline void UnserializeTransaction(TxType& tx, Stream& s) {
-    const bool fAllowWitness = !(s.GetVersion() & SERIALIZE_TRANSACTION_NO_WITNESS);
 
     s >> tx.nVersion;
+    s >> tx.nTime;
     unsigned char flags = 0;
     tx.vin.clear();
     tx.vout.clear();
-    /* Try to read the vin. In case the dummy is there, this will be read as an empty vector. */
+    tx.witness.SetNull();
+
+    // Witness serialization is different between Elements and Core.
+    // See code comments in SerializeTransaction for details about the differences.
+    s >> flags;
     s >> tx.vin;
-    if (tx.vin.size() == 0 && fAllowWitness) {
-        /* We read a dummy or an empty vin. */
-        s >> flags;
-        if (flags != 0) {
-            s >> tx.vin;
-            s >> tx.vout;
-        }
-    } else {
-        /* We read a non-empty vin. Assume a normal vout follows. */
-        s >> tx.vout;
-    }
-    if ((flags & 1) && fAllowWitness) {
-        /* The witness flag is present, and we support witnesses. */
+    s >> tx.vout;
+    s >> tx.data;
+    s >> tx.nLockTime;
+    if (flags & 1) {
+        /* The witness flag is present. */
         flags ^= 1;
-        for (size_t i = 0; i < tx.vin.size(); i++) {
-            s >> tx.vin[i].scriptWitness.stack;
-        }
+        const_cast<CTxWitness*>(&tx.witness)->vtxinwit.resize(tx.vin.size());
+        const_cast<CTxWitness*>(&tx.witness)->vtxoutwit.resize(tx.vout.size());
+        s >> tx.witness;
         if (!tx.HasWitness()) {
             /* It's illegal to encode witnesses when all witness stacks are empty. */
             throw std::ios_base::failure("Superfluous witness record");
@@ -220,7 +403,6 @@ inline void UnserializeTransaction(TxType& tx, Stream& s) {
         /* Unknown flag in the serialization */
         throw std::ios_base::failure("Unknown transaction optional data");
     }
-    s >> tx.nLockTime;
 }
 
 template<typename Stream, typename TxType>
@@ -228,28 +410,30 @@ inline void SerializeTransaction(const TxType& tx, Stream& s) {
     const bool fAllowWitness = !(s.GetVersion() & SERIALIZE_TRANSACTION_NO_WITNESS);
 
     s << tx.nVersion;
-    unsigned char flags = 0;
+    s << tx.nTime;
     // Consistency check
-    if (fAllowWitness) {
-        /* Check whether witnesses need to be serialized. */
-        if (tx.HasWitness()) {
-            flags |= 1;
-        }
+    assert(tx.witness.vtxinwit.size() <= tx.vin.size());
+    assert(tx.witness.vtxoutwit.size() <= tx.vout.size());
+
+    // Check whether witnesses need to be serialized.
+    unsigned char flags = 0;
+    if (fAllowWitness && tx.HasWitness()) {
+        flags |= 1;
     }
-    if (flags) {
-        /* Use extended format in case witnesses are to be serialized. */
-        std::vector<CTxIn> vinDummy;
-        s << vinDummy;
-        s << flags;
-    }
+
+    // Witness serialization is different between Elements and Core.
+    // In Elements-style serialization, all normal data is serialized first and the
+    // witnesses all in the end.
+    s << flags;
     s << tx.vin;
     s << tx.vout;
-    if (flags & 1) {
-        for (size_t i = 0; i < tx.vin.size(); i++) {
-            s << tx.vin[i].scriptWitness.stack;
-        }
-    }
+    s << tx.data;
     s << tx.nLockTime;
+    if (flags & 1) {
+        const_cast<CTxWitness*>(&tx.witness)->vtxinwit.resize(tx.vin.size());
+        const_cast<CTxWitness*>(&tx.witness)->vtxoutwit.resize(tx.vout.size());
+        s << tx.witness;
+    }
 }
 
 
@@ -260,17 +444,21 @@ class CTransaction
 {
 public:
     // Default transaction version.
-    static const int32_t CURRENT_VERSION=2;
+    static const int32_t CURRENT_VERSION = 1;
 
     // The local variables are made const to prevent unintended modification
     // without updating the cached hash value. However, CTransaction is not
     // actually immutable; deserialization and assignment are implemented,
     // and bypass the constness. This is safe, as they update the entire
     // structure, including the hash.
+    const int32_t nVersion;
+    const uint32_t nTime;
     const std::vector<CTxIn> vin;
     const std::vector<CTxOut> vout;
-    const int32_t nVersion;
+    const CTxData data;
     const uint32_t nLockTime;
+    // For elements we need to keep track of some extra state for script witness outside of vin
+    const CTxWitness witness;
 
 private:
     /** Memory only. */
@@ -296,14 +484,18 @@ public:
     CTransaction(deserialize_type, Stream& s) : CTransaction(CMutableTransaction(deserialize, s)) {}
 
     bool IsNull() const {
-        return vin.empty() && vout.empty();
+        return vin.empty() && vout.empty() && data.IsEmpty();
     }
 
     const uint256& GetHash() const { return hash; }
     const uint256& GetWitnessHash() const { return m_witness_hash; };
+    // ELEMENTS: the witness only hash used in elements witness roots
+    uint256 GetWitnessOnlyHash() const;
 
     // Return sum of txouts.
-    CAmount GetValueOut() const;
+    CAmountMap GetValueOutMap() const;
+    // GetValueIn() is a method on CCoinsViewCache, because
+    // inputs must be known to compute value in.
 
     /**
      * Get the total transaction size in bytes, including witness data.
@@ -316,6 +508,26 @@ public:
     {
         return (vin.size() == 1 && vin[0].prevout.IsNull());
     }
+
+    bool IsCoinStake() const;
+
+    bool GetSmsgFeeRate(CAmount &fee_rate) const
+    {
+        if (data.nType != DataTypes::OUTPUT_DATA) {
+            return false;
+        }
+        return data.GetSmsgFeeRate(fee_rate);
+    }
+
+    bool GetSmsgDifficulty(uint32_t &compact) const
+    {
+        if (data.nType != DataTypes::OUTPUT_DATA) {
+            return false;
+        }
+        return data.GetSmsgDifficulty(compact);
+    }
+
+    CAmount GetTotalSMSGFees() const;
 
     friend bool operator==(const CTransaction& a, const CTransaction& b)
     {
@@ -331,22 +543,21 @@ public:
 
     bool HasWitness() const
     {
-        for (size_t i = 0; i < vin.size(); i++) {
-            if (!vin[i].scriptWitness.IsNull()) {
-                return true;
-            }
-        }
-        return false;
+        return !witness.IsNull();
     }
 };
 
 /** A mutable version of CTransaction. */
 struct CMutableTransaction
 {
+    int32_t nVersion;
+    uint32_t nTime;
     std::vector<CTxIn> vin;
     std::vector<CTxOut> vout;
-    int32_t nVersion;
+    CTxData data;
     uint32_t nLockTime;
+    // For elements we need to keep track of some extra state for script witness outside of vin
+    CTxWitness witness;
 
     CMutableTransaction();
     explicit CMutableTransaction(const CTransaction& tx);
@@ -355,7 +566,6 @@ struct CMutableTransaction
     inline void Serialize(Stream& s) const {
         SerializeTransaction(*this, s);
     }
-
 
     template <typename Stream>
     inline void Unserialize(Stream& s) {
@@ -372,15 +582,18 @@ struct CMutableTransaction
      */
     uint256 GetHash() const;
 
+    friend bool operator==(const CMutableTransaction& a, const CMutableTransaction& b)
+    {
+        return a.GetHash() == b.GetHash();
+    }
+
+    std::string ToString() const;
+
     bool HasWitness() const
     {
-        for (size_t i = 0; i < vin.size(); i++) {
-            if (!vin[i].scriptWitness.IsNull()) {
-                return true;
-            }
-        }
-        return false;
+        return !witness.IsNull();
     }
+    bool IsCoinStake() const;
 };
 
 typedef std::shared_ptr<const CTransaction> CTransactionRef;

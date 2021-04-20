@@ -90,3 +90,46 @@ std::string SigningResultString(const SigningResult res)
     }
     assert(false);
 }
+
+std::vector<unsigned char> signmessage(const std::vector<unsigned char> &data, const CKey &key)
+{
+    CHashWriter ss(SER_GETHASH, 0);
+    ss << MESSAGE_MAGIC << data;
+
+    std::vector<unsigned char> vchSig;
+    if (!key.SignCompact(ss.GetHash(), vchSig)) // signing will only fail if the key is bogus
+    {
+        return std::vector<unsigned char>();
+    }
+    return vchSig;
+}
+
+std::vector<unsigned char> signmessage(const std::string &data, const CKey &key)
+{
+    CHashWriter ss(SER_GETHASH, 0);
+    ss << MESSAGE_MAGIC << data;
+
+    std::vector<unsigned char> vchSig;
+    if (!key.SignCompact(ss.GetHash(), vchSig)) // signing will only fail if the key is bogus
+    {
+        return std::vector<unsigned char>();
+    }
+    return vchSig;
+
+}
+
+
+std::vector<unsigned char> signmessage(const uint32_t& n, const uint32_t & nNonce, const CKey &key)
+{
+	uint32_t data = n+nNonce;
+    CHashWriter ss(SER_GETHASH, 0);
+    ss << MESSAGE_MAGIC << data;
+
+    std::vector<unsigned char> vchSig;
+    if (!key.SignCompact(ss.GetHash(), vchSig)) // signing will only fail if the key is bogus
+    {
+        return std::vector<unsigned char>();
+    }
+    return vchSig;
+
+}

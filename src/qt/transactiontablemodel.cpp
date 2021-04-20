@@ -304,6 +304,10 @@ int TransactionTableModel::columnCount(const QModelIndex &parent) const
     return columns.length();
 }
 
+int TransactionTableModel::size() const{
+    return priv->size();
+}
+
 QString TransactionTableModel::formatTxStatus(const TransactionRecord *wtx) const
 {
     QString status;
@@ -384,6 +388,10 @@ QString TransactionTableModel::formatTxType(const TransactionRecord *wtx) const
         return tr("Payment to yourself");
     case TransactionRecord::Generated:
         return tr("Mined");
+    case TransactionRecord::Staked:
+        return tr("Staked");
+    case TransactionRecord::IssuedAsset:
+        return tr("Issuance");
     default:
         return QString();
     }
@@ -394,6 +402,8 @@ QVariant TransactionTableModel::txAddressDecoration(const TransactionRecord *wtx
     switch(wtx->type)
     {
     case TransactionRecord::Generated:
+    case TransactionRecord::Staked:
+    case TransactionRecord::IssuedAsset:
         return QIcon(":/icons/tx_mined");
     case TransactionRecord::RecvWithAddress:
     case TransactionRecord::RecvFromOther:
@@ -404,6 +414,13 @@ QVariant TransactionTableModel::txAddressDecoration(const TransactionRecord *wtx
     default:
         return QIcon(":/icons/tx_inout");
     }
+}
+
+QVariant TransactionTableModel::typeDecoration(const TransactionRecord *wtx) const
+{
+   // if(!wtx->status.fValidated)
+     //   return QIcon(":/icons/tx_spv");
+    return QVariant();
 }
 
 QString TransactionTableModel::formatTxToAddress(const TransactionRecord *wtx, bool tooltip) const
@@ -421,6 +438,8 @@ QString TransactionTableModel::formatTxToAddress(const TransactionRecord *wtx, b
     case TransactionRecord::RecvWithAddress:
     case TransactionRecord::SendToAddress:
     case TransactionRecord::Generated:
+    case TransactionRecord::IssuedAsset:
+    case TransactionRecord::Staked:
         return lookupAddress(wtx->address, tooltip) + watchAddress;
     case TransactionRecord::SendToOther:
         return QString::fromStdString(wtx->address) + watchAddress;
@@ -438,7 +457,9 @@ QVariant TransactionTableModel::addressColor(const TransactionRecord *wtx) const
     {
     case TransactionRecord::RecvWithAddress:
     case TransactionRecord::SendToAddress:
+    case TransactionRecord::Staked:
     case TransactionRecord::Generated:
+    case TransactionRecord::IssuedAsset:
         {
         QString label = walletModel->getAddressTableModel()->labelForAddress(QString::fromStdString(wtx->address));
         if(label.isEmpty())
@@ -454,7 +475,8 @@ QVariant TransactionTableModel::addressColor(const TransactionRecord *wtx) const
 
 QString TransactionTableModel::formatTxAmount(const TransactionRecord *wtx, bool showUnconfirmed, RainUnits::SeparatorStyle separators) const
 {
-    QString str = RainUnits::format(walletModel->getOptionsModel()->getDisplayUnit(), wtx->credit + wtx->debit, false, separators);
+    CAmountMap t = wtx->credit + wtx->debit;
+    QString str = formatAssetAmount(wtx->asset, t[wtx->asset], walletModel->getOptionsModel()->getDisplayUnit(), separators);
     if(showUnconfirmed)
     {
         if(!wtx->status.countsForBalance)
@@ -526,30 +548,29 @@ QVariant TransactionTableModel::data(const QModelIndex &index, int role) const
         return QVariant();
     TransactionRecord *rec = static_cast<TransactionRecord*>(index.internalPointer());
 
-    const auto column = static_cast<ColumnIndex>(index.column());
-    switch (role) {
+    switch(role)
+    {
     case RawDecorationRole:
-        switch (column) {
+        switch(index.column())
+        {
         case Status:
             return txStatusDecoration(rec);
         case Watchonly:
             return txWatchonlyDecoration(rec);
-        case Date: return {};
-        case Type: return {};
+        case Type:
+            return typeDecoration(rec);
         case ToAddress:
             return txAddressDecoration(rec);
-        case Amount: return {};
-        } // no default case, so the compiler can warn about missing cases
-        assert(false);
+        }
+        break;
     case Qt::DecorationRole:
     {
         QIcon icon = qvariant_cast<QIcon>(index.data(RawDecorationRole));
         return platformStyle->TextColorIcon(icon);
     }
     case Qt::DisplayRole:
-        switch (column) {
-        case Status: return {};
-        case Watchonly: return {};
+        switch(index.column())
+        {
         case Date:
             return formatTxDate(rec);
         case Type:
@@ -558,11 +579,12 @@ QVariant TransactionTableModel::data(const QModelIndex &index, int role) const
             return formatTxToAddress(rec, false);
         case Amount:
             return formatTxAmount(rec, true, RainUnits::SeparatorStyle::ALWAYS);
-        } // no default case, so the compiler can warn about missing cases
-        assert(false);
+        }
+        break;
     case Qt::EditRole:
         // Edit role is used for sorting, so return the unformatted values
-        switch (column) {
+        switch(index.column())
+        {
         case Status:
             return QString::fromStdString(rec->status.sortKey);
         case Date:
@@ -574,9 +596,9 @@ QVariant TransactionTableModel::data(const QModelIndex &index, int role) const
         case ToAddress:
             return formatTxToAddress(rec, true);
         case Amount:
-            return qint64(rec->credit + rec->debit);
-        } // no default case, so the compiler can warn about missing cases
-        assert(false);
+            return qint64(rec->credit[rec->asset] + rec->debit[rec->asset]);
+        }
+        break;
     case Qt::ToolTipRole:
         return formatTooltip(rec);
     case Qt::TextAlignmentRole:
@@ -592,7 +614,7 @@ QVariant TransactionTableModel::data(const QModelIndex &index, int role) const
         {
             return COLOR_UNCONFIRMED;
         }
-        if(index.column() == Amount && (rec->credit+rec->debit) < 0)
+        if(index.column() == Amount && (rec->credit+rec->debit) < CAmountMap())
         {
             return COLOR_NEGATIVE;
         }
@@ -615,8 +637,11 @@ QVariant TransactionTableModel::data(const QModelIndex &index, int role) const
         return QString::fromStdString(rec->address);
     case LabelRole:
         return walletModel->getAddressTableModel()->labelForAddress(QString::fromStdString(rec->address));
-    case AmountRole:
-        return qint64(rec->credit + rec->debit);
+    case AmountRole: {
+        CAmountMap t = rec->credit + rec->debit;
+            //return qint64(t[rec->asset]);
+            return formatAssetAmount(rec->asset, t[rec->asset], walletModel->getOptionsModel()->getDisplayUnit(), RainUnits::SeparatorStyle::NEVER);
+        }
     case TxHashRole:
         return rec->getTxHash();
     case TxHexRole:
@@ -656,6 +681,8 @@ QVariant TransactionTableModel::data(const QModelIndex &index, int role) const
         return formatTxAmount(rec, false, RainUnits::SeparatorStyle::NEVER);
     case StatusRole:
         return rec->status.status;
+    case AssetRole:
+        return QString::fromStdString(rec->asset.getShortName());
     }
     return QVariant();
 }

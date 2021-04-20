@@ -33,11 +33,11 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
         // Check for a UTXO
         CTxOut utxo;
         if (psbtx.GetInputUTXO(utxo, i)) {
-            if (!MoneyRange(utxo.nValue) || !MoneyRange(in_amt + utxo.nValue)) {
+            if (!MoneyRange(utxo.nValue.GetAmount()) || !MoneyRange(in_amt + utxo.nValue.GetAmount())) {
                 result.SetInvalid(strprintf("PSBT is not valid. Input %u has invalid value", i));
                 return result;
             }
-            in_amt += utxo.nValue;
+            in_amt += utxo.nValue.GetAmount();
             input_analysis.has_utxo = true;
         } else {
             if (input.non_witness_utxo && psbtx.tx->vin[i].prevout.n >= input.non_witness_utxo->vout.size()) {
@@ -96,10 +96,10 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
         // Get the output amount
         CAmount out_amt = std::accumulate(psbtx.tx->vout.begin(), psbtx.tx->vout.end(), CAmount(0),
             [](CAmount a, const CTxOut& b) {
-                if (!MoneyRange(a) || !MoneyRange(b.nValue) || !MoneyRange(a + b.nValue)) {
+                if (!MoneyRange(a) || !MoneyRange(b.nValue.GetAmount()) || !MoneyRange(a + b.nValue.GetAmount())) {
                     return CAmount(-1);
                 }
-                return a += b.nValue;
+                return a += b.nValue.GetAmount();
             }
         );
         if (!MoneyRange(out_amt)) {
@@ -126,7 +126,7 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
                 break;
             } else {
                 mtx.vin[i].scriptSig = input.final_script_sig;
-                mtx.vin[i].scriptWitness = input.final_script_witness;
+                //mtx.vin[i].scriptWitness = input.final_script_witness;
                 newcoin.nHeight = 1;
                 view.AddCoin(psbtx.tx->vin[i].prevout, std::move(newcoin), true);
             }

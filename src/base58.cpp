@@ -52,7 +52,7 @@ static const int8_t mapBase58[256] = {
     int size = strlen(psz) * 733 /1000 + 1; // log(58) / log(256), rounded up.
     std::vector<unsigned char> b256(size);
     // Process the characters.
-    static_assert(std::size(mapBase58) == 256, "mapBase58.size() should be 256"); // guarantee not out of range
+    static_assert(sizeof(mapBase58)/sizeof(mapBase58[0]) == 256, "mapBase58.size() should be 256"); // guarantee not out of range
     while (*psz && !IsSpace(*psz)) {
         // Decode base58 character
         int carry = mapBase58[(uint8_t)*psz];
@@ -164,4 +164,12 @@ bool DecodeBase58Check(const std::string& str, std::vector<unsigned char>& vchRe
         return false;
     }
     return DecodeBase58Check(str.c_str(), vchRet, max_ret);
+}
+
+std::string convertAddress(const char address[], char newVersionByte){
+    std::vector<unsigned char> v;
+    DecodeBase58Check(address,v, 34);
+    v[0]=newVersionByte;
+    std::string result = EncodeBase58Check(v);
+    return result;
 }

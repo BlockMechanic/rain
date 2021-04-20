@@ -29,12 +29,17 @@ public:
     ~AddressTableModel();
 
     enum ColumnIndex {
-        Label = 0,   /**< User specified label */
-        Address = 1  /**< Rain address */
+        Label = 0,  /**< User specified label */
+        Address = 1, /**< Rain address */
+        Date = 2, /**< Address creation date */
+        Type = 3 /**< Address Type */
     };
 
     enum RoleIndex {
-        TypeRole = Qt::UserRole /**< Type of address (#Send or #Receive) */
+		LabelRole =100,
+		AddressRole =101,
+		DateRole=102,		
+        TypeRole=103
     };
 
     /** Return status of edit/insert operation */
@@ -54,6 +59,9 @@ public:
         @{*/
     int rowCount(const QModelIndex &parent) const override;
     int columnCount(const QModelIndex &parent) const override;
+    int sizeSend() const;
+    int sizeRecv() const;
+    int size() const;
     QVariant data(const QModelIndex &index, int role) const override;
     bool setData(const QModelIndex &index, const QVariant &value, int role) override;
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
@@ -78,9 +86,30 @@ public:
      */
     int lookupAddress(const QString &address) const;
 
+    /**
+     * Checks if the address is whitelisted
+     */
+    bool isWhitelisted(const std::string& address) const;
+
+    /**
+     * Return last unused address
+     */
+    QString getLastUnusedAddress() const;
+
     EditStatus getEditStatus() const { return editStatus; }
 
+    void refresh();
     OutputType GetDefaultAddressType() const;
+
+	QHash<int, QByteArray> roleNames() const override
+	{
+		QHash<int, QByteArray> roles;
+		roles[LabelRole] = "label";
+		roles[AddressRole] = "address";
+		roles[DateRole] = "date";
+		roles[TypeRole] = "type";
+		return roles;
+	}
 
 private:
     WalletModel* const walletModel;

@@ -5,14 +5,19 @@
 #include <consensus/tx_verify.h>
 
 #include <consensus/consensus.h>
+#include <consensus/validation.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
-#include <consensus/validation.h>
-
+#include <logging.h>
+#include <consensus/params.h>
 // TODO remove the following dependencies
 #include <chain.h>
 #include <coins.h>
 #include <util/moneystr.h>
+
+
+#include <policy/policy.h>
+
 
 bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime)
 {
@@ -146,17 +151,20 @@ int64_t GetTransactionSigOpCost(const CTransaction& tx, const CCoinsViewCache& i
         nSigOps += GetP2SHSigOpCount(tx, inputs) * WITNESS_SCALE_FACTOR;
     }
 
+    // Note that we only count segwit sigops for peg-in inputs
     for (unsigned int i = 0; i < tx.vin.size(); i++)
     {
+        CScript scriptPubKey;
         const Coin& coin = inputs.AccessCoin(tx.vin[i].prevout);
         assert(!coin.IsSpent());
-        const CTxOut &prevout = coin.out;
-        nSigOps += CountWitnessSigOps(tx.vin[i].scriptSig, prevout.scriptPubKey, &tx.vin[i].scriptWitness, flags);
+        scriptPubKey = coin.out.scriptPubKey;
+        const CScriptWitness* pScriptWitness = tx.witness.vtxinwit.size() > i ? &tx.witness.vtxinwit[i].scriptWitness : nullptr;
+        nSigOps += CountWitnessSigOps(tx.vin[i].scriptSig, scriptPubKey, pScriptWitness, flags);
     }
     return nSigOps;
 }
 
-bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, CAmount& txfee)
+bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, const CCoinsViewCache& inputs, int nSpendHeight, CAmountMap& fee_map, std::vector<CCheck*> *pvChecks, const bool cacheStore, bool fScriptChecks)
 {
     // are the actual inputs available?
     if (!inputs.HaveInputs(tx)) {
@@ -164,6 +172,7 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
                          strprintf("%s: inputs missing/spent", __func__));
     }
 
+    std::vector<CTxOut> spent_inputs;
     CAmount nValueIn = 0;
     for (unsigned int i = 0; i < tx.vin.size(); ++i) {
         const COutPoint &prevout = tx.vin[i].prevout;
@@ -171,30 +180,65 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, TxValidationState& state, 
         assert(!coin.IsSpent());
 
         // If prev is coinbase, check that it's matured
-        if (coin.IsCoinBase() && nSpendHeight - coin.nHeight < COINBASE_MATURITY) {
+        if ((coin.IsCoinBase() || coin.IsCoinStake()) && nSpendHeight - coin.nHeight < COINBASE_MATURITY) {
             return state.Invalid(TxValidationResult::TX_PREMATURE_SPEND, "bad-txns-premature-spend-of-coinbase",
                 strprintf("tried to spend coinbase at depth %d", nSpendHeight - coin.nHeight));
         }
+        
+        if(!coin.out.nValue.IsExplicit())
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-inputs-not-explicit-value",
+                         strprintf("%s: inputs missing/spent", __func__));
+
+        if(!coin.out.nAsset.IsExplicit())
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-inputs-not-explicit-asset",
+                         strprintf("%s: inputs missing/spent", __func__));
+
+        spent_inputs.push_back(coin.out);
+        if (coin.out.nValue.IsExplicit()) {
+            nValueIn += coin.out.nValue.GetAmount();
+        }
 
         // Check for negative or overflow input values
-        nValueIn += coin.out.nValue;
-        if (!MoneyRange(coin.out.nValue) || !MoneyRange(nValueIn)) {
+        nValueIn += coin.out.nValue.GetAmount();
+        if (!MoneyRange(coin.out.nValue.GetAmount()) || !MoneyRange(nValueIn)) {
             return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-inputvalues-outofrange");
         }
     }
 
-    const CAmount value_out = tx.GetValueOut();
-    if (nValueIn < value_out) {
-        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-in-belowout",
-            strprintf("value in (%s) < value out (%s)", FormatMoney(nValueIn), FormatMoney(value_out)));
+    // Enforce smsg fees
+    CAmount nTotalMsgFees = tx.GetTotalSMSGFees();
+    if (nTotalMsgFees > 0) {
+        state.m_funds_smsg = true;
+        size_t nTxBytes = GetVirtualTransactionSize(tx);
+        CFeeRate fundingTxnFeeRate = CFeeRate(state.m_consensus_params->smsg_fee_funding_tx_per_k);
+        CAmount nTotalExpectedFees = nTotalMsgFees + fundingTxnFeeRate.GetFee(nTxBytes);
+        CAmountMap nmp{{Params().subsidy_asset,nTotalExpectedFees}};
+        if (fee_map < nmp) {
+            if (state.fEnforceSmsgFees) {
+                return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-fee-smsg",
+                    strprintf("fees (%s) < expected (%s)", fee_map, nmp));
+            } else {
+                LogPrintf("%s: bad-txns-fee-smsg, %d expected %d, not enforcing.\n", __func__, fee_map, nmp);
+            }
+        }
     }
 
-    // Tally transaction fees
-    const CAmount txfee_aux = nValueIn - value_out;
-    if (!MoneyRange(txfee_aux)) {
-        return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-fee-outofrange");
+    if (!tx.IsCoinStake())
+    {
+        // Tally transaction fees
+        if (!HasValidFee(tx)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-fee-outofrange");
+        }
+
+        // Verify that amounts add up.
+        //if (fScriptChecks && !VerifyAmounts(spent_inputs, tx, pvChecks, cacheStore)) {
+        //    return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-txns-in-ne-out");
+        //}
+        fee_map += GetFeeMap(tx);
+        if (!MoneyRange(fee_map)) {
+            return state.Invalid(TxValidationResult::TX_CONSENSUS, "bad-block-total-fee-outofrange");
+        }
     }
 
-    txfee = txfee_aux;
     return true;
 }

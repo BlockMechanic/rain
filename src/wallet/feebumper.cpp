@@ -81,7 +81,7 @@ static feebumper::Result CheckFeeRate(const CWallet& wallet, const CWalletTx& wt
 
     // Given old total fee and transaction size, calculate the old feeRate
     isminefilter filter = wallet.GetLegacyScriptPubKeyMan() && wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) ? ISMINE_WATCH_ONLY : ISMINE_SPENDABLE;
-    CAmount old_fee = wtx.GetDebit(filter) - wtx.tx->GetValueOut();
+    CAmount old_fee = (wtx.GetDebit(filter) - wtx.tx->GetValueOutMap())[wtx.tx->vout[0].nAsset.GetAsset()];
     const int64_t txSize = GetVirtualTransactionSize(*(wtx.tx));
     CFeeRate nOldFeeRate(old_fee, txSize);
     // Min total fee is old fee + relay fee
@@ -175,7 +175,7 @@ Result CreateRateBumpTransaction(CWallet& wallet, const uint256& txid, const CCo
     std::vector<CRecipient> recipients;
     for (const auto& output : wtx.tx->vout) {
         if (!wallet.IsChange(output)) {
-            CRecipient recipient = {output.scriptPubKey, output.nValue, false};
+            CRecipient recipient = {output.scriptPubKey, output.nValue.GetAmount(), output.nAsset.GetAsset(), CPubKey(), false};
             recipients.push_back(recipient);
         } else {
             CTxDestination change_dest;
@@ -185,12 +185,12 @@ Result CreateRateBumpTransaction(CWallet& wallet, const uint256& txid, const CCo
     }
 
     isminefilter filter = wallet.GetLegacyScriptPubKeyMan() && wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) ? ISMINE_WATCH_ONLY : ISMINE_SPENDABLE;
-    old_fee = wtx.GetDebit(filter) - wtx.tx->GetValueOut();
+    old_fee = (wtx.GetDebit(filter) - wtx.tx->GetValueOutMap())[wtx.tx->vout[0].nAsset.GetAsset()];
 
     if (coin_control.m_feerate) {
         // The user provided a feeRate argument.
         // We calculate this here to avoid compiler warning on the cs_wallet lock
-        const int64_t maxTxSize = CalculateMaximumSignedTxSize(*wtx.tx, &wallet).first;
+        const int64_t maxTxSize = CalculateMaximumSignedTxSize(*wtx.tx, &wallet);
         Result res = CheckFeeRate(wallet, wtx, *new_coin_control.m_feerate, maxTxSize, errors);
         if (res != Result::OK) {
             return res;
@@ -216,7 +216,7 @@ Result CreateRateBumpTransaction(CWallet& wallet, const uint256& txid, const CCo
     new_coin_control.m_min_depth = 1;
 
     CTransactionRef tx_new;
-    CAmount fee_ret;
+    CAmountMap fee_ret;
     int change_pos_in_out = -1; // No requested location for change
     bilingual_str fail_reason;
     FeeCalculation fee_calc_out;
@@ -226,7 +226,7 @@ Result CreateRateBumpTransaction(CWallet& wallet, const uint256& txid, const CCo
     }
 
     // Write back new fee if successful
-    new_fee = fee_ret;
+    new_fee = fee_ret[wtx.tx->vout[wtx.tx->vin[0].prevout.n].nAsset.GetAsset()];
 
     // Write back transaction
     mtx = CMutableTransaction(*tx_new);

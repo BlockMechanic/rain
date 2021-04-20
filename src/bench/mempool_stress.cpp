@@ -42,7 +42,7 @@ static void ComplexMemPool(benchmark::Bench& bench)
         CMutableTransaction tx = CMutableTransaction();
         tx.vin.resize(1);
         tx.vin[0].scriptSig = CScript() << CScriptNum(tx_counter);
-        tx.vin[0].scriptWitness.stack.push_back(CScriptNum(x).getvch());
+//        tx.vin[0].scriptWitness.stack.push_back(CScriptNum(x).getvch());
         tx.vout.resize(det_rand.randrange(10)+2);
         for (auto& out : tx.vout) {
             out.scriptPubKey = CScript() << CScriptNum(tx_counter) << OP_EQUAL;
@@ -64,7 +64,7 @@ static void ComplexMemPool(benchmark::Bench& bench)
                 tx.vin.emplace_back();
                 tx.vin.back().prevout = COutPoint(hash, coin.vin_left++);
                 tx.vin.back().scriptSig = CScript() << coin.tx_count;
-                tx.vin.back().scriptWitness.stack.push_back(CScriptNum(coin.tx_count).getvch());
+//                tx.vin.back().scriptWitness.stack.push_back(CScriptNum(coin.tx_count).getvch());
             }
             if (coin.vin_left == coin.ref->vin.size()) {
                 coin = available_coins.back();
@@ -79,7 +79,7 @@ static void ComplexMemPool(benchmark::Bench& bench)
         ordered_coins.emplace_back(MakeTransactionRef(tx));
         available_coins.emplace_back(ordered_coins.back(), tx_counter++);
     }
-    const auto testing_setup = MakeNoLogFileContext<const TestingSetup>(CBaseChainParams::MAIN);
+    TestingSetup test_setup;
     CTxMemPool pool;
     LOCK2(cs_main, pool.cs);
     bench.run([&]() NO_THREAD_SAFETY_ANALYSIS {

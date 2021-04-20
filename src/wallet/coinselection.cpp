@@ -3,12 +3,28 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <wallet/coinselection.h>
+#include <wallet/wallet.h>
 
 #include <policy/feerate.h>
 #include <util/system.h>
 #include <util/moneystr.h>
 
 #include <optional>
+
+CInputCoin::CInputCoin(const CWalletTx* wtx, unsigned int i) {
+    if (!wtx || !wtx->tx)
+        throw std::invalid_argument("tx should not be null");
+    if (i >= wtx->tx->vout.size())
+        throw std::out_of_range("The output index is out of range");
+
+    outpoint = COutPoint(wtx->tx->GetHash(), i);
+    txout = wtx->tx->vout[i];
+    effective_value = std::max<CAmount>(0, wtx->tx->vout[i].nValue.GetAmount());
+    value = wtx->tx->vout[i].nValue.GetAmount();
+    asset = wtx->tx->vout[i].nAsset.GetAsset();
+    bf_value = wtx->GetOutputAmountBlindingFactor(i);
+    bf_asset = wtx->GetOutputAssetBlindingFactor(i);
+}
 
 // Descending order comparator
 struct {
@@ -217,6 +233,59 @@ static void ApproximateBestSubset(const std::vector<OutputGroup>& groups, const 
     }
 }
 
+// ELEMENTS:
+bool KnapsackSolver(const CAmountMap& mapTargetValue, std::vector<OutputGroup>& groups, std::set<CInputCoin>& setCoinsRet, CAmountMap& mapValueRet) {
+    setCoinsRet.clear();
+    mapValueRet.clear();
+    std::vector<OutputGroup> inner_groups;
+    std::set<CInputCoin> inner_coinsret;
+    // Perform the standard Knapsack solver for every asset individually.
+    for(std::map<CAsset, CAmount>::const_iterator it = mapTargetValue.begin(); it != mapTargetValue.end(); ++it) {
+        inner_groups.clear();
+        inner_coinsret.clear();
+
+        if (it->second == 0) {
+            continue;
+        }
+
+        // We filter the groups on two conditions:
+        // - only groups that have (exclusively) coins of the asset we're solving for
+        // - no groups that are already used in setCoinsRet
+        for (const OutputGroup& g : groups) {
+            bool add = true;
+            for (const CInputCoin& c : g.m_outputs) {
+                if (setCoinsRet.find(c) != setCoinsRet.end()) {
+                    add = false;
+                    break;
+                }
+
+                if (c.asset != it->first) {
+                    add = false;
+                    break;
+                }
+            }
+
+            if (add) {
+                inner_groups.push_back(g);
+            }
+        }
+        if (inner_groups.size() == 0) {
+            // No output groups for this asset.
+            return false;
+        }
+        CAmount outValue;
+        if (!KnapsackSolver(it->second, inner_groups, inner_coinsret, outValue)) {
+            return false;
+        }
+        mapValueRet[it->first] = outValue;
+        for (const CInputCoin& ic : inner_coinsret) {
+            setCoinsRet.insert(ic);
+        }
+    }
+
+    return true;
+}
+
 bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& groups, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet)
 {
     setCoinsRet.clear();
@@ -304,7 +373,7 @@ bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& group
 void OutputGroup::Insert(const CInputCoin& output, int depth, bool from_me, size_t ancestors, size_t descendants, bool positive_only) {
     // Compute the effective value first
     const CAmount coin_fee = output.m_input_bytes < 0 ? 0 : m_effective_feerate.GetFee(output.m_input_bytes);
-    const CAmount ev = output.txout.nValue - coin_fee;
+    const CAmount ev = output.txout.nValue.GetAmount() - coin_fee;
 
     // Filter for positive only here before adding the coin
     if (positive_only && ev <= 0) return;
@@ -322,7 +391,7 @@ void OutputGroup::Insert(const CInputCoin& output, int depth, bool from_me, size
     effective_value += coin.effective_value;
 
     m_from_me &= from_me;
-    m_value += output.txout.nValue;
+    m_value += output.txout.nValue.GetAmount();
     m_depth = std::min(m_depth, depth);
     // ancestors here express the number of ancestors the new coin will end up having, which is
     // the sum, rather than the max; this will overestimate in the cases where multiple inputs
@@ -331,6 +400,15 @@ void OutputGroup::Insert(const CInputCoin& output, int depth, bool from_me, size
     // descendants is the count as seen from the top ancestor, not the descendants as seen from the
     // coin itself; thus, this value is counted as the max, not the sum
     m_descendants = std::max(m_descendants, descendants);
+}
+
+std::vector<CInputCoin>::iterator OutputGroup::Discard(const CInputCoin& output) {
+    auto it = m_outputs.begin();
+    while (it != m_outputs.end() && it->outpoint != output.outpoint) ++it;
+    if (it == m_outputs.end()) return it;
+    m_value -= output.effective_value;
+    effective_value -= output.effective_value;
+    return m_outputs.erase(it);
 }
 
 bool OutputGroup::EligibleForSpending(const CoinEligibilityFilter& eligibility_filter) const

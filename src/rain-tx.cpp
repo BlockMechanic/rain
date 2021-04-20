@@ -287,8 +287,14 @@ static void MutateTxAddOutAddr(CMutableTransaction& tx, const std::string& strIn
     }
     CScript scriptPubKey = GetScriptForDestination(destination);
 
+    // extract and validate ASSET
+    CAsset asset = CAsset(uint256S(vStrInputParts[2]));
+    if (asset.IsNull()) {
+        throw std::runtime_error("invalid TX output asset type");
+    }
+
     // construct TxOut, append to transaction output list
-    CTxOut txout(value, scriptPubKey);
+    CTxOut txout(asset, value, scriptPubKey);
     tx.vout.push_back(txout);
 }
 
@@ -332,7 +338,7 @@ static void MutateTxAddOutPubKey(CMutableTransaction& tx, const std::string& str
     }
 
     // construct TxOut, append to transaction output list
-    CTxOut txout(value, scriptPubKey);
+    CTxOut txout(CAsset(), value, scriptPubKey);
     tx.vout.push_back(txout);
 }
 
@@ -406,7 +412,7 @@ static void MutateTxAddOutMultiSig(CMutableTransaction& tx, const std::string& s
     }
 
     // construct TxOut, append to transaction output list
-    CTxOut txout(value, scriptPubKey);
+    CTxOut txout(CAsset(), value, scriptPubKey);
     tx.vout.push_back(txout);
 }
 
@@ -433,7 +439,7 @@ static void MutateTxAddOutData(CMutableTransaction& tx, const std::string& strIn
 
     std::vector<unsigned char> data = ParseHex(strData);
 
-    CTxOut txout(value, CScript() << OP_RETURN << data);
+    CTxOut txout(CAsset(), value, CScript() << OP_RETURN << data);
     tx.vout.push_back(txout);
 }
 
@@ -478,7 +484,7 @@ static void MutateTxAddOutScript(CMutableTransaction& tx, const std::string& str
     }
 
     // construct TxOut, append to transaction output list
-    CTxOut txout(value, scriptPubKey);
+    CTxOut txout(Params().GetConsensus().subsidy_asset, CConfidentialValue(value), scriptPubKey);
     tx.vout.push_back(txout);
 }
 
@@ -648,14 +654,15 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
             continue;
         }
         const CScript& prevPubKey = coin.out.scriptPubKey;
-        const CAmount& amount = coin.out.nValue;
+        const CConfidentialValue& amount = coin.out.nValue;
 
         SignatureData sigdata = DataFromTransaction(mergedTx, i, coin.out);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
         if (!fHashSingle || (i < mergedTx.vout.size()))
             ProduceSignature(keystore, MutableTransactionSignatureCreator(&mergedTx, i, amount, nHashType), prevPubKey, sigdata);
 
-        UpdateInput(txin, sigdata);
+        UpdateTransaction(mergedTx, i, sigdata);
+
     }
 
     tx = mergedTx;
@@ -725,7 +732,7 @@ static void MutateTx(CMutableTransaction& tx, const std::string& command,
 static void OutputTxJSON(const CTransaction& tx)
 {
     UniValue entry(UniValue::VOBJ);
-    TxToUniv(tx, uint256(), /* include_addresses */ false, entry);
+    TxToUniv(tx, uint256(), entry);
 
     std::string jsonOutput = entry.write(4);
     tfm::format(std::cout, "%s\n", jsonOutput);

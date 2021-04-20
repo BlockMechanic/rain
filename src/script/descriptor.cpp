@@ -6,6 +6,7 @@
 
 #include <key_io.h>
 #include <pubkey.h>
+#include <script/miniscript.h>
 #include <script/script.h>
 #include <script/standard.h>
 
@@ -180,7 +181,7 @@ public:
     /** Get the descriptor string form including private data (if available in arg). */
     virtual bool ToPrivateString(const SigningProvider& arg, std::string& out) const = 0;
 
-    /** Get the descriptor string form with the xpub at the last hardened derivation */
+    /** Derive a private key, if private data is available in arg. */
     virtual bool ToNormalizedString(const SigningProvider& arg, std::string& out, bool priv) const = 0;
 
     /** Derive a private key, if private data is available in arg. */
@@ -472,15 +473,26 @@ public:
     }
 };
 
+/** Helper to convert keys in descriptors to strings, optionally with access to private keys. */
+bool KeyToString(const SigningProvider* arg, std::string& out, bool priv, const PubkeyProvider& key)
+{
+    if (priv) {
+        if (!key.ToPrivateString(*arg, out)) return false;
+    } else {
+        out = key.ToString();
+    }
+    return true;
+}
+
 /** Base class for all Descriptor implementations. */
 class DescriptorImpl : public Descriptor
 {
+protected:
     //! Public key arguments for this descriptor (size 1 for PK, PKH, WPKH; any size for Multisig).
     const std::vector<std::unique_ptr<PubkeyProvider>> m_pubkey_args;
     //! The string name of the descriptor function.
     const std::string m_name;
 
-protected:
     //! The sub-descriptor argument (nullptr for everything but SH and WSH).
     //! In doc/descriptors.m this is referred to as SCRIPT expressions sh(SCRIPT)
     //! and wsh(SCRIPT), and distinct from KEY expressions and ADDR expressions.
@@ -501,30 +513,7 @@ protected:
      *  @return A vector with scriptPubKeys for this descriptor.
      */
     virtual std::vector<CScript> MakeScripts(const std::vector<CPubKey>& pubkeys, const CScript* script, FlatSigningProvider& out) const = 0;
-
-public:
-    DescriptorImpl(std::vector<std::unique_ptr<PubkeyProvider>> pubkeys, std::unique_ptr<DescriptorImpl> script, const std::string& name) : m_pubkey_args(std::move(pubkeys)), m_name(name), m_subdescriptor_arg(std::move(script)) {}
-
-    bool IsSolvable() const override
-    {
-        if (m_subdescriptor_arg) {
-            if (!m_subdescriptor_arg->IsSolvable()) return false;
-        }
-        return true;
-    }
-
-    bool IsRange() const final
-    {
-        for (const auto& pubkey : m_pubkey_args) {
-            if (pubkey->IsRange()) return true;
-        }
-        if (m_subdescriptor_arg) {
-            if (m_subdescriptor_arg->IsRange()) return true;
-        }
-        return false;
-    }
-
-    bool ToStringHelper(const SigningProvider* arg, std::string& out, bool priv, bool normalized) const
+    virtual bool ToStringHelper(const SigningProvider* arg, std::string& out, bool priv, bool normalized) const
     {
         std::string extra = ToStringExtra();
         size_t pos = extra.size() > 0 ? 1 : 0;
@@ -549,6 +538,28 @@ public:
         }
         out = std::move(ret) + ")";
         return true;
+    }
+
+public:
+    DescriptorImpl(std::vector<std::unique_ptr<PubkeyProvider>> pubkeys, std::unique_ptr<DescriptorImpl> script, const std::string& name) : m_pubkey_args(std::move(pubkeys)), m_name(name), m_subdescriptor_arg(std::move(script)) {}
+
+    bool IsSolvable() const override
+    {
+        if (m_subdescriptor_arg) {
+            if (!m_subdescriptor_arg->IsSolvable()) return false;
+        }
+        return true;
+    }
+
+    bool IsRange() const final
+    {
+        for (const auto& pubkey : m_pubkey_args) {
+            if (pubkey->IsRange()) return true;
+        }
+        if (m_subdescriptor_arg) {
+            if (m_subdescriptor_arg->IsRange()) return true;
+        }
+        return false;
     }
 
     std::string ToString() const final
@@ -804,6 +815,42 @@ public:
     bool IsSingleType() const final { return true; }
 };
 
+/* We instantiate Miniscript here with a simple integer as key type.
+ * The value of these key integers are an index in the
+ * DescriptorImpl::m_pubkey_args vector.
+ */
+
+class ScriptMaker {
+    const std::vector<CPubKey>& m_keys;
+public:
+    ScriptMaker(const std::vector<CPubKey>& keys) : m_keys(keys) {}
+    std::vector<unsigned char> ToPKBytes(uint32_t key) const { return {m_keys[key].begin(), m_keys[key].end()}; }
+    std::vector<unsigned char> ToPKHBytes(uint32_t key) const { auto id = m_keys[key].GetID(); return {id.begin(), id.end()}; }
+};
+
+class StringMaker {
+    const SigningProvider* m_arg;
+    const std::vector<std::unique_ptr<PubkeyProvider>>& m_pubkeys;
+    bool m_private;
+public:
+    StringMaker(const SigningProvider* arg, const std::vector<std::unique_ptr<PubkeyProvider>>& pubkeys, bool priv) : m_arg(arg), m_pubkeys(pubkeys), m_private(priv) {}
+    bool ToString(uint32_t key, std::string& ret) const { return KeyToString(m_arg, ret, m_private, *m_pubkeys[key]); }
+};
+
+class MiniscriptDescriptor final : public DescriptorImpl
+{
+private:
+    miniscript::NodeRef<uint32_t> m_node;
+protected:
+    std::vector<CScript> MakeScripts(const std::vector<CPubKey>& keys, const CScript* script, FlatSigningProvider&) const override { return Vector(m_node->ToScript(ScriptMaker(keys))); }
+public:
+    bool ToStringHelper(const SigningProvider* arg, std::string& out, bool priv, bool normalize) const override { return m_node->ToString(StringMaker(arg, m_pubkey_args, priv), out); }
+    bool IsSolvable() const override { return false; } // For now, mark these descriptors as non-solvable (as we don't have signing logic for them).
+    bool IsSingleType() const final { return true; }
+    MiniscriptDescriptor(std::vector<std::unique_ptr<PubkeyProvider>> providers, miniscript::NodeRef<uint32_t> node) : DescriptorImpl(std::move(providers), {}, "?"), m_node(std::move(node)) {}
+
+};
+
 ////////////////////////////////////////////////////////////////////////////
 // Parser                                                                 //
 ////////////////////////////////////////////////////////////////////////////
@@ -935,6 +982,58 @@ std::unique_ptr<PubkeyProvider> ParsePubkey(uint32_t key_exp_index, const Span<c
     return std::make_unique<OriginPubkeyProvider>(key_exp_index, std::move(info), std::move(provider));
 }
 
+std::unique_ptr<PubkeyProvider> InferPubkey(const CPubKey& pubkey, ParseScriptContext, const SigningProvider& provider)
+{
+    std::unique_ptr<PubkeyProvider> key_provider = std::make_unique<ConstPubkeyProvider>(0, pubkey);
+    KeyOriginInfo info;
+    if (provider.GetKeyOrigin(pubkey.GetID(), info)) {
+        return std::make_unique<OriginPubkeyProvider>(0, std::move(info), std::move(key_provider));
+    }
+    return key_provider;
+}
+
+struct KeyParser {
+    using Key = uint32_t;
+    FlatSigningProvider* m_out;
+    const SigningProvider* m_in;
+    mutable std::vector<std::unique_ptr<PubkeyProvider>> m_keys;
+    mutable std::string m_error;
+    KeyParser(FlatSigningProvider* out, const SigningProvider* in) : m_out(out), m_in(in) {}
+    template<typename I> bool FromString(I begin, I end, uint32_t& key) const
+    {
+        assert(m_out);
+        auto pk = ParsePubkey(0, Span<const char>(&*begin, &*end), false, *m_out, m_error);
+        key = m_keys.size();
+        m_keys.push_back(std::move(pk));
+        return true; // Return success even when key parsing fails; m_error will be checked instead.
+    }
+    template<typename I> bool FromPKBytes(I begin, I end, uint32_t& key) const
+    {
+        assert(m_in);
+        CPubKey pubkey(begin, end);
+        if (pubkey.IsValid()) {
+            key = m_keys.size();
+            m_keys.push_back(InferPubkey(pubkey, ParseScriptContext::P2WSH, *m_in));
+            return true;
+        }
+        return false;
+    }
+    template<typename I> bool FromPKHBytes(I begin, I end, uint32_t& key) const
+    {
+        assert(end - begin == 20);
+        assert(m_in);
+        uint160 hash(std::vector<unsigned char>(begin, end));
+        CKeyID keyid(hash);
+        CPubKey pubkey;
+        if (m_in->GetPubKey(keyid, pubkey)) {
+            key = m_keys.size();
+            m_keys.push_back(InferPubkey(pubkey, ParseScriptContext::P2WSH, *m_in));
+            return true;
+        }
+        return false;
+    }
+};
+
 /** Parse a script in a particular context. */
 std::unique_ptr<DescriptorImpl> ParseScript(uint32_t key_exp_index, Span<const char>& sp, ParseScriptContext ctx, FlatSigningProvider& out, std::string& error)
 {
@@ -1046,6 +1145,54 @@ std::unique_ptr<DescriptorImpl> ParseScript(uint32_t key_exp_index, Span<const c
         auto bytes = ParseHex(str);
         return std::make_unique<RawDescriptor>(CScript(bytes.begin(), bytes.end()));
     }
+    // Process miniscript expressions.
+    {
+        KeyParser parser(&out, nullptr);
+        auto node = miniscript::FromString(std::string(expr.begin(), expr.end()), parser);
+        if (node) {
+            if (ctx != ParseScriptContext::P2WSH) {
+                error = "Miniscript expressions can only be used in wsh";
+                return nullptr;
+            }
+            if (parser.m_error != "") {
+                error = std::move(parser.m_error);
+                return nullptr;
+            }
+            // If invalid/malleable, recurse down to find a minimal subexpression with that property (better error reporting).
+            while (!node->IsValid() || !node->IsNonMalleable()) {
+                bool found_invalid_sub = false;
+                for (const auto& sub : node->subs) {
+                    if (!sub->IsValid() || !node->IsNonMalleable()) {
+                        node = sub;
+                        found_invalid_sub = true;
+                        break;
+                    }
+                }
+                if (!found_invalid_sub) {
+                    std::string err;
+                    node->ToString(StringMaker(nullptr, parser.m_keys, false), err);
+                    if (!node->IsValid()) {
+                        error = "Miniscript expression '" + std::move(err) + "' is invalid";
+                    } else {
+                        error = "miniscript expression '" + std::move(err) + "' needs malleable witnesses";
+                    }
+                    return nullptr;
+                }
+            }
+            // Additional requirements only checked at the top level.
+            if (!node->IsValidTopLevel()) {
+                error = "Miniscript expression is only valid as subexpression";
+                return nullptr;
+            } else if (!node->NeedsSignature()) {
+                error = "Miniscript expression is insecure: witnesses without signature exist";
+                return nullptr;
+            } else if (!node->IsSafeTopLevel()) {
+                error = "Miniscript expression needs witnesses that may exceed resource limits";
+                return nullptr;
+            }
+            return std::make_unique<MiniscriptDescriptor>(std::move(parser.m_keys), std::move(node));
+        }
+    }
     if (ctx == ParseScriptContext::P2SH) {
         error = "A function is needed within P2SH";
         return nullptr;
@@ -1057,15 +1204,6 @@ std::unique_ptr<DescriptorImpl> ParseScript(uint32_t key_exp_index, Span<const c
     return nullptr;
 }
 
-std::unique_ptr<PubkeyProvider> InferPubkey(const CPubKey& pubkey, ParseScriptContext, const SigningProvider& provider)
-{
-    std::unique_ptr<PubkeyProvider> key_provider = std::make_unique<ConstPubkeyProvider>(0, pubkey);
-    KeyOriginInfo info;
-    if (provider.GetKeyOrigin(pubkey.GetID(), info)) {
-        return std::make_unique<OriginPubkeyProvider>(0, std::move(info), std::move(key_provider));
-    }
-    return key_provider;
-}
 
 std::unique_ptr<DescriptorImpl> InferScript(const CScript& script, ParseScriptContext ctx, const SigningProvider& provider)
 {
@@ -1118,6 +1256,14 @@ std::unique_ptr<DescriptorImpl> InferScript(const CScript& script, ParseScriptCo
         if (provider.GetCScript(scriptid, subscript)) {
             auto sub = InferScript(subscript, ParseScriptContext::P2WSH, provider);
             if (sub) return std::make_unique<WSHDescriptor>(std::move(sub));
+        }
+    }
+
+    if (ctx == ParseScriptContext::P2WSH) {
+        KeyParser parser(nullptr, &provider);
+        auto node = miniscript::FromScript(script, parser);
+        if (node && node->IsSafeTopLevel()) {
+            return std::make_unique<MiniscriptDescriptor>(std::move(parser.m_keys), std::move(node));
         }
     }
 

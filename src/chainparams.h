@@ -14,6 +14,11 @@
 #include <memory>
 #include <vector>
 
+struct SeedSpec6 {
+    uint8_t addr[16];
+    uint16_t port;
+};
+
 typedef std::map<int, uint256> MapCheckpoints;
 
 struct CCheckpointData {
@@ -59,7 +64,10 @@ struct ChainTxData {
 
 /**
  * CChainParams defines various tweakable parameters of a given instance of the
- * Rain system.
+ * Rain system. There are three: the main network on which people trade goods
+ * and services, the public test network which gets reset from time to time and
+ * a regression test mode which is intended for private networks only. It has
+ * minimal difficulty to ensure that blocks can be found instantly.
  */
 class CChainParams
 {
@@ -70,19 +78,25 @@ public:
         SECRET_KEY,
         EXT_PUBLIC_KEY,
         EXT_SECRET_KEY,
-
+        BLINDED_ADDRESS,
         MAX_BASE58_TYPES
     };
 
     const Consensus::Params& GetConsensus() const { return consensus; }
     const CMessageHeader::MessageStartChars& MessageStart() const { return pchMessageStart; }
-    uint16_t GetDefaultPort() const { return nDefaultPort; }
+    int GetDefaultPort() const { return nDefaultPort; }
+
+    int64_t GetMaxSmsgFeeRateDelta(int64_t smsg_fee_prev) const;
 
     const CBlock& GenesisBlock() const { return genesis; }
     /** Default value for -checkmempool and -checkblockindex argument */
     bool DefaultConsistencyChecks() const { return fDefaultConsistencyChecks; }
     /** Policy: Filter transactions that do not match well-defined patterns */
     bool RequireStandard() const { return fRequireStandard; }
+    /** returns the coinstake maturity (min depth required) **/
+    int COINSTAKE_MIN_AGE() const { return nStakeMinAge; }
+    int COINSTAKE_MAX_AGE() const { return nStakeMaxAge; }
+
     /** If this chain is exclusively used for testing */
     bool IsTestChain() const { return m_is_test_chain; }
     /** If this chain allows time to be mocked */
@@ -100,7 +114,8 @@ public:
     const std::vector<std::string>& DNSSeeds() const { return vSeeds; }
     const std::vector<unsigned char>& Base58Prefix(Base58Type type) const { return base58Prefixes[type]; }
     const std::string& Bech32HRP() const { return bech32_hrp; }
-    const std::vector<uint8_t>& FixedSeeds() const { return vFixedSeeds; }
+    const std::string& Blech32HRP() const { return blech32_hrp; }
+    const std::vector<SeedSpec6>& FixedSeeds() const { return vFixedSeeds; }
     const CCheckpointData& Checkpoints() const { return checkpointData; }
 
     //! Get allowed assumeutxo configuration.
@@ -113,16 +128,19 @@ protected:
 
     Consensus::Params consensus;
     CMessageHeader::MessageStartChars pchMessageStart;
-    uint16_t nDefaultPort;
+    int nDefaultPort;
+    int nStakeMinAge;
+    int nStakeMaxAge;
     uint64_t nPruneAfterHeight;
     uint64_t m_assumed_blockchain_size;
     uint64_t m_assumed_chain_state_size;
     std::vector<std::string> vSeeds;
     std::vector<unsigned char> base58Prefixes[MAX_BASE58_TYPES];
     std::string bech32_hrp;
+    std::string blech32_hrp;
     std::string strNetworkID;
     CBlock genesis;
-    std::vector<uint8_t> vFixedSeeds;
+    std::vector<SeedSpec6> vFixedSeeds;
     bool fDefaultConsistencyChecks;
     bool fRequireStandard;
     bool m_is_test_chain;

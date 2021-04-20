@@ -16,6 +16,7 @@
 #include <chain.h>
 #include <chainparams.h>
 #include <compat/sanity.h>
+#include <consensus/validation.h>
 #include <fs.h>
 #include <hash.h>
 #include <httprpc.h>
@@ -31,7 +32,6 @@
 #include <net_permissions.h>
 #include <net_processing.h>
 #include <netbase.h>
-#include <node/blockstorage.h>
 #include <node/context.h>
 #include <node/ui_interface.h>
 #include <policy/feerate.h>
@@ -52,7 +52,6 @@
 #include <torcontrol.h>
 #include <txdb.h>
 #include <txmempool.h>
-#include <txorphanage.h>
 #include <util/asmap.h>
 #include <util/check.h>
 #include <util/moneystr.h>
@@ -61,7 +60,12 @@
 #include <util/threadnames.h>
 #include <util/translation.h>
 #include <validation.h>
+
 #include <validationinterface.h>
+#include <smsg/smessage.h>
+#ifdef ENABLE_WALLET
+#include <wallet/wallet.h>
+#endif
 #include <walletinitinterface.h>
 
 #include <functional>
@@ -89,6 +93,7 @@
 
 static const bool DEFAULT_PROXYRANDOMIZE = true;
 static const bool DEFAULT_REST_ENABLE = false;
+static const bool DEFAULT_STOPAFTERBLOCKIMPORT = false;
 
 #ifdef WIN32
 // Win32 LevelDB doesn't use filedescriptors, and the ones used for
@@ -153,6 +158,8 @@ static fs::path GetPidFile(const ArgsManager& args)
 
 static std::unique_ptr<ECCVerifyHandle> globalVerifyHandle;
 
+static std::thread g_load_block;
+
 void Interrupt(NodeContext& node)
 {
     InterruptHTTPServer();
@@ -188,6 +195,7 @@ void Shutdown(NodeContext& node)
     StopREST();
     StopRPC();
     StopHTTPServer();
+    smsgModule.Shutdown();
     for (const auto& client : node.chain_clients) {
         client->flush();
     }
@@ -213,10 +221,11 @@ void Shutdown(NodeContext& node)
 
     StopTorControl();
 
+    DumpAssets();
     // After everything has been shut down, but before things get flushed, stop the
     // CScheduler/checkqueue, scheduler and load block thread.
     if (node.scheduler) node.scheduler->stop();
-    if (node.chainman && node.chainman->m_load_block.joinable()) node.chainman->m_load_block.join();
+    if (g_load_block.joinable()) g_load_block.join();
     StopScriptCheckWorkerThreads();
 
     // After the threads that potentially access these pointers have been stopped,
@@ -224,7 +233,6 @@ void Shutdown(NodeContext& node)
     node.peerman.reset();
     node.connman.reset();
     node.banman.reset();
-    node.addrman.reset();
 
     if (node.mempool && node.mempool->IsLoaded() && node.args->GetArg("-persistmempool", DEFAULT_PERSIST_MEMPOOL)) {
         DumpMempool(*node.mempool);
@@ -270,6 +278,9 @@ void Shutdown(NodeContext& node)
             }
         }
         pblocktree.reset();
+        passetsdb.reset();
+        delete passetsCache;
+        passetsCache = nullptr;
     }
     for (const auto& client : node.chain_clients) {
         client->stop();
@@ -384,7 +395,6 @@ void SetupServerArgs(NodeContext& node)
 #endif
     argsman.AddArg("-assumevalid=<hex>", strprintf("If this block is in the chain assume that it and its ancestors are valid and potentially skip their script verification (0 to verify all, default: %s, testnet: %s, signet: %s)", defaultChainParams->GetConsensus().defaultAssumeValid.GetHex(), testnetChainParams->GetConsensus().defaultAssumeValid.GetHex(), signetChainParams->GetConsensus().defaultAssumeValid.GetHex()), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-blocksdir=<dir>", "Specify directory to hold blocks subdirectory for *.dat files (default: <datadir>)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-fastprune", "Use smaller block files and lower minimum prune height for testing purposes", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
 #if HAVE_SYSTEM
     argsman.AddArg("-blocknotify=<cmd>", "Execute command when the best block changes (%s in cmd is replaced by block hash)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 #endif
@@ -445,9 +455,7 @@ void SetupServerArgs(NodeContext& node)
     argsman.AddArg("-maxtimeadjustment", strprintf("Maximum allowed median peer time offset adjustment. Local perspective of time may be influenced by peers forward or backward by this amount. (default: %u seconds)", DEFAULT_MAX_TIME_ADJUSTMENT), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-maxuploadtarget=<n>", strprintf("Tries to keep outbound traffic under the given target (in MiB per 24h). Limit does not apply to peers with 'download' permission. 0 = no limit (default: %d)", DEFAULT_MAX_UPLOAD_TARGET), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-onion=<ip:port>", "Use separate SOCKS5 proxy to reach peers via Tor onion services, set -noonion to disable (default: -proxy)", ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
-    argsman.AddArg("-i2psam=<ip:port>", "I2P SAM proxy to reach I2P peers and accept I2P connections (default: none)", ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
-    argsman.AddArg("-i2pacceptincoming", "If set and -i2psam is also set then incoming I2P connections are accepted via the SAM proxy. If this is not set but -i2psam is set then only outgoing connections will be made to the I2P network. Ignored if -i2psam is not set. Listening for incoming I2P connections is done through the SAM proxy, not by binding to a local address and port (default: 1)", ArgsManager::ALLOW_BOOL, OptionsCategory::CONNECTION);
-    argsman.AddArg("-onlynet=<net>", "Make outgoing connections only through network <net> (" + Join(GetNetworkNames(), ", ") + "). Incoming connections are not affected by this option. This option can be specified multiple times to allow multiple networks. Warning: if it is used with non-onion networks and the -onion or -proxy option is set, then outbound onion connections will still be made; use -noonion or -onion=0 to disable outbound onion connections in this case.", ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
+    argsman.AddArg("-onlynet=<net>", "Make outgoing connections only through network <net> (" + Join(GetNetworkNames(), ", ") + "). Incoming connections are not affected by this option. This option can be specified multiple times to allow multiple networks. Warning: if it is used with ipv4 or ipv6 but not onion and the -onion or -proxy option is set, then outbound onion connections will still be made; use -noonion or -onion=0 to disable outbound onion connections in this case.", ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-peerbloomfilters", strprintf("Support filtering of blocks and transaction with bloom filters (default: %u)", DEFAULT_PEERBLOOMFILTERS), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-peerblockfilters", strprintf("Serve compact block filters to peers per BIP 157 (default: %u)", DEFAULT_PEERBLOCKFILTERS), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
     argsman.AddArg("-permitbaremultisig", strprintf("Relay non-P2SH multisig (default: %u)", DEFAULT_PERMIT_BAREMULTISIG), ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
@@ -482,6 +490,8 @@ void SetupServerArgs(NodeContext& node)
         "CIDR-notated network (e.g. 1.2.3.0/24). Uses the same permissions as "
         "-whitebind. Can be specified multiple times." , ArgsManager::ALLOW_ANY, OptionsCategory::CONNECTION);
 
+    smsg::AddOptions(argsman);
+
     g_wallet_init_interface.AddWalletOptions(argsman);
 
 #if ENABLE_ZMQ
@@ -495,6 +505,7 @@ void SetupServerArgs(NodeContext& node)
     argsman.AddArg("-zmqpubrawblockhwm=<n>", strprintf("Set publish raw block outbound message high water mark (default: %d)", CZMQAbstractNotifier::DEFAULT_ZMQ_SNDHWM), ArgsManager::ALLOW_ANY, OptionsCategory::ZMQ);
     argsman.AddArg("-zmqpubrawtxhwm=<n>", strprintf("Set publish raw transaction outbound message high water mark (default: %d)", CZMQAbstractNotifier::DEFAULT_ZMQ_SNDHWM), ArgsManager::ALLOW_ANY, OptionsCategory::ZMQ);
     argsman.AddArg("-zmqpubsequencehwm=<n>", strprintf("Set publish hash sequence message high water mark (default: %d)", CZMQAbstractNotifier::DEFAULT_ZMQ_SNDHWM), ArgsManager::ALLOW_ANY, OptionsCategory::ZMQ);
+    argsman.AddArg("-zmqpubsmsg=<address>", "Enable publish secure message in <address>", ArgsManager::ALLOW_ANY, OptionsCategory::ZMQ);
 #else
     hidden_args.emplace_back("-zmqpubhashblock=<address>");
     hidden_args.emplace_back("-zmqpubhashtx=<address>");
@@ -506,6 +517,7 @@ void SetupServerArgs(NodeContext& node)
     hidden_args.emplace_back("-zmqpubrawblockhwm=<n>");
     hidden_args.emplace_back("-zmqpubrawtxhwm=<n>");
     hidden_args.emplace_back("-zmqpubsequencehwm=<n>");
+    hidden_args.emplace_back("-zmqpubsmsg=<address>");
 #endif
 
     argsman.AddArg("-checkblocks=<n>", strprintf("How many blocks to check at startup (default: %u, 0 = all)", DEFAULT_CHECKBLOCKS), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
@@ -533,7 +545,6 @@ void SetupServerArgs(NodeContext& node)
 #else
     hidden_args.emplace_back("-logthreadnames");
 #endif
-    argsman.AddArg("-logsourcelocations", strprintf("Prepend debug output with name of the originating source location (source file, line number and function name) (default: %u)", DEFAULT_LOGSOURCELOCATIONS), ArgsManager::ALLOW_ANY, OptionsCategory::DEBUG_TEST);
     argsman.AddArg("-logtimemicros", strprintf("Add microsecond precision to debug timestamps (default: %u)", DEFAULT_LOGTIMEMICROS), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
     argsman.AddArg("-mocktime=<n>", "Replace actual time with " + UNIX_EPOCH_TIME + " (default: 0)", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
     argsman.AddArg("-maxsigcachesize=<n>", strprintf("Limit sum of signature cache and script execution cache sizes to <n> MiB (default: %u)", DEFAULT_MAX_SIG_CACHE_SIZE), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
@@ -561,6 +572,13 @@ void SetupServerArgs(NodeContext& node)
     argsman.AddArg("-blockmintxfee=<amt>", strprintf("Set lowest fee rate (in %s/kB) for transactions to be included in block creation. (default: %s)", CURRENCY_UNIT, FormatMoney(DEFAULT_BLOCK_MIN_TX_FEE)), ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
     argsman.AddArg("-blockversion=<n>", "Override block version to test forking scenarios", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::BLOCK_CREATION);
 
+    argsman.AddArg("-debugstake", "debug stake", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
+    argsman.AddArg("-printcoinage", "print coinage", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
+    argsman.AddArg("-printcreation", "print new coins", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
+    argsman.AddArg("-staking", "enable stake", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
+    argsman.AddArg("-emergencystaking", "enable emergencystaking", ArgsManager::ALLOW_ANY, OptionsCategory::BLOCK_CREATION);
+
+
     argsman.AddArg("-rest", strprintf("Accept public REST requests (default: %u)", DEFAULT_REST_ENABLE), ArgsManager::ALLOW_ANY, OptionsCategory::RPC);
     argsman.AddArg("-rpcallowip=<ip>", "Allow JSON-RPC connections from specified source. Valid for <ip> are a single IP (e.g. 1.2.3.4), a network/netmask (e.g. 1.2.3.4/255.255.255.0) or a network/CIDR (e.g. 1.2.3.4/24). This option can be specified multiple times", ArgsManager::ALLOW_ANY, OptionsCategory::RPC);
     argsman.AddArg("-rpcauth=<userpw>", "Username and HMAC-SHA-256 hashed password for JSON-RPC connections. The field <userpw> comes in the format: <USERNAME>:<SALT>$<HASH>. A canonical python script is included in share/rpcauth. The client then connects normally using the rpcuser=<USERNAME>/rpcpassword=<PASSWORD> pair of arguments. This option can be specified multiple times", ArgsManager::ALLOW_ANY | ArgsManager::SENSITIVE, OptionsCategory::RPC);
@@ -577,12 +595,10 @@ void SetupServerArgs(NodeContext& node)
     argsman.AddArg("-rpcworkqueue=<n>", strprintf("Set the depth of the work queue to service RPC calls (default: %d)", DEFAULT_HTTP_WORKQUEUE), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::RPC);
     argsman.AddArg("-server", "Accept command line and JSON-RPC commands", ArgsManager::ALLOW_ANY, OptionsCategory::RPC);
 
-#if HAVE_DECL_FORK
-    argsman.AddArg("-daemon", strprintf("Run in the background as a daemon and accept commands (default: %d)", DEFAULT_DAEMON), ArgsManager::ALLOW_BOOL, OptionsCategory::OPTIONS);
-    argsman.AddArg("-daemonwait", strprintf("Wait for initialization to be finished before exiting. This implies -daemon (default: %d)", DEFAULT_DAEMONWAIT), ArgsManager::ALLOW_BOOL, OptionsCategory::OPTIONS);
+#if HAVE_DECL_DAEMON
+    argsman.AddArg("-daemon", "Run in the background as a daemon and accept commands", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 #else
     hidden_args.emplace_back("-daemon");
-    hidden_args.emplace_back("-daemonwait");
 #endif
 
     // Add the hidden options
@@ -622,6 +638,20 @@ static void BlockNotifyGenesisWait(const CBlockIndex* pBlockIndex)
         g_genesis_wait_cv.notify_all();
     }
 }
+
+struct CImportingNow
+{
+    CImportingNow() {
+        assert(fImporting == false);
+        fImporting = true;
+    }
+
+    ~CImportingNow() {
+        assert(fImporting == true);
+        fImporting = false;
+    }
+};
+
 
 // If we're using -prune with -reindex, then delete block files that will be ignored by the
 // reindex.  Since reindexing works by starting at block file 0 and looping until a blockfile
@@ -675,6 +705,77 @@ static void StartupNotify(const ArgsManager& args)
 }
 #endif
 
+static void ThreadImport(ChainstateManager& chainman, std::vector<fs::path> vImportFiles, const ArgsManager& args)
+{
+    const CChainParams& chainparams = Params();
+    ScheduleBatchPriority();
+
+    {
+    CImportingNow imp;
+
+    // -reindex
+    if (fReindex) {
+        int nFile = 0;
+        while (true) {
+            FlatFilePos pos(nFile, 0);
+            if (!fs::exists(GetBlockPosFilename(pos)))
+                break; // No block files left to reindex
+            FILE *file = OpenBlockFile(pos, true);
+            if (!file)
+                break; // This error is logged in OpenBlockFile
+            LogPrintf("Reindexing block file blk%05u.dat...\n", (unsigned int)nFile);
+            ::ChainstateActive().LoadExternalBlockFile(chainparams, file, &pos);
+            if (ShutdownRequested()) {
+                LogPrintf("Shutdown requested. Exit %s\n", __func__);
+                return;
+            }
+            nFile++;
+        }
+        pblocktree->WriteReindexing(false);
+        fReindex = false;
+        LogPrintf("Reindexing finished\n");
+        // To avoid ending up in a situation without genesis block, re-try initializing (no-op if reindexing worked):
+        LoadGenesisBlock(chainparams);
+    }
+
+    // -loadblock=
+    for (const fs::path& path : vImportFiles) {
+        FILE *file = fsbridge::fopen(path, "rb");
+        if (file) {
+            LogPrintf("Importing blocks file %s...\n", path.string());
+            ::ChainstateActive().LoadExternalBlockFile(chainparams, file);
+            if (ShutdownRequested()) {
+                LogPrintf("Shutdown requested. Exit %s\n", __func__);
+                return;
+            }
+        } else {
+            LogPrintf("Warning: Could not open blocks file %s\n", path.string());
+        }
+    }
+
+    // scan for better chains in the block chain database, that are not yet connected in the active best chain
+
+    // We can't hold cs_main during ActivateBestChain even though we're accessing
+    // the chainman unique_ptrs since ABC requires us not to be holding cs_main, so retrieve
+    // the relevant pointers before the ABC call.
+    for (CChainState* chainstate : WITH_LOCK(::cs_main, return chainman.GetAll())) {
+        BlockValidationState state;
+        if (!chainstate->ActivateBestChain(state, chainparams, nullptr)) {
+            LogPrintf("Failed to connect best block (%s)\n", state.ToString());
+            StartShutdown();
+            return;
+        }
+    }
+
+    if (args.GetBoolArg("-stopafterblockimport", DEFAULT_STOPAFTERBLOCKIMPORT)) {
+        LogPrintf("Stopping after block import\n");
+        StartShutdown();
+        return;
+    }
+    } // End scope of CImportingNow
+    chainman.ActiveChainstate().LoadMempool(args);
+}
+
 /** Sanity checks
  *  Ensure that Rain is running in a usable environment with all
  *  necessary library support.
@@ -685,21 +786,17 @@ static bool InitSanityCheck()
         return InitError(Untranslated("Elliptic curve cryptography sanity check failure. Aborting."));
     }
 
-    if (!glibcxx_sanity_test())
+    if (!glibc_sanity_test() || !glibcxx_sanity_test())
         return false;
 
     if (!Random_SanityCheck()) {
         return InitError(Untranslated("OS cryptographic RNG sanity check failure. Aborting."));
     }
 
-    if (!ChronoSanityCheck()) {
-        return InitError(Untranslated("Clock epoch mismatch. Aborting."));
-    }
-
     return true;
 }
 
-static bool AppInitServers(NodeContext& node)
+static bool AppInitServers(const util::Ref& context, NodeContext& node)
 {
     const ArgsManager& args = *Assert(node.args);
     RPCServer::OnStarted(&OnRPCStarted);
@@ -708,9 +805,9 @@ static bool AppInitServers(NodeContext& node)
         return false;
     StartRPC();
     node.rpc_interruption_point = RpcInterruptionPoint;
-    if (!StartHTTPRPC(&node))
+    if (!StartHTTPRPC(context))
         return false;
-    if (args.GetBoolArg("-rest", DEFAULT_REST_ENABLE)) StartREST(&node);
+    if (args.GetBoolArg("-rest", DEFAULT_REST_ENABLE)) StartREST(context);
     StartHTTPServer();
     return true;
 }
@@ -764,9 +861,6 @@ void InitParameterInteraction(ArgsManager& args)
             LogPrintf("%s: parameter interaction: -listen=0 -> setting -discover=0\n", __func__);
         if (args.SoftSetBoolArg("-listenonion", false))
             LogPrintf("%s: parameter interaction: -listen=0 -> setting -listenonion=0\n", __func__);
-        if (args.SoftSetBoolArg("-i2pacceptincoming", false)) {
-            LogPrintf("%s: parameter interaction: -listen=0 -> setting -i2pacceptincoming=0\n", __func__);
-        }
     }
 
     if (args.IsArgSet("-externalip")) {
@@ -804,7 +898,6 @@ void InitLogging(const ArgsManager& args)
 #ifdef HAVE_THREAD_LOCAL
     LogInstance().m_log_threadnames = args.GetBoolArg("-logthreadnames", DEFAULT_LOGTHREADNAMES);
 #endif
-    LogInstance().m_log_sourcelocations = args.GetBoolArg("-logsourcelocations", DEFAULT_LOGSOURCELOCATIONS);
 
     fLogIPs = args.GetBoolArg("-logips", DEFAULT_LOGIPS);
 
@@ -951,6 +1044,9 @@ bool AppInitParameterInteraction(const ArgsManager& args)
     if (args.GetArg("-prune", 0)) {
         if (args.GetBoolArg("-txindex", DEFAULT_TXINDEX))
             return InitError(_("Prune mode is incompatible with -txindex."));
+        if (!g_enabled_filter_types.empty()) {
+            return InitError(_("Prune mode is incompatible with -blockfilterindex."));
+        }
     }
 
     // -bind and -whitebind can't be set when not listening
@@ -1188,7 +1284,7 @@ bool AppInitInterfaces(NodeContext& node)
     return true;
 }
 
-bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
+bool AppInitMain(const util::Ref& context, NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 {
     const ArgsManager& args = *Assert(node.args);
     const CChainParams& chainparams = Params();
@@ -1220,7 +1316,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         LogPrintf("Config file: %s\n", config_file_path.string());
     } else if (args.IsArgSet("-conf")) {
         // Warn if no conf file exists at path provided by user
-        InitWarning(strprintf(_("The specified config file %s does not exist"), config_file_path.string()));
+        InitWarning(strprintf(_("The specified config file %s does not exist\n"), config_file_path.string()));
     } else {
         // Not categorizing as "Warning" because it's the default behavior
         LogPrintf("Config file: %s (not found, skipping)\n", config_file_path.string());
@@ -1293,7 +1389,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
      */
     if (args.GetBoolArg("-server", false)) {
         uiInterface.InitMessage_connect(SetRPCWarmupStatus);
-        if (!AppInitServers(node))
+        if (!AppInitServers(context, node))
             return InitError(_("Unable to start HTTP server. See debug log for details."));
     }
 
@@ -1314,12 +1410,10 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     fDiscover = args.GetBoolArg("-discover", true);
     const bool ignores_incoming_txs{args.GetBoolArg("-blocksonly", DEFAULT_BLOCKSONLY)};
 
-    assert(!node.addrman);
-    node.addrman = std::make_unique<CAddrMan>();
     assert(!node.banman);
     node.banman = std::make_unique<BanMan>(GetDataDir() / "banlist.dat", &uiInterface, args.GetArg("-bantime", DEFAULT_MISBEHAVING_BANTIME));
     assert(!node.connman);
-    node.connman = std::make_unique<CConnman>(GetRand(std::numeric_limits<uint64_t>::max()), GetRand(std::numeric_limits<uint64_t>::max()), *node.addrman, args.GetBoolArg("-networkactive", true));
+    node.connman = std::make_unique<CConnman>(GetRand(std::numeric_limits<uint64_t>::max()), GetRand(std::numeric_limits<uint64_t>::max()), args.GetBoolArg("-networkactive", true));
 
     assert(!node.fee_estimator);
     // Don't initialize fee estimation with old data if we don't relay transactions,
@@ -1335,7 +1429,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     ChainstateManager& chainman = *Assert(node.chainman);
 
     assert(!node.peerman);
-    node.peerman = PeerManager::make(chainparams, *node.connman, *node.addrman, node.banman.get(),
+    node.peerman = PeerManager::make(chainparams, *node.connman, node.banman.get(),
                                      *node.scheduler, chainman, *node.mempool, ignores_incoming_txs);
     RegisterValidationInterface(node.peerman.get());
 
@@ -1515,6 +1609,21 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
                 pblocktree.reset();
                 pblocktree.reset(new CBlockTreeDB(nBlockTreeDBCache, false, fReset));
 
+                passetsdb.reset();
+                passetsdb.reset(new CAssetsDB(nBlockTreeDBCache, false, fReset));
+                delete passetsCache;
+                passetsCache = new CLRUCache<std::string, CDatabasedAssetData>(MAX_CACHE_ASSETS_SIZE);
+
+                // Read for fAssetIndex to make sure that we only load asset address balances if it if true
+                //pblocktree->ReadFlag("assetindex", fAssetIndex);
+                // Need to load assets before we verify the database
+                if (!passetsdb->LoadAssets()) {
+                    strLoadError = _("Failed to load Assets Database");
+                    break;
+                }
+
+                LogPrintf("Loaded Assets from database without error\nCache of assets size: %d\n", passetsCache->Size());
+
                 if (fReset) {
                     pblocktree->WriteReindexing(true);
                     //If we're reindexing in prune mode, wipe away unusable block files and all undo data files
@@ -1552,7 +1661,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
                 // If we're not mid-reindex (based on disk + args), add a genesis block on disk
                 // (otherwise we use the one already on disk).
                 // This is called again in ThreadImport after the reindex completes.
-                if (!fReindex && !::ChainstateActive().LoadGenesisBlock(chainparams)) {
+                if (!fReindex && !LoadGenesisBlock(chainparams)) {
                     strLoadError = _("Error initializing block database");
                     break;
                 }
@@ -1663,7 +1772,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
                         // work when we allow VerifyDB to be parameterized by chainstate.
                         if (&::ChainstateActive() == chainstate &&
                             !CVerifyDB().VerifyDB(
-                                chainparams, *chainstate, &chainstate->CoinsDB(),
+                                chainparams, &chainstate->CoinsDB(),
                                 args.GetArg("-checklevel", DEFAULT_CHECKLEVEL),
                                 args.GetArg("-checkblocks", DEFAULT_CHECKBLOCKS))) {
                             strLoadError = _("Corrupted block database detected");
@@ -1791,7 +1900,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         vImportFiles.push_back(strFile);
     }
 
-    chainman.m_load_block = std::thread(&TraceThread<std::function<void()>>, "loadblk", [=, &chainman, &args] {
+    g_load_block = std::thread(&TraceThread<std::function<void()>>, "loadblk", [=, &chainman, &args] {
         ThreadImport(chainman, vImportFiles, args);
     });
 
@@ -1805,6 +1914,19 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
             g_genesis_wait_cv.wait_for(lock, std::chrono::milliseconds(500));
         }
         block_notify_genesis_wait_connection.disconnect();
+    }
+
+    // ********************************************************* Step 10.1: start secure messaging
+
+    smsgModule.m_node = &node;
+    if (gArgs.GetBoolArg("-smsg", true)) { // SMSG breaks functional tests with services flag, see version msg
+#ifdef ENABLE_WALLET
+        auto vpwallets = GetWallets();
+        smsgModule.Start(vpwallets.size() > 0 ? vpwallets[0] : nullptr, vpwallets, gArgs.GetBoolArg("-smsgscanchain", false));
+#else
+        std::vector<std::shared_ptr<CWallet>> empty;
+        smsgModule.Start(nullptr, empty, gArgs.GetBoolArg("-smsgscanchain", false));
+#endif
     }
 
     if (ShutdownRequested()) {
@@ -1839,7 +1961,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     StartMapPort(args.GetBoolArg("-upnp", DEFAULT_UPNP), gArgs.GetBoolArg("-natpmp", DEFAULT_NATPMP));
 
     CConnman::Options connOptions;
-    connOptions.nLocalServices = nLocalServices;
+    connOptions.nLocalServices = smsg::fSecMsgEnabled ? ServiceFlags(nLocalServices | NODE_SMSG) : nLocalServices;
     connOptions.nMaxConnections = nMaxConnections;
     connOptions.m_max_outbound_full_relay = std::min(MAX_OUTBOUND_FULL_RELAY_CONNECTIONS, connOptions.nMaxConnections);
     connOptions.m_max_outbound_block_relay = std::min(MAX_BLOCK_RELAY_ONLY_CONNECTIONS, connOptions.nMaxConnections-connOptions.m_max_outbound_full_relay);
@@ -1912,21 +2034,6 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
             connOptions.m_specified_outgoing = connect;
         }
     }
-
-    const std::string& i2psam_arg = args.GetArg("-i2psam", "");
-    if (!i2psam_arg.empty()) {
-        CService addr;
-        if (!Lookup(i2psam_arg, addr, 7656, fNameLookup) || !addr.IsValid()) {
-            return InitError(strprintf(_("Invalid -i2psam address or hostname: '%s'"), i2psam_arg));
-        }
-        SetReachable(NET_I2P, true);
-        SetProxy(NET_I2P, proxyType{addr});
-    } else {
-        SetReachable(NET_I2P, false);
-    }
-
-    connOptions.m_i2p_accept_incoming = args.GetBoolArg("-i2pacceptincoming", true);
-
     if (!node.connman->Start(*node.scheduler, connOptions)) {
         return false;
     }

@@ -11,7 +11,7 @@
 #include <util/strencodings.h>
 #include <util/string.h>
 #include <util/system.h>
-
+#include <hash.h>
 #include <string>
 #include <vector>
 

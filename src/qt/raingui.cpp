@@ -1,931 +1,280 @@
-// Copyright (c) 2011-2020 The Rain Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
-
 #include <qt/raingui.h>
 
-#include <qt/rainunits.h>
-#include <qt/clientmodel.h>
-#include <qt/createwalletdialog.h>
-#include <qt/guiconstants.h>
-#include <qt/guiutil.h>
-#include <qt/modaloverlay.h>
-#include <qt/networkstyle.h>
-#include <qt/notificator.h>
-#include <qt/openuridialog.h>
-#include <qt/optionsdialog.h>
-#include <qt/optionsmodel.h>
-#include <qt/platformstyle.h>
-#include <qt/rpcconsole.h>
-#include <qt/utilitydialog.h>
-
-#ifdef ENABLE_WALLET
-#include <qt/walletcontroller.h>
-#include <qt/walletframe.h>
-#include <qt/walletmodel.h>
-#include <qt/walletview.h>
-#endif // ENABLE_WALLET
-
-#ifdef Q_OS_MAC
-#include <qt/macdockiconhandler.h>
-#endif
-
-#include <functional>
-#include <chain.h>
-#include <chainparams.h>
-#include <interfaces/handler.h>
-#include <interfaces/node.h>
+#include <init.h>
+#include <univalue.h>
 #include <node/ui_interface.h>
-#include <util/system.h>
-#include <util/translation.h>
+#include <qt/dice/hexgrid.h>
+#include <qt/dice/hex.h>
+#include <qt/rain.h>
+#include <qt/guiutil.h>
+#include <qt/walletcontroller.h>
+#include <qt/networkstyle.h>
+#include <qt/platformstyle.h>
+#include <qt/addresstablemodel.h>
+#include <qt/addressfilterproxymodel.h>
+#include <qt/qrimagewidget.h>
+#include <qt/transactiontablemodel.h>
+#include <qt/optionsmodel.h>
+#include <qt/rainunits.h>
+#include <qt/walletmodel.h>
+#include <qt/rpcconsole.h>
+#include <qt/messagemodel.h>
+#include <qt/assettablemodel.h>
+#include <qt/coincontrolmodel.h>
+#include <qt/notificator.h>
+
+#include <qt/assetfilterproxy.h>
+#include <qt/clientmodel.h>
 #include <validation.h>
+#include <miner.h>
+#include <key_io.h>
+#include <wallet/wallet.h>
+#include <wallet/coincontrol.h>
 
-#include <QAction>
-#include <QApplication>
-#include <QComboBox>
-#include <QDateTime>
-#include <QDragEnterEvent>
-#include <QListWidget>
-#include <QMenu>
-#include <QMenuBar>
-#include <QMessageBox>
-#include <QMimeData>
-#include <QProgressDialog>
-#include <QScreen>
-#include <QSettings>
-#include <QShortcut>
-#include <QStackedWidget>
-#include <QStatusBar>
-#include <QStyle>
-#include <QSystemTrayIcon>
-#include <QTimer>
-#include <QToolBar>
+#include <interfaces/node.h>
+
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QUrl>
 #include <QUrlQuery>
-#include <QVBoxLayout>
-#include <QWindow>
+#include <QTextDocumentFragment>
 
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 
-const std::string RainGUI::DEFAULT_UIPLATFORM =
-#if defined(Q_OS_MAC)
-        "macosx"
-#elif defined(Q_OS_WIN)
-        "windows"
-#else
-        "other"
-#endif
-        ;
+#include <QtQuick/QQuickItem>
+#include <QtQml/QQmlContext>
+#include <QtQuickControls2/QQuickStyle>
+#include <QtQuick/QQuickImageProvider>
 
-RainGUI::RainGUI(interfaces::Node& node, const PlatformStyle *_platformStyle, const NetworkStyle *networkStyle, QWidget *parent) :
-    QMainWindow(parent),
-    m_node(node),
-    trayIconMenu{new QMenu()},
-    platformStyle(_platformStyle),
-    m_network_style(networkStyle)
+#include <boost/xpressive/xpressive.hpp>
+
+class IconProvider : public QQuickImageProvider
 {
-    QSettings settings;
-    if (!restoreGeometry(settings.value("MainWindowGeometry").toByteArray())) {
-        // Restore failed (perhaps missing setting), center the window
-        move(QGuiApplication::primaryScreen()->availableGeometry().center() - frameGeometry().center());
-    }
-
-    setContextMenuPolicy(Qt::PreventContextMenu);
-
-#ifdef ENABLE_WALLET
-    enableWallet = WalletModel::isWalletEnabled();
-#endif // ENABLE_WALLET
-    QApplication::setWindowIcon(m_network_style->getTrayAndWindowIcon());
-    setWindowIcon(m_network_style->getTrayAndWindowIcon());
-    updateWindowTitle();
-
-    rpcConsole = new RPCConsole(node, _platformStyle, nullptr);
-    helpMessageDialog = new HelpMessageDialog(this, false);
-#ifdef ENABLE_WALLET
-    if(enableWallet)
+public:
+    IconProvider(const NetworkStyle *networkStyle)
+        : QQuickImageProvider(QQuickImageProvider::Pixmap)
     {
-        /** Create wallet frame and make it the central widget */
-        walletFrame = new WalletFrame(_platformStyle, this);
-        setCentralWidget(walletFrame);
-    } else
-#endif // ENABLE_WALLET
+        m_networkStyle = networkStyle;
+    }
+
+    QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requestedSize) override
     {
-        /* When compiled without wallet or -disablewallet is provided,
-         * the central widget is the rpc console.
-         */
-        setCentralWidget(rpcConsole);
-        Q_EMIT consoleShown(rpcConsole);
-    }
+        int width = 500;
+        int height = 500;
 
-    modalOverlay = new ModalOverlay(enableWallet, this->centralWidget());
+        if (size)
+            *size = QSize(width, height);
 
-    // Accept D&D of URIs
-    setAcceptDrops(true);
-
-    // Create actions for the toolbar, menu bar and tray/dock icon
-    // Needs walletFrame to be initialized
-    createActions();
-
-    // Create application menu bar
-    createMenuBar();
-
-    // Create the toolbars
-    createToolBars();
-
-    // Create system tray icon and notification
-    if (QSystemTrayIcon::isSystemTrayAvailable()) {
-        createTrayIcon();
-    }
-    notificator = new Notificator(QApplication::applicationName(), trayIcon, this);
-
-    // Create status bar
-    statusBar();
-
-    // Disable size grip because it looks ugly and nobody needs it
-    statusBar()->setSizeGripEnabled(false);
-
-    // Status bar notification icons
-    QFrame *frameBlocks = new QFrame();
-    frameBlocks->setContentsMargins(0,0,0,0);
-    frameBlocks->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    QHBoxLayout *frameBlocksLayout = new QHBoxLayout(frameBlocks);
-    frameBlocksLayout->setContentsMargins(3,0,3,0);
-    frameBlocksLayout->setSpacing(3);
-    unitDisplayControl = new UnitDisplayStatusBarControl(platformStyle);
-    labelWalletEncryptionIcon = new QLabel();
-    labelWalletHDStatusIcon = new QLabel();
-    labelProxyIcon = new GUIUtil::ClickableLabel();
-    connectionsControl = new GUIUtil::ClickableLabel();
-    labelBlocksIcon = new GUIUtil::ClickableLabel();
-    if(enableWallet)
-    {
-        frameBlocksLayout->addStretch();
-        frameBlocksLayout->addWidget(unitDisplayControl);
-        frameBlocksLayout->addStretch();
-        frameBlocksLayout->addWidget(labelWalletEncryptionIcon);
-        frameBlocksLayout->addWidget(labelWalletHDStatusIcon);
-    }
-    frameBlocksLayout->addWidget(labelProxyIcon);
-    frameBlocksLayout->addStretch();
-    frameBlocksLayout->addWidget(connectionsControl);
-    frameBlocksLayout->addStretch();
-    frameBlocksLayout->addWidget(labelBlocksIcon);
-    frameBlocksLayout->addStretch();
-
-    // Progress bar and label for blocks download
-    progressBarLabel = new QLabel();
-    progressBarLabel->setVisible(false);
-    progressBar = new GUIUtil::ProgressBar();
-    progressBar->setAlignment(Qt::AlignCenter);
-    progressBar->setVisible(false);
-
-    // Override style sheet for progress bar for styles that have a segmented progress bar,
-    // as they make the text unreadable (workaround for issue #1071)
-    // See https://doc.qt.io/qt-5/gallery.html
-    QString curStyle = QApplication::style()->metaObject()->className();
-    if(curStyle == "QWindowsStyle" || curStyle == "QWindowsXPStyle")
-    {
-        progressBar->setStyleSheet("QProgressBar { background-color: #e8e8e8; border: 1px solid grey; border-radius: 7px; padding: 1px; text-align: center; } QProgressBar::chunk { background: QLinearGradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 #FF8000, stop: 1 orange); border-radius: 7px; margin: 0px; }");
-    }
-
-    statusBar()->addWidget(progressBarLabel);
-    statusBar()->addWidget(progressBar);
-    statusBar()->addPermanentWidget(frameBlocks);
-
-    // Install event filter to be able to catch status tip events (QEvent::StatusTip)
-    this->installEventFilter(this);
-
-    // Initially wallet actions should be disabled
-    setWalletActionsEnabled(false);
-
-    // Subscribe to notifications from core
-    subscribeToCoreSignals();
-
-    connect(connectionsControl, &GUIUtil::ClickableLabel::clicked, [this] {
-        m_node.setNetworkActive(!m_node.getNetworkActive());
-    });
-    connect(labelProxyIcon, &GUIUtil::ClickableLabel::clicked, [this] {
-        openOptionsDialogWithTab(OptionsDialog::TAB_NETWORK);
-    });
-
-    connect(labelBlocksIcon, &GUIUtil::ClickableLabel::clicked, this, &RainGUI::showModalOverlay);
-    connect(progressBar, &GUIUtil::ClickableProgressBar::clicked, this, &RainGUI::showModalOverlay);
-#ifdef ENABLE_WALLET
-    if(enableWallet) {
-        connect(walletFrame, &WalletFrame::requestedSyncWarningInfo, this, &RainGUI::showModalOverlay);
-    }
-#endif
-
-#ifdef Q_OS_MAC
-    m_app_nap_inhibitor = new CAppNapInhibitor;
-#endif
-
-    GUIUtil::handleCloseWindowShortcut(this);
-}
-
-RainGUI::~RainGUI()
-{
-    // Unsubscribe from notifications from core
-    unsubscribeFromCoreSignals();
-
-    QSettings settings;
-    settings.setValue("MainWindowGeometry", saveGeometry());
-    if(trayIcon) // Hide tray icon, as deleting will let it linger until quit (on Ubuntu)
-        trayIcon->hide();
-#ifdef Q_OS_MAC
-    delete m_app_nap_inhibitor;
-    delete appMenuBar;
-    MacDockIconHandler::cleanup();
-#endif
-
-    delete rpcConsole;
-}
-
-void RainGUI::createActions()
-{
-    QActionGroup *tabGroup = new QActionGroup(this);
-    connect(modalOverlay, &ModalOverlay::triggered, tabGroup, &QActionGroup::setEnabled);
-
-    overviewAction = new QAction(platformStyle->SingleColorIcon(":/icons/overview"), tr("&Overview"), this);
-    overviewAction->setStatusTip(tr("Show general overview of wallet"));
-    overviewAction->setToolTip(overviewAction->statusTip());
-    overviewAction->setCheckable(true);
-    overviewAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_1));
-    tabGroup->addAction(overviewAction);
-
-    sendCoinsAction = new QAction(platformStyle->SingleColorIcon(":/icons/send"), tr("&Send"), this);
-    sendCoinsAction->setStatusTip(tr("Send coins to a Rain address"));
-    sendCoinsAction->setToolTip(sendCoinsAction->statusTip());
-    sendCoinsAction->setCheckable(true);
-    sendCoinsAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_2));
-    tabGroup->addAction(sendCoinsAction);
-
-    sendCoinsMenuAction = new QAction(sendCoinsAction->text(), this);
-    sendCoinsMenuAction->setStatusTip(sendCoinsAction->statusTip());
-    sendCoinsMenuAction->setToolTip(sendCoinsMenuAction->statusTip());
-
-    receiveCoinsAction = new QAction(platformStyle->SingleColorIcon(":/icons/receiving_addresses"), tr("&Receive"), this);
-    receiveCoinsAction->setStatusTip(tr("Request payments (generates QR codes and rain: URIs)"));
-    receiveCoinsAction->setToolTip(receiveCoinsAction->statusTip());
-    receiveCoinsAction->setCheckable(true);
-    receiveCoinsAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_3));
-    tabGroup->addAction(receiveCoinsAction);
-
-    receiveCoinsMenuAction = new QAction(receiveCoinsAction->text(), this);
-    receiveCoinsMenuAction->setStatusTip(receiveCoinsAction->statusTip());
-    receiveCoinsMenuAction->setToolTip(receiveCoinsMenuAction->statusTip());
-
-    historyAction = new QAction(platformStyle->SingleColorIcon(":/icons/history"), tr("&Transactions"), this);
-    historyAction->setStatusTip(tr("Browse transaction history"));
-    historyAction->setToolTip(historyAction->statusTip());
-    historyAction->setCheckable(true);
-    historyAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_4));
-    tabGroup->addAction(historyAction);
-
-#ifdef ENABLE_WALLET
-    // These showNormalIfMinimized are needed because Send Coins and Receive Coins
-    // can be triggered from the tray menu, and need to show the GUI to be useful.
-    connect(overviewAction, &QAction::triggered, [this]{ showNormalIfMinimized(); });
-    connect(overviewAction, &QAction::triggered, this, &RainGUI::gotoOverviewPage);
-    connect(sendCoinsAction, &QAction::triggered, [this]{ showNormalIfMinimized(); });
-    connect(sendCoinsAction, &QAction::triggered, [this]{ gotoSendCoinsPage(); });
-    connect(sendCoinsMenuAction, &QAction::triggered, [this]{ showNormalIfMinimized(); });
-    connect(sendCoinsMenuAction, &QAction::triggered, [this]{ gotoSendCoinsPage(); });
-    connect(receiveCoinsAction, &QAction::triggered, [this]{ showNormalIfMinimized(); });
-    connect(receiveCoinsAction, &QAction::triggered, this, &RainGUI::gotoReceiveCoinsPage);
-    connect(receiveCoinsMenuAction, &QAction::triggered, [this]{ showNormalIfMinimized(); });
-    connect(receiveCoinsMenuAction, &QAction::triggered, this, &RainGUI::gotoReceiveCoinsPage);
-    connect(historyAction, &QAction::triggered, [this]{ showNormalIfMinimized(); });
-    connect(historyAction, &QAction::triggered, this, &RainGUI::gotoHistoryPage);
-#endif // ENABLE_WALLET
-
-    quitAction = new QAction(tr("E&xit"), this);
-    quitAction->setStatusTip(tr("Quit application"));
-    quitAction->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_Q));
-    quitAction->setMenuRole(QAction::QuitRole);
-    aboutAction = new QAction(tr("&About %1").arg(PACKAGE_NAME), this);
-    aboutAction->setStatusTip(tr("Show information about %1").arg(PACKAGE_NAME));
-    aboutAction->setMenuRole(QAction::AboutRole);
-    aboutAction->setEnabled(false);
-    aboutQtAction = new QAction(tr("About &Qt"), this);
-    aboutQtAction->setStatusTip(tr("Show information about Qt"));
-    aboutQtAction->setMenuRole(QAction::AboutQtRole);
-    optionsAction = new QAction(tr("&Options..."), this);
-    optionsAction->setStatusTip(tr("Modify configuration options for %1").arg(PACKAGE_NAME));
-    optionsAction->setMenuRole(QAction::PreferencesRole);
-    optionsAction->setEnabled(false);
-    toggleHideAction = new QAction(tr("&Show / Hide"), this);
-    toggleHideAction->setStatusTip(tr("Show or hide the main Window"));
-
-    encryptWalletAction = new QAction(tr("&Encrypt Wallet..."), this);
-    encryptWalletAction->setStatusTip(tr("Encrypt the private keys that belong to your wallet"));
-    encryptWalletAction->setCheckable(true);
-    backupWalletAction = new QAction(tr("&Backup Wallet..."), this);
-    backupWalletAction->setStatusTip(tr("Backup wallet to another location"));
-    changePassphraseAction = new QAction(tr("&Change Passphrase..."), this);
-    changePassphraseAction->setStatusTip(tr("Change the passphrase used for wallet encryption"));
-    signMessageAction = new QAction(tr("Sign &message..."), this);
-    signMessageAction->setStatusTip(tr("Sign messages with your Rain addresses to prove you own them"));
-    verifyMessageAction = new QAction(tr("&Verify message..."), this);
-    verifyMessageAction->setStatusTip(tr("Verify messages to ensure they were signed with specified Rain addresses"));
-    m_load_psbt_action = new QAction(tr("&Load PSBT from file..."), this);
-    m_load_psbt_action->setStatusTip(tr("Load Partially Signed Rain Transaction"));
-    m_load_psbt_clipboard_action = new QAction(tr("Load PSBT from clipboard..."), this);
-    m_load_psbt_clipboard_action->setStatusTip(tr("Load Partially Signed Rain Transaction from clipboard"));
-
-    openRPCConsoleAction = new QAction(tr("Node window"), this);
-    openRPCConsoleAction->setStatusTip(tr("Open node debugging and diagnostic console"));
-    // initially disable the debug window menu item
-    openRPCConsoleAction->setEnabled(false);
-    openRPCConsoleAction->setObjectName("openRPCConsoleAction");
-
-    usedSendingAddressesAction = new QAction(tr("&Sending addresses"), this);
-    usedSendingAddressesAction->setStatusTip(tr("Show the list of used sending addresses and labels"));
-    usedReceivingAddressesAction = new QAction(tr("&Receiving addresses"), this);
-    usedReceivingAddressesAction->setStatusTip(tr("Show the list of used receiving addresses and labels"));
-
-    openAction = new QAction(tr("Open &URI..."), this);
-    openAction->setStatusTip(tr("Open a rain: URI"));
-
-    m_open_wallet_action = new QAction(tr("Open Wallet"), this);
-    m_open_wallet_action->setEnabled(false);
-    m_open_wallet_action->setStatusTip(tr("Open a wallet"));
-    m_open_wallet_menu = new QMenu(this);
-
-    m_close_wallet_action = new QAction(tr("Close Wallet..."), this);
-    m_close_wallet_action->setStatusTip(tr("Close wallet"));
-
-    m_create_wallet_action = new QAction(tr("Create Wallet..."), this);
-    m_create_wallet_action->setEnabled(false);
-    m_create_wallet_action->setStatusTip(tr("Create a new wallet"));
-
-    m_close_all_wallets_action = new QAction(tr("Close All Wallets..."), this);
-    m_close_all_wallets_action->setStatusTip(tr("Close all wallets"));
-
-    showHelpMessageAction = new QAction(tr("&Command-line options"), this);
-    showHelpMessageAction->setMenuRole(QAction::NoRole);
-    showHelpMessageAction->setStatusTip(tr("Show the %1 help message to get a list with possible Rain command-line options").arg(PACKAGE_NAME));
-
-    m_mask_values_action = new QAction(tr("&Mask values"), this);
-    m_mask_values_action->setShortcut(QKeySequence(Qt::CTRL + Qt::SHIFT + Qt::Key_M));
-    m_mask_values_action->setStatusTip(tr("Mask the values in the Overview tab"));
-    m_mask_values_action->setCheckable(true);
-
-    connect(quitAction, &QAction::triggered, qApp, QApplication::quit);
-    connect(aboutAction, &QAction::triggered, this, &RainGUI::aboutClicked);
-    connect(aboutQtAction, &QAction::triggered, qApp, QApplication::aboutQt);
-    connect(optionsAction, &QAction::triggered, this, &RainGUI::optionsClicked);
-    connect(toggleHideAction, &QAction::triggered, this, &RainGUI::toggleHidden);
-    connect(showHelpMessageAction, &QAction::triggered, this, &RainGUI::showHelpMessageClicked);
-    connect(openRPCConsoleAction, &QAction::triggered, this, &RainGUI::showDebugWindow);
-    // prevents an open debug window from becoming stuck/unusable on client shutdown
-    connect(quitAction, &QAction::triggered, rpcConsole, &QWidget::hide);
-
-#ifdef ENABLE_WALLET
-    if(walletFrame)
-    {
-        connect(encryptWalletAction, &QAction::triggered, walletFrame, &WalletFrame::encryptWallet);
-        connect(backupWalletAction, &QAction::triggered, walletFrame, &WalletFrame::backupWallet);
-        connect(changePassphraseAction, &QAction::triggered, walletFrame, &WalletFrame::changePassphrase);
-        connect(signMessageAction, &QAction::triggered, [this]{ showNormalIfMinimized(); });
-        connect(signMessageAction, &QAction::triggered, [this]{ gotoSignMessageTab(); });
-        connect(m_load_psbt_action, &QAction::triggered, [this]{ gotoLoadPSBT(); });
-        connect(m_load_psbt_clipboard_action, &QAction::triggered, [this]{ gotoLoadPSBT(true); });
-        connect(verifyMessageAction, &QAction::triggered, [this]{ showNormalIfMinimized(); });
-        connect(verifyMessageAction, &QAction::triggered, [this]{ gotoVerifyMessageTab(); });
-        connect(usedSendingAddressesAction, &QAction::triggered, walletFrame, &WalletFrame::usedSendingAddresses);
-        connect(usedReceivingAddressesAction, &QAction::triggered, walletFrame, &WalletFrame::usedReceivingAddresses);
-        connect(openAction, &QAction::triggered, this, &RainGUI::openClicked);
-        connect(m_open_wallet_menu, &QMenu::aboutToShow, [this] {
-            m_open_wallet_menu->clear();
-            for (const std::pair<const std::string, bool>& i : m_wallet_controller->listWalletDir()) {
-                const std::string& path = i.first;
-                QString name = path.empty() ? QString("["+tr("default wallet")+"]") : QString::fromStdString(path);
-                // Menu items remove single &. Single & are shown when && is in
-                // the string, but only the first occurrence. So replace only
-                // the first & with &&.
-                name.replace(name.indexOf(QChar('&')), 1, QString("&&"));
-                QAction* action = m_open_wallet_menu->addAction(name);
-
-                if (i.second) {
-                    // This wallet is already loaded
-                    action->setEnabled(false);
-                    continue;
-                }
-
-                connect(action, &QAction::triggered, [this, path] {
-                    auto activity = new OpenWalletActivity(m_wallet_controller, this);
-                    connect(activity, &OpenWalletActivity::opened, this, &RainGUI::setCurrentWallet);
-                    connect(activity, &OpenWalletActivity::finished, activity, &QObject::deleteLater);
-                    activity->open(path);
-                });
-            }
-            if (m_open_wallet_menu->isEmpty()) {
-                QAction* action = m_open_wallet_menu->addAction(tr("No wallets available"));
-                action->setEnabled(false);
-            }
-        });
-        connect(m_close_wallet_action, &QAction::triggered, [this] {
-            m_wallet_controller->closeWallet(walletFrame->currentWalletModel(), this);
-        });
-        connect(m_create_wallet_action, &QAction::triggered, [this] {
-            auto activity = new CreateWalletActivity(m_wallet_controller, this);
-            connect(activity, &CreateWalletActivity::created, this, &RainGUI::setCurrentWallet);
-            connect(activity, &CreateWalletActivity::finished, activity, &QObject::deleteLater);
-            activity->create();
-        });
-        connect(m_close_all_wallets_action, &QAction::triggered, [this] {
-            m_wallet_controller->closeAllWallets(this);
-        });
-        connect(m_mask_values_action, &QAction::toggled, this, &RainGUI::setPrivacy);
-    }
-#endif // ENABLE_WALLET
-
-    connect(new QShortcut(QKeySequence(Qt::CTRL + Qt::SHIFT + Qt::Key_C), this), &QShortcut::activated, this, &RainGUI::showDebugWindowActivateConsole);
-    connect(new QShortcut(QKeySequence(Qt::CTRL + Qt::SHIFT + Qt::Key_D), this), &QShortcut::activated, this, &RainGUI::showDebugWindow);
-}
-
-void RainGUI::createMenuBar()
-{
-#ifdef Q_OS_MAC
-    // Create a decoupled menu bar on Mac which stays even if the window is closed
-    appMenuBar = new QMenuBar();
-#else
-    // Get the main window's menu bar on other platforms
-    appMenuBar = menuBar();
-#endif
-
-    // Configure the menus
-    QMenu *file = appMenuBar->addMenu(tr("&File"));
-    if(walletFrame)
-    {
-        file->addAction(m_create_wallet_action);
-        file->addAction(m_open_wallet_action);
-        file->addAction(m_close_wallet_action);
-        file->addAction(m_close_all_wallets_action);
-        file->addSeparator();
-        file->addAction(openAction);
-        file->addAction(backupWalletAction);
-        file->addAction(signMessageAction);
-        file->addAction(verifyMessageAction);
-        file->addAction(m_load_psbt_action);
-        file->addAction(m_load_psbt_clipboard_action);
-        file->addSeparator();
-    }
-    file->addAction(quitAction);
-
-    QMenu *settings = appMenuBar->addMenu(tr("&Settings"));
-    if(walletFrame)
-    {
-        settings->addAction(encryptWalletAction);
-        settings->addAction(changePassphraseAction);
-        settings->addSeparator();
-        settings->addAction(m_mask_values_action);
-        settings->addSeparator();
-    }
-    settings->addAction(optionsAction);
-
-    QMenu* window_menu = appMenuBar->addMenu(tr("&Window"));
-
-    QAction* minimize_action = window_menu->addAction(tr("Minimize"));
-    minimize_action->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_M));
-    connect(minimize_action, &QAction::triggered, [] {
-        QApplication::activeWindow()->showMinimized();
-    });
-    connect(qApp, &QApplication::focusWindowChanged, [minimize_action] (QWindow* window) {
-        minimize_action->setEnabled(window != nullptr && (window->flags() & Qt::Dialog) != Qt::Dialog && window->windowState() != Qt::WindowMinimized);
-    });
-
-#ifdef Q_OS_MAC
-    QAction* zoom_action = window_menu->addAction(tr("Zoom"));
-    connect(zoom_action, &QAction::triggered, [] {
-        QWindow* window = qApp->focusWindow();
-        if (window->windowState() != Qt::WindowMaximized) {
-            window->showMaximized();
-        } else {
-            window->showNormal();
+        if (id == "app") {
+            return m_networkStyle->getAppIcon().pixmap(requestedSize.width() > 0 ? requestedSize.width() : width,
+                                                       requestedSize.height() > 0 ? requestedSize.height() : height);
         }
-    });
-
-    connect(qApp, &QApplication::focusWindowChanged, [zoom_action] (QWindow* window) {
-        zoom_action->setEnabled(window != nullptr);
-    });
-#endif
-
-    if (walletFrame) {
-#ifdef Q_OS_MAC
-        window_menu->addSeparator();
-        QAction* main_window_action = window_menu->addAction(tr("Main Window"));
-        connect(main_window_action, &QAction::triggered, [this] {
-            GUIUtil::bringToFront(this);
-        });
-#endif
-        window_menu->addSeparator();
-        window_menu->addAction(usedSendingAddressesAction);
-        window_menu->addAction(usedReceivingAddressesAction);
+        else if (id == "window") {
+            return m_networkStyle->getTrayAndWindowIcon().pixmap(requestedSize.width() > 0 ? requestedSize.width() : width,
+                                                                 requestedSize.height() > 0 ? requestedSize.height() : height);
+        }
+        return QPixmap();
     }
 
-    window_menu->addSeparator();
-    for (RPCConsole::TabTypes tab_type : rpcConsole->tabs()) {
-        QAction* tab_action = window_menu->addAction(rpcConsole->tabTitle(tab_type));
-        tab_action->setShortcut(rpcConsole->tabShortcut(tab_type));
-        connect(tab_action, &QAction::triggered, [this, tab_type] {
-            rpcConsole->setTabFocus(tab_type);
-            showDebugWindow();
-        });
+private:
+    const NetworkStyle* m_networkStyle;
+};
+
+class QrProvider : public QQuickImageProvider
+{
+public:
+    QrProvider() : QQuickImageProvider(QQuickImageProvider::Image)
+    {}
+
+    QImage requestImage(const QString &id, QSize *size, const QSize &requestedSize) override
+    {
+        Q_UNUSED(requestedSize)
+
+        int width = 500;
+        int height = 500;
+
+        if (size)
+            *size = QSize(width, height);
+
+        QRImageWidget qr;
+        qr.setQR(id);
+        return qr.exportImage();
+    }
+};
+
+RainGUI::RainGUI(interfaces::Node& node, const PlatformStyle *_platformStyle, const NetworkStyle *networkStyle, QWindow *parent) :
+    QQuickView(parent),
+    m_node(node),
+    m_platformStyle(_platformStyle),
+    m_networkStyle(networkStyle)
+{
+//    setFlags(Qt::FramelessWindowHint);
+
+    QQmlEngine *engine = this->engine();
+    engine->addImageProvider(QLatin1String("icons"), new IconProvider(networkStyle));
+    engine->addImageProvider(QLatin1String("qr"), new QrProvider());
+    engine->addImportPath("qrc:/qml");
+    engine->addImportPath("qrc:/qml/charts");
+    engine->addImportPath("qrc:/qml/contacts");
+    engine->addImportPath("qrc:/qml/messages");
+    engine->addImportPath("qrc:/qml/dice");
+
+    QQuickStyle::setStyle("Default");
+
+    QString licenseInfoHTML = QString::fromStdString(LicenseInfo());
+    // Make URLs clickable
+    QRegExp uri("<(.*)>", Qt::CaseSensitive, QRegExp::RegExp2);
+    uri.setMinimal(true); // use non-greedy matching
+    licenseInfoHTML.replace(uri, "<a href=\"\\1\">\\1</a>");
+    // Replace newlines with HTML breaks
+    licenseInfoHTML.replace("\n", "<br>");
+
+    QList<QString> availableUnitNames;
+
+    Q_FOREACH(RainUnits::Unit unit, RainUnits::availableUnits()) {
+        availableUnitNames.append(RainUnits::longName(unit));
     }
 
-    QMenu *help = appMenuBar->addMenu(tr("&Help"));
-    help->addAction(showHelpMessageAction);
-    help->addSeparator();
-    help->addAction(aboutAction);
-    help->addAction(aboutQtAction);
+    QVariantMap confirmationTargets;
+/*
+    for (const int n : confTargets) {
+        confirmationTargets.insert(QString::number(n),
+                                   QCoreApplication::translate("SendCoinsDialog", "%1 (%2 blocks)")
+                                   .arg(GUIUtil::formatNiceTimeOffset(n*60))
+                                   .arg(n));
+    }
+*/
+    this->rootContext()->setContextProperty("availableUnits", QVariant(availableUnitNames));
+    this->rootContext()->setContextProperty("confirmationTargets", QVariant(confirmationTargets));
+    this->rootContext()->setContextProperty("licenceInfo", licenseInfoHTML);
+    this->rootContext()->setContextProperty("version", QString::fromStdString(FormatFullVersion()));
+
+    qmlRegisterType<HexGrid>("Hex", 1, 0, "HexGrid");
+    qmlRegisterType<Hex>("Hex", 1, 0, "Hex");
+
+    const QUrl url(QStringLiteral("qrc:/qml/main.qml"));
+    this->setSource(url);
+    this->setTitle(networkStyle->getTitleAddText());
+    QString mode ="";
+#ifdef Q_OS_ANDROID
+    this->setHeight(2160/3);
+    this->setWidth(1080/3);
+    mode = "mobile";
+#else
+    this->setHeight(800);
+    this->setWidth(1130);
+    mode = "desktop";
+#endif
+    connect(this->rootObject(), SIGNAL(copyToClipboard(QString)), this, SLOT(setClipboard(QString)));
+    connect(this->rootObject(), SIGNAL(changeUnit(int)), this, SLOT(setDisplayUnit(int)));
+    connect(this->rootObject(), SIGNAL(lockWallet()), this, SLOT(lockWallet()));
+    connect(this->rootObject(), SIGNAL(encrypt(QString)), this, SLOT(encryptWallet(QString)));
+    connect(this->rootObject(), SIGNAL(lockWallet()), this, SLOT(lockWallet()));
+
+    connect(engine, &QQmlEngine::quit, qApp, &QApplication::quit);
+    connect(this->rootObject(), SIGNAL(quit()), this, SLOT(close()));
+    connect(this, &QQuickView::close, this, &QApplication::quit);
+
+    notificator = new Notificator(QApplication::applicationName(), nullptr, nullptr);
+    rpcConsole = new RPCConsole(node, nullptr, nullptr);
+
+    m_walletPane = this->rootObject()->findChild<QObject*>("walletPane");
+    m_appPane = this->rootObject()->findChild<QObject*>("appWindow");
+
+    m_AppDrawer = this->rootObject()->findChild<QObject*>("drawer");
+    m_stakeChartPane = this->rootObject()->findChild<QObject*>("stakeChart");
+    m_pricesWidget = this->rootObject()->findChild<QObject*>("pricesWidget");
+    gameMenu = this->rootObject()->findChild<QObject*>("gameMenu");
+    m_frontPage = this->rootObject()->findChild<QObject*>("frontPage");
+
+    if (gameMenu) {
+        connect(gameMenu, SIGNAL(requestAddr()), this, SLOT(requestAddress()));
+        connect(gameMenu, SIGNAL(setupBets(QString, QString, QString, QString, QString)), this, SLOT(setBets(QString, QString, QString, QString, QString)));
+    }
+
+    if (m_AppDrawer) {
+        connect(m_AppDrawer, SIGNAL(request()), this, SLOT(requestRain()));
+    }
+
+    m_sendPane = this->rootObject()->findChild<QObject*>("sendPane");
+
+    if (m_sendPane) {
+        connect(m_sendPane, SIGNAL(send(QString, QString, QString)), this, SLOT(sendRain(QString, QString, QString)));
+        connect(m_sendPane, SIGNAL(lockunlock(QString, int)), this, SLOT(lockunlock(QString, int)));
+        connect(m_sendPane, SIGNAL(changesendbalance(QString)), this, SLOT(setSendBalance(QString)));
+        connect(m_sendPane, SIGNAL(setcoincontroloutput(QString,int,bool)), this, SLOT(setCoinCotrolOutput(QString,int,bool)));
+        connect(m_sendPane, SIGNAL(setrbf(bool)), this, SLOT(setCoinCotrolRbf(bool)));
+        connect(m_sendPane, SIGNAL(setcoincontroltarget(int)), this, SLOT(setCoinCotrolConfirmTarget(int)));
+    }
+
+    m_consolePane = this->rootObject()->findChild<QObject*>("consolePane");
+
+    if (m_consolePane) {
+        connect(m_consolePane, SIGNAL(executeCommand(QString)), this, SLOT(executeRpcCommand(QString)));
+    }
+
+    m_stakeChartPage = this->rootObject()->findChild<QObject*>("stakeChartPage");
+
+    if (m_stakeChartPage) {
+        connect(m_stakeChartPage, SIGNAL(btnYearsClicked()), this, SLOT(setChartShow(YEAR)));
+        connect(m_stakeChartPage, SIGNAL(btnMonthsClicked()), this, SLOT(setChartShow(MONTH)));
+        connect(m_stakeChartPage, SIGNAL(btnAllClicked()), this, SLOT(setChartShow(ALL)));
+    }
+
+
+   // mnModel = new MNModel(this);
+
+   // this->rootContext()->setContextProperty("mnModel", mnModel);
+
+    timer = new QTimer(this);
+   // connect(timer, SIGNAL(timeout()), this, SLOT(SetExchangeInfoTextLabels()));
+    connect(timer, SIGNAL(timeout()), this, SLOT(updateStakingIcon()));
+    connect(timer, SIGNAL(timeout()), this, SLOT(updateNetworkState()));
+    //connect(timer, &QTimer::timeout, [this]() {mnModel->updateMNList();});
+
+    timer->start(300000);
+    timerid = timer->timerId();
+        LogPrintf("GUI: %d\n", 1);
+
+    m_coin_control= new CCoinControl();
+        LogPrintf("GUI: %d\n", 2);
+    subscribeToCoreSignals();
 }
 
-void RainGUI::createToolBars()
+void RainGUI::detectShutdown()
 {
-    if(walletFrame)
+    if (m_node.shutdownRequested())
     {
-        QToolBar *toolbar = addToolBar(tr("Tabs toolbar"));
-        appToolBar = toolbar;
-        toolbar->setMovable(false);
-        toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        toolbar->addAction(overviewAction);
-        toolbar->addAction(sendCoinsAction);
-        toolbar->addAction(receiveCoinsAction);
-        toolbar->addAction(historyAction);
-        overviewAction->setChecked(true);
-
-#ifdef ENABLE_WALLET
-        QWidget *spacer = new QWidget();
-        spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-        toolbar->addWidget(spacer);
-
-        m_wallet_selector = new QComboBox();
-        m_wallet_selector->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-        connect(m_wallet_selector, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this, &RainGUI::setCurrentWalletBySelectorIndex);
-
-        m_wallet_selector_label = new QLabel();
-        m_wallet_selector_label->setText(tr("Wallet:") + " ");
-        m_wallet_selector_label->setBuddy(m_wallet_selector);
-
-        m_wallet_selector_label_action = appToolBar->addWidget(m_wallet_selector_label);
-        m_wallet_selector_action = appToolBar->addWidget(m_wallet_selector);
-
-        m_wallet_selector_label_action->setVisible(false);
-        m_wallet_selector_action->setVisible(false);
-#endif
+        qApp->quit();
     }
 }
 
-void RainGUI::setClientModel(ClientModel *_clientModel, interfaces::BlockAndHeaderTipInfo* tip_info)
+void RainGUI::setClientModel(ClientModel *clientModel, interfaces::BlockAndHeaderTipInfo* tip_info)
 {
-    this->clientModel = _clientModel;
-    if(_clientModel)
+    this->m_clientModel = clientModel;
+    if(m_clientModel)
     {
-        // Create system tray menu (or setup the dock menu) that late to prevent users from calling actions,
-        // while the client has not yet fully loaded
-        createTrayIconMenu();
-
         // Keep up to date with client
         updateNetworkState();
-        connect(_clientModel, &ClientModel::numConnectionsChanged, this, &RainGUI::setNumConnections);
-        connect(_clientModel, &ClientModel::networkActiveChanged, this, &RainGUI::setNetworkActive);
+        connect(m_clientModel, &ClientModel::numConnectionsChanged, this, &RainGUI::setNumConnections);
+        connect(m_clientModel, &ClientModel::networkActiveChanged, this, &RainGUI::setNetworkActive);
 
-        modalOverlay->setKnownBestHeight(tip_info->header_height, QDateTime::fromTime_t(tip_info->header_time));
-        setNumBlocks(tip_info->block_height, QDateTime::fromTime_t(tip_info->block_time), tip_info->verification_progress, false, SynchronizationState::INIT_DOWNLOAD);
-        connect(_clientModel, &ClientModel::numBlocksChanged, this, &RainGUI::setNumBlocks);
+        //modalOverlay->setKnownBestHeight(_clientModel->getHeaderTipHeight(), QDateTime::fromTime_t(_clientModel->getHeaderTipTime()));
+        setNumBlocks(m_node.getNumBlocks(), QDateTime::fromTime_t(m_node.getLastBlockTime()), m_node.getVerificationProgress(), false);
+        connect(m_clientModel, &ClientModel::numBlocksChanged, this, &RainGUI::setNumBlocks);
+
+        // Propagate cleared model to child objects
+        rpcConsole->setClientModel(m_clientModel);
 
         // Receive and report messages from client model
-        connect(_clientModel, &ClientModel::message, [this](const QString &title, const QString &message, unsigned int style){
+        connect(m_clientModel, &ClientModel::message, [this](const QString &title, const QString &message, unsigned int style){
             this->message(title, message, style);
         });
-
-        // Show progress dialog
-        connect(_clientModel, &ClientModel::showProgress, this, &RainGUI::showProgress);
-
-        rpcConsole->setClientModel(_clientModel, tip_info->block_height, tip_info->block_time, tip_info->verification_progress);
-
-        updateProxyIcon();
-
-#ifdef ENABLE_WALLET
-        if(walletFrame)
-        {
-            walletFrame->setClientModel(_clientModel);
-        }
-#endif // ENABLE_WALLET
-        unitDisplayControl->setOptionsModel(_clientModel->getOptionsModel());
-
-        OptionsModel* optionsModel = _clientModel->getOptionsModel();
-        if (optionsModel && trayIcon) {
-            // be aware of the tray icon disable state change reported by the OptionsModel object.
-            connect(optionsModel, &OptionsModel::showTrayIconChanged, trayIcon, &QSystemTrayIcon::setVisible);
-
-            // initialize the disable state of the tray icon with the current value in the model.
-            trayIcon->setVisible(optionsModel->getShowTrayIcon());
-        }
-    } else {
-        // Disable possibility to show main window via action
-        toggleHideAction->setEnabled(false);
-        if(trayIconMenu)
-        {
-            // Disable context menu on tray icon
-            trayIconMenu->clear();
-        }
-        // Propagate cleared model to child objects
-        rpcConsole->setClientModel(nullptr);
-#ifdef ENABLE_WALLET
-        if (walletFrame)
-        {
-            walletFrame->setClientModel(nullptr);
-        }
-#endif // ENABLE_WALLET
-        unitDisplayControl->setOptionsModel(nullptr);
     }
-}
-
-#ifdef ENABLE_WALLET
-void RainGUI::setWalletController(WalletController* wallet_controller)
-{
-    assert(!m_wallet_controller);
-    assert(wallet_controller);
-
-    m_wallet_controller = wallet_controller;
-
-    m_create_wallet_action->setEnabled(true);
-    m_open_wallet_action->setEnabled(true);
-    m_open_wallet_action->setMenu(m_open_wallet_menu);
-
-    GUIUtil::ExceptionSafeConnect(wallet_controller, &WalletController::walletAdded, this, &RainGUI::addWallet);
-    connect(wallet_controller, &WalletController::walletRemoved, this, &RainGUI::removeWallet);
-
-    for (WalletModel* wallet_model : m_wallet_controller->getOpenWallets()) {
-        addWallet(wallet_model);
-    }
-}
-
-WalletController* RainGUI::getWalletController()
-{
-    return m_wallet_controller;
-}
-
-void RainGUI::addWallet(WalletModel* walletModel)
-{
-    if (!walletFrame) return;
-    if (!walletFrame->addWallet(walletModel)) return;
-    rpcConsole->addWallet(walletModel);
-    if (m_wallet_selector->count() == 0) {
-        setWalletActionsEnabled(true);
-    } else if (m_wallet_selector->count() == 1) {
-        m_wallet_selector_label_action->setVisible(true);
-        m_wallet_selector_action->setVisible(true);
-    }
-    const QString display_name = walletModel->getDisplayName();
-    m_wallet_selector->addItem(display_name, QVariant::fromValue(walletModel));
-}
-
-void RainGUI::removeWallet(WalletModel* walletModel)
-{
-    if (!walletFrame) return;
-
-    labelWalletHDStatusIcon->hide();
-    labelWalletEncryptionIcon->hide();
-
-    int index = m_wallet_selector->findData(QVariant::fromValue(walletModel));
-    m_wallet_selector->removeItem(index);
-    if (m_wallet_selector->count() == 0) {
-        setWalletActionsEnabled(false);
-        overviewAction->setChecked(true);
-    } else if (m_wallet_selector->count() == 1) {
-        m_wallet_selector_label_action->setVisible(false);
-        m_wallet_selector_action->setVisible(false);
-    }
-    rpcConsole->removeWallet(walletModel);
-    walletFrame->removeWallet(walletModel);
-    updateWindowTitle();
-}
-
-void RainGUI::setCurrentWallet(WalletModel* wallet_model)
-{
-    if (!walletFrame) return;
-    walletFrame->setCurrentWallet(wallet_model);
-    for (int index = 0; index < m_wallet_selector->count(); ++index) {
-        if (m_wallet_selector->itemData(index).value<WalletModel*>() == wallet_model) {
-            m_wallet_selector->setCurrentIndex(index);
-            break;
-        }
-    }
-    updateWindowTitle();
-}
-
-void RainGUI::setCurrentWalletBySelectorIndex(int index)
-{
-    WalletModel* wallet_model = m_wallet_selector->itemData(index).value<WalletModel*>();
-    if (wallet_model) setCurrentWallet(wallet_model);
-}
-
-void RainGUI::removeAllWallets()
-{
-    if(!walletFrame)
-        return;
-    setWalletActionsEnabled(false);
-    walletFrame->removeAllWallets();
-}
-#endif // ENABLE_WALLET
-
-void RainGUI::setWalletActionsEnabled(bool enabled)
-{
-    overviewAction->setEnabled(enabled);
-    sendCoinsAction->setEnabled(enabled);
-    sendCoinsMenuAction->setEnabled(enabled);
-    receiveCoinsAction->setEnabled(enabled);
-    receiveCoinsMenuAction->setEnabled(enabled);
-    historyAction->setEnabled(enabled);
-    encryptWalletAction->setEnabled(enabled);
-    backupWalletAction->setEnabled(enabled);
-    changePassphraseAction->setEnabled(enabled);
-    signMessageAction->setEnabled(enabled);
-    verifyMessageAction->setEnabled(enabled);
-    usedSendingAddressesAction->setEnabled(enabled);
-    usedReceivingAddressesAction->setEnabled(enabled);
-    openAction->setEnabled(enabled);
-    m_close_wallet_action->setEnabled(enabled);
-    m_close_all_wallets_action->setEnabled(enabled);
-}
-
-void RainGUI::createTrayIcon()
-{
-    assert(QSystemTrayIcon::isSystemTrayAvailable());
-
-#ifndef Q_OS_MAC
-    if (QSystemTrayIcon::isSystemTrayAvailable()) {
-        trayIcon = new QSystemTrayIcon(m_network_style->getTrayAndWindowIcon(), this);
-        QString toolTip = tr("%1 client").arg(PACKAGE_NAME) + " " + m_network_style->getTitleAddText();
-        trayIcon->setToolTip(toolTip);
-    }
-#endif
-}
-
-void RainGUI::createTrayIconMenu()
-{
-#ifndef Q_OS_MAC
-    // return if trayIcon is unset (only on non-macOSes)
-    if (!trayIcon)
-        return;
-
-    trayIcon->setContextMenu(trayIconMenu.get());
-    connect(trayIcon, &QSystemTrayIcon::activated, this, &RainGUI::trayIconActivated);
-#else
-    // Note: On macOS, the Dock icon is used to provide the tray's functionality.
-    MacDockIconHandler *dockIconHandler = MacDockIconHandler::instance();
-    connect(dockIconHandler, &MacDockIconHandler::dockIconClicked, this, &RainGUI::macosDockIconActivated);
-    trayIconMenu->setAsDockMenu();
-#endif
-
-    // Configuration of the tray icon (or Dock icon) menu
-#ifndef Q_OS_MAC
-    // Note: On macOS, the Dock icon's menu already has Show / Hide action.
-    trayIconMenu->addAction(toggleHideAction);
-    trayIconMenu->addSeparator();
-#endif
-    if (enableWallet) {
-        trayIconMenu->addAction(sendCoinsMenuAction);
-        trayIconMenu->addAction(receiveCoinsMenuAction);
-        trayIconMenu->addSeparator();
-        trayIconMenu->addAction(signMessageAction);
-        trayIconMenu->addAction(verifyMessageAction);
-        trayIconMenu->addSeparator();
-    }
-    trayIconMenu->addAction(optionsAction);
-    trayIconMenu->addAction(openRPCConsoleAction);
-#ifndef Q_OS_MAC // This is built-in on macOS
-    trayIconMenu->addSeparator();
-    trayIconMenu->addAction(quitAction);
-#endif
-}
-
-#ifndef Q_OS_MAC
-void RainGUI::trayIconActivated(QSystemTrayIcon::ActivationReason reason)
-{
-    if(reason == QSystemTrayIcon::Trigger)
-    {
-        // Click on system tray icon triggers show/hide of the main window
-        toggleHidden();
-    }
-}
-#else
-void RainGUI::macosDockIconActivated()
-{
-    show();
-    activateWindow();
-}
-#endif
-
-void RainGUI::optionsClicked()
-{
-    openOptionsDialogWithTab(OptionsDialog::TAB_MAIN);
-}
-
-void RainGUI::aboutClicked()
-{
-    if(!clientModel)
-        return;
-
-    HelpMessageDialog dlg(this, true);
-    dlg.exec();
-}
-
-void RainGUI::showDebugWindow()
-{
-    GUIUtil::bringToFront(rpcConsole);
-    Q_EMIT consoleShown(rpcConsole);
-}
-
-void RainGUI::showDebugWindowActivateConsole()
-{
-    rpcConsole->setTabFocus(RPCConsole::TabTypes::CONSOLE);
-    showDebugWindow();
-}
-
-void RainGUI::showHelpMessageClicked()
-{
-    GUIUtil::bringToFront(helpMessageDialog);
-}
-
-#ifdef ENABLE_WALLET
-void RainGUI::openClicked()
-{
-    OpenURIDialog dlg(this);
-    if(dlg.exec())
-    {
-        Q_EMIT receivedURI(dlg.getURI());
-    }
-}
-
-void RainGUI::gotoOverviewPage()
-{
-    overviewAction->setChecked(true);
-    if (walletFrame) walletFrame->gotoOverviewPage();
-}
-
-void RainGUI::gotoHistoryPage()
-{
-    historyAction->setChecked(true);
-    if (walletFrame) walletFrame->gotoHistoryPage();
-}
-
-void RainGUI::gotoReceiveCoinsPage()
-{
-    receiveCoinsAction->setChecked(true);
-    if (walletFrame) walletFrame->gotoReceiveCoinsPage();
-}
-
-void RainGUI::gotoSendCoinsPage(QString addr)
-{
-    sendCoinsAction->setChecked(true);
-    if (walletFrame) walletFrame->gotoSendCoinsPage(addr);
-}
-
-void RainGUI::gotoSignMessageTab(QString addr)
-{
-    if (walletFrame) walletFrame->gotoSignMessageTab(addr);
-}
-
-void RainGUI::gotoVerifyMessageTab(QString addr)
-{
-    if (walletFrame) walletFrame->gotoVerifyMessageTab(addr);
-}
-void RainGUI::gotoLoadPSBT(bool from_clipboard)
-{
-    if (walletFrame) walletFrame->gotoLoadPSBT(from_clipboard);
-}
-#endif // ENABLE_WALLET
-
-void RainGUI::updateNetworkState()
-{
-    int count = clientModel->getNumConnections();
-    QString icon;
-    switch(count)
-    {
-    case 0: icon = ":/icons/connect_0"; break;
-    case 1: case 2: case 3: icon = ":/icons/connect_1"; break;
-    case 4: case 5: case 6: icon = ":/icons/connect_2"; break;
-    case 7: case 8: case 9: icon = ":/icons/connect_3"; break;
-    default: icon = ":/icons/connect_4"; break;
-    }
-
-    QString tooltip;
-
-    if (m_node.getNetworkActive()) {
-        tooltip = tr("%n active connection(s) to Rain network", "", count) + QString(".<br>") + tr("Click to disable network activity.");
-    } else {
-        tooltip = tr("Network activity disabled.") + QString("<br>") + tr("Click to enable network activity again.");
-        icon = ":/icons/network_disabled";
-    }
-
-    // Don't word-wrap this (fixed-width) tooltip
-    tooltip = QString("<nobr>") + tooltip + QString("</nobr>");
-    connectionsControl->setToolTip(tooltip);
-
-    connectionsControl->setPixmap(platformStyle->SingleColorIcon(icon).pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
 }
 
 void RainGUI::setNumConnections(int count)
@@ -938,150 +287,145 @@ void RainGUI::setNetworkActive(bool networkActive)
     updateNetworkState();
 }
 
-void RainGUI::updateHeadersSyncProgressLabel()
+void RainGUI::updateNetworkState()
 {
-    int64_t headersTipTime = clientModel->getHeaderTipTime();
-    int headersTipHeight = clientModel->getHeaderTipHeight();
-    int estHeadersLeft = (GetTime() - headersTipTime) / Params().GetConsensus().nPowTargetSpacing;
-    if (estHeadersLeft > HEADER_HEIGHT_DELTA_SYNC)
-        progressBarLabel->setText(tr("Syncing Headers (%1%)...").arg(QString::number(100.0 / (headersTipHeight+estHeadersLeft)*headersTipHeight, 'f', 1)));
-}
-
-void RainGUI::openOptionsDialogWithTab(OptionsDialog::Tab tab)
-{
-    if (!clientModel || !clientModel->getOptionsModel())
-        return;
-
-    OptionsDialog dlg(this, enableWallet);
-    dlg.setCurrentTab(tab);
-    dlg.setModel(clientModel->getOptionsModel());
-    dlg.exec();
-}
-
-void RainGUI::setNumBlocks(int count, const QDateTime& blockDate, double nVerificationProgress, bool header, SynchronizationState sync_state)
-{
-// Disabling macOS App Nap on initial sync, disk and reindex operations.
-#ifdef Q_OS_MAC
-    if (sync_state == SynchronizationState::POST_INIT) {
-        m_app_nap_inhibitor->enableAppNap();
-    } else {
-        m_app_nap_inhibitor->disableAppNap();
-    }
-#endif
-
-    if (modalOverlay)
+    int count = m_clientModel->getNumConnections();
+    QString icon;
+    switch(count)
     {
-        if (header)
-            modalOverlay->setKnownBestHeight(count, blockDate);
-        else
-            modalOverlay->tipUpdate(count, blockDate, nVerificationProgress);
-    }
-    if (!clientModel)
-        return;
-
-    // Prevent orphan statusbar messages (e.g. hover Quit in main menu, wait until chain-sync starts -> garbled text)
-    statusBar()->clearMessage();
-
-    // Acquire current block source
-    enum BlockSource blockSource = clientModel->getBlockSource();
-    switch (blockSource) {
-        case BlockSource::NETWORK:
-            if (header) {
-                updateHeadersSyncProgressLabel();
-                return;
-            }
-            progressBarLabel->setText(tr("Synchronizing with network..."));
-            updateHeadersSyncProgressLabel();
-            break;
-        case BlockSource::DISK:
-            if (header) {
-                progressBarLabel->setText(tr("Indexing blocks on disk..."));
-            } else {
-                progressBarLabel->setText(tr("Processing blocks on disk..."));
-            }
-            break;
-        case BlockSource::REINDEX:
-            progressBarLabel->setText(tr("Reindexing blocks on disk..."));
-            break;
-        case BlockSource::NONE:
-            if (header) {
-                return;
-            }
-            progressBarLabel->setText(tr("Connecting to peers..."));
-            break;
+        case 0: icon = ":/icons/connect_0"; break;
+        case 1: case 2: case 3: icon = ":/icons/connect_1"; break;
+        case 4: case 5: case 6: icon = ":/icons/connect_2"; break;
+        case 7: case 8: case 9: icon = ":/icons/connect_3"; break;
+        default: icon = ":/icons/connect_4"; break;
     }
 
     QString tooltip;
-
-    QDateTime currentDate = QDateTime::currentDateTime();
-    qint64 secs = blockDate.secsTo(currentDate);
-
-    tooltip = tr("Processed %n block(s) of transaction history.", "", count);
-
-    // Set icon state: spinning if catching up, tick otherwise
-    if (secs < MAX_BLOCK_TIME_GAP) {
-        tooltip = tr("Up to date") + QString(".<br>") + tooltip;
-        labelBlocksIcon->setPixmap(platformStyle->SingleColorIcon(":/icons/synced").pixmap(STATUSBAR_ICONSIZE, STATUSBAR_ICONSIZE));
-
-#ifdef ENABLE_WALLET
-        if(walletFrame)
-        {
-            walletFrame->showOutOfSyncWarning(false);
-            modalOverlay->showHide(true, true);
-        }
-#endif // ENABLE_WALLET
-
-        progressBarLabel->setVisible(false);
-        progressBar->setVisible(false);
-    }
-    else
-    {
-        QString timeBehindText = GUIUtil::formatNiceTimeOffset(secs);
-
-        progressBarLabel->setVisible(true);
-        progressBar->setFormat(tr("%1 behind").arg(timeBehindText));
-        progressBar->setMaximum(1000000000);
-        progressBar->setValue(nVerificationProgress * 1000000000.0 + 0.5);
-        progressBar->setVisible(true);
-
-        tooltip = tr("Catching up...") + QString("<br>") + tooltip;
-        if(count != prevBlocks)
-        {
-            labelBlocksIcon->setPixmap(platformStyle->SingleColorIcon(QString(
-                ":/animation/spinner-%1").arg(spinnerFrame, 3, 10, QChar('0')))
-                .pixmap(STATUSBAR_ICONSIZE, STATUSBAR_ICONSIZE));
-            spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES;
-        }
-        prevBlocks = count;
-
-#ifdef ENABLE_WALLET
-        if(walletFrame)
-        {
-            walletFrame->showOutOfSyncWarning(true);
-            modalOverlay->showHide();
-        }
-#endif // ENABLE_WALLET
-
-        tooltip += QString("<br>");
-        tooltip += tr("Last received block was generated %1 ago.").arg(timeBehindText);
-        tooltip += QString("<br>");
-        tooltip += tr("Transactions after this will not yet be visible.");
+    if (m_node.getNetworkActive()) {
+        tooltip = tr("%n active connection(s) to Rain network", "", count) + QString(".<br>") + tr("Click to disable network activity.");
+    } else {
+        tooltip = tr("Network activity disabled.") + QString("<br>") + tr("Click to enable network activity again.");
     }
 
-    // Don't word-wrap this (fixed-width) tooltip
-    tooltip = QString("<nobr>") + tooltip + QString("</nobr>");
+    QMetaObject::invokeMethod(this->rootObject(), "updateNetwork", Q_ARG(QVariant, count));
+    setNumBlocks(m_node.getNumBlocks(), QDateTime::fromTime_t(m_node.getLastBlockTime()), m_node.getVerificationProgress(), false);
 
-    labelBlocksIcon->setToolTip(tooltip);
-    progressBarLabel->setToolTip(tooltip);
-    progressBar->setToolTip(tooltip);
+}
+
+#ifdef ENABLE_WALLET
+void RainGUI::setWalletController(WalletController* wallet_controller)
+{
+    assert(!m_walletController);
+    assert(wallet_controller);
+
+    m_walletController = wallet_controller;
+
+    connect(wallet_controller, &WalletController::walletAdded, this, &RainGUI::addWallet);
+    connect(wallet_controller, &WalletController::walletRemoved, this, &RainGUI::removeWallet);
+
+    // TODO: support more than just the default wallet
+//    if (m_walletController->getOpenWallets()[0]) {
+//        addWallet(m_walletController->getOpenWallets()[0]);
+//    }
+
+    for (WalletModel* wallet_model : m_walletController->getOpenWallets()) {
+        addWallet(wallet_model);
+    }
+
+}
+
+WalletController* RainGUI::getWalletController()
+{
+    return m_walletController;
+}
+
+void RainGUI::addWallet(WalletModel* walletModel)
+{
+    //const QString display_name = walletModel->getDisplayName();
+    rpcConsole->addWallet(walletModel);
+    setWalletModel(walletModel);
+}
+
+void RainGUI::removeWallet(WalletModel* walletModel)
+{
+    rpcConsole->removeWallet(walletModel);
+}
+
+void RainGUI::setCurrentWallet(WalletModel* wallet_model)
+{
+   // walletFrame->setCurrentWallet(wallet_model);
+
+}
+
+void RainGUI::removeAllWallets()
+{
+
+//    walletFrame->removeAllWallets();
+}
+#endif // ENABLE_WALLET
+
+static void InitMessage(RainGUI *gui, const std::string &message)
+{
+    QMetaObject::invokeMethod(gui, "showInitMessage",
+                              Qt::QueuedConnection,
+                              Q_ARG(QString, QString::fromStdString(message)),
+                              Q_ARG(int, Qt::AlignBottom|Qt::AlignHCenter),
+                              Q_ARG(QColor, QColor(55,55,55)));
+}
+
+static void ShowProgress(RainGUI *gui, const std::string &title, int nProgress)
+{
+    InitMessage(gui, title + strprintf("%d", nProgress) + "%");
+}
+
+static bool ThreadSafeMessageBox(RainGUI* gui, const std::string& message, const std::string& caption, unsigned int style)
+{
+    bool ret = false;
+    // In case of modal message, use blocking connection to wait for user to click a button
+    bool invoked = QMetaObject::invokeMethod(gui, "message", Qt::QueuedConnection,
+                                             Q_ARG(QString, QString::fromStdString(caption)),
+                                             Q_ARG(QString, QString::fromStdString(message)),
+                                             Q_ARG(unsigned int, style));
+    assert(invoked);
+    return ret;
+}
+
+void RainGUI::subscribeToCoreSignals()
+{
+    // Connect signals to client
+//    m_handler_message_box = m_node.handleMessageBox(std::bind(ThreadSafeMessageBox, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+//    m_handler_question = m_node.handleQuestion(std::bind(ThreadSafeMessageBox, this, std::placeholders::_1, std::placeholders::_3, std::placeholders::_4));
+//    m_handler_init_message = m_node.handleInitMessage(std::bind(InitMessage, this, std::placeholders::_1));
+//    m_handler_show_progress = m_node.handleShowProgress(std::bind(ShowProgress, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void RainGUI::unsubscribeFromCoreSignals()
+{
+    // Disconnect signals from client
+//    m_handler_message_box->disconnect();
+//    m_handler_question->disconnect();
+//    m_handler_init_message->disconnect();
+//    m_handler_show_progress->disconnect();
+}
+
+void RainGUI::showInitMessage(const QString &message, int alignment, const QColor &color)
+{
+    Q_UNUSED(alignment)
+    Q_UNUSED(color)
+
+    QVariant returnedValue;
+
+    QMetaObject::invokeMethod(this->rootObject(), "showInitMessage",
+                              Q_RETURN_ARG(QVariant, returnedValue),
+                              Q_ARG(QVariant, message));
 }
 
 void RainGUI::message(const QString& title, QString message, unsigned int style, bool* ret, const QString& detailed_message)
 {
     // Default title. On macOS, the window title is ignored (as required by the macOS Guidelines).
-    QString strTitle{PACKAGE_NAME};
+    QString strTitle{"Rain"};
     // Default to information icon
-    int nMBoxIcon = QMessageBox::Information;
+   // int nMBoxIcon = QMessageBox::Information;
     int nNotifyIcon = Notificator::Information;
 
     QString msgType;
@@ -1110,93 +454,647 @@ void RainGUI::message(const QString& title, QString message, unsigned int style,
         strTitle += " - " + msgType;
     }
 
-    if (style & CClientUIInterface::ICON_ERROR) {
-        nMBoxIcon = QMessageBox::Critical;
-        nNotifyIcon = Notificator::Critical;
-    } else if (style & CClientUIInterface::ICON_WARNING) {
-        nMBoxIcon = QMessageBox::Warning;
-        nNotifyIcon = Notificator::Warning;
+    notificator->notify(static_cast<Notificator::Class>(nNotifyIcon), strTitle, message);
+
+}
+
+void RainGUI::splashFinished()
+{
+    QMetaObject::invokeMethod(this->rootObject(), "hideSplash");
+}
+
+void RainGUI::requestRain()
+{
+	
+    QString address = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, "", "", OutputType::LEGACY);
+
+    QMetaObject::invokeMethod(m_AppDrawer, "showQr",
+                              Q_ARG(QVariant, address));
+}
+
+void RainGUI::requestAddress(QString purpose)
+{
+    QString userAddress = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, purpose, "", OutputType::LEGACY);
+    QString aiAddress = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, purpose, "", OutputType::LEGACY);
+
+    QMetaObject::invokeMethod(gameMenu, "setAddresses", Q_ARG(QVariant, userAddress), Q_ARG(QVariant, aiAddress));
+}
+
+void RainGUI::createAsset(QString sAssetName, QString sAssetShortName , QString addressTo, QString inputamount, QString assetToUse, QString outputamount, bool transferable, bool convertable, bool restricted, bool limited)
+{
+
+
+}
+
+void RainGUI::convertAsset(QString addressTo, QString inputamount, QString inputsAssetName, QString outputamount, QString outputsAssetName)
+{
+
+
+}
+
+void RainGUI::setBets(QString userAddress, QString aiAddress, QString amountt, QString sAssetName, QString sNonce)
+{
+    bool ok;
+    uint32_t nNonce = sNonce.toInt(&ok);
+    if (!ok) {
+        LogPrintf(" FAILED TO GET nNONCE\n");
+        return;
     }
 
-    if (style & CClientUIInterface::MODAL) {
-        // Check for buttons, use OK as default, if none was supplied
-        QMessageBox::StandardButton buttons;
-        if (!(buttons = (QMessageBox::StandardButton)(style & CClientUIInterface::BTN_MASK)))
-            buttons = QMessageBox::Ok;
+    QString recovAddress = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, "recovery", "", OutputType::LEGACY);
 
-        showNormalIfMinimized();
-        QMessageBox mBox(static_cast<QMessageBox::Icon>(nMBoxIcon), strTitle, message, buttons, this);
-        mBox.setTextFormat(Qt::PlainText);
-        mBox.setDetailedText(detailed_message);
-        int r = mBox.exec();
-        if (ret != nullptr)
-            *ret = r == QMessageBox::Ok;
+    CTxDestination userdest = DecodeDestination(userAddress.toStdString());
+    CTxDestination aidest = DecodeDestination(aiAddress.toStdString()), dest;
+    CTxDestination recovdest = DecodeDestination(recovAddress.toStdString());
+
+    CPubKey vchuPubKey, vchaPubKey, vchPubKey;
+    PKHash upkhash = std::get<PKHash>(userdest);
+    PKHash aipkhash = std::get<PKHash>(aidest);
+    PKHash recovpkhash = std::get<PKHash>(recovdest);
+
+    CKeyID ukeyID{ToKeyID(upkhash)};
+    CKeyID aikeyID{ToKeyID(aipkhash)};
+    CKeyID recovkeyID{ToKeyID(recovpkhash)};
+
+    interfaces::Wallet& wallet = m_walletModel->wallet();
+    CScript scriptPubKey;
+
+    CHashWriter uhasher(SER_GETHASH, 0);
+    uhasher << nNonce+0;
+    uint256 uimage = uhasher.GetHash();
+
+    CHashWriter ahasher(SER_GETHASH, 0);
+    uhasher << nNonce+1;
+    uint256 aimage = ahasher.GetHash();
+
+    if(wallet.getPubKey(GetScriptForDestination(userdest), ukeyID, vchuPubKey) &&
+     wallet.getPubKey(GetScriptForDestination(aidest), aikeyID, vchaPubKey) &&
+     wallet.getPubKey(GetScriptForDestination(recovdest), ukeyID, vchPubKey))
+        scriptPubKey = GetScriptForPvP(CScriptNum(100), vchuPubKey, vchaPubKey, vchPubKey, uimage, aimage);
+
+    if (!ExtractDestination(scriptPubKey, dest)){
+        LogPrintf(" FAILED to ExtractDestination \n");
+        return;
+    }
+
+	if (!IsValidDestination(dest)) {
+        LogPrintf(" Invalid Destination \n");
+        return;
+	}
+
+    QString address = QString::fromStdString(EncodeDestination(dest));
+    sendRain(address, amountt, sAssetName);
+
+}
+
+void RainGUI::sendRain(QString address, QString amountt, QString sAssetName)
+{
+    SendAssetsRecipient recipient;
+    recipient.address = address;
+
+    CAmount amount = 0;
+    if (ParseFixedPoint(amountt.toStdString(), 8, &amount))
+        recipient.amount = amount;
+
+    for(auto const& x : passetsCache->GetItemsMap()){
+        if(x.second->second.asset.IsExplicit()){
+            LogPrintf("Logging assets %s vs %s\n", x.second->second.asset.GetAsset().getAssetName(), recipient.asset.getAssetName());
+            if(QString::fromStdString(x.second->second.asset.GetAsset().getName()) == sAssetName){
+                recipient.asset = x.second->second.asset.GetAsset();
+            }
+        }
+    }
+    LogPrintf("TESTING address = %s, amount = %d , asset= %s\n",address.toStdString(), amount, recipient.asset.getName() );
+
+    QList<SendAssetsRecipient> recipientList;
+    recipientList.append(recipient);
+
+    WalletModelTransaction transaction(recipientList);
+
+    WalletModel::SendCoinsReturn prepareStatus = m_walletModel->prepareTransaction(transaction, *m_coin_control);
+
+    // process prepareStatus and on error generate message shown to user
+    processSendCoinsReturn(prepareStatus, RainUnits::formatWithUnit(m_walletModel->getOptionsModel()->getDisplayUnit(), transaction.getTransactionFee()));
+
+    if (prepareStatus.status != WalletModel::OK) {
+        // TODO: Notify the user of type of failure
+        return;
+    }
+
+    WalletModel::SendCoinsReturn sendStatus = m_walletModel->sendCoins(transaction);
+
+    processSendCoinsReturn(sendStatus, RainUnits::formatWithUnit(m_walletModel->getOptionsModel()->getDisplayUnit(), transaction.getTransactionFee()));
+
+    if (sendStatus.status != WalletModel::OK)
+    {
+        LogPrintf("ERROR on SEND\n");
+    }
+
+    clearCoinCotrol();
+}
+
+const QStringList monthsNames = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+
+void RainGUI::setWalletModel(WalletModel *model)
+{
+    if(model && model->getOptionsModel())
+    {
+        this->m_walletModel = model;
+        //Set up transaction list
+        filter.reset(new TransactionFilterProxy());
+        filter->setSourceModel(m_walletModel->getTransactionTableModel());
+       // filter->setLimit(50);
+        filter->setDynamicSortFilter(true);
+        filter->setSortRole(Qt::EditRole);
+        filter->setShowInactive(false);
+        filter->sort(TransactionTableModel::Date, Qt::DescendingOrder);
+
+        this->rootContext()->setContextProperty("transactionsModel", filter.get());
+
+        addressTablemodel = m_walletModel->getAddressTableModel();
+        addrfilter = new AddressFilterProxyModel(AddressTableModel::Send, this);
+        addrfilter->setSourceModel(addressTablemodel);
+        addrfilter->sort(sortType, sortOrder);
+
+        this->rootContext()->setContextProperty("addressTablemodel", addrfilter);
+
+        // chart filter
+        stakesFilter = new TransactionFilterProxy();
+        stakesFilter->setDynamicSortFilter(true);
+        stakesFilter->setSortCaseSensitivity(Qt::CaseInsensitive);
+        stakesFilter->setFilterCaseSensitivity(Qt::CaseInsensitive);
+        stakesFilter->setSortRole(Qt::EditRole);
+        stakesFilter->setOnlyStakes(true);
+        stakesFilter->setSourceModel(m_walletModel->getTransactionTableModel());
+        stakesFilter->sort(TransactionTableModel::Date, Qt::AscendingOrder);
+        //hasStakes = stakesFilter->rowCount() > 0;
+
+        this->rootContext()->setContextProperty("stakemodel", stakesFilter);
+
+        //assetFilter = new AssetFilterProxy();
+        //assetFilter->setSourceModel();
+        //assetFilter->sort(AssetTableModel::NameRole, Qt::DescendingOrder);
+        this->rootContext()->setContextProperty("assettable_model", m_walletModel->getAssetTableModel());
+        this->rootContext()->setContextProperty("coincontrolmodel", m_walletModel->getCoinControlModel());
+
+        // Keep up to date with wallet
+        interfaces::Wallet& wallet = m_walletModel->wallet();
+        interfaces::WalletBalances balances = wallet.getBalances();
+        setBalance(balances);
+        connect(m_walletModel, &WalletModel::balanceChanged, this, &RainGUI::setBalance);
+
+        connect(m_walletModel->getOptionsModel(), &OptionsModel::displayUnitChanged, this, &RainGUI::updateDisplayUnit);
+
+        // Receive and report messages from wallet model
+        connect(m_walletModel, &WalletModel::message, [this](const QString &title, const QString &message, unsigned int style){
+            this->message(title, message, style);
+        });
+
+        // Handle changes in encryption status
+        connect(m_walletModel, &WalletModel::encryptionStatusChanged, this, &RainGUI::updateWalletStatus);
+
+        // Balloon pop-up for new transaction
+        connect(m_walletModel->getTransactionTableModel(), &TransactionTableModel::rowsInserted, this, &RainGUI::processNewTransaction);
+
+        // Ask for passphrase if needed
+        //connect(_walletModel, SIGNAL(requireUnlock()), this, SLOT(unlockWallet()));
+       //connect(model, &WalletModel::requireUnlock, this, &RainGUI::unlockWallet);
+       //mnModel->setWalletModel(m_walletModel);
+    }
+
+
+    this->messageModel = new MessageModel(m_walletModel);
+    if(messageModel)
+    {
+        proxyModel = new QSortFilterProxyModel(this);
+        proxyModel->setSourceModel(messageModel);
+        proxyModel->setDynamicSortFilter(true);
+        proxyModel->setSortCaseSensitivity(Qt::CaseInsensitive);
+        proxyModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
+        proxyModel->sort(MessageModel::ColumnIndex::ReceivedDateTime, Qt::DescendingOrder);
+        this->rootContext()->setContextProperty("messageModel", proxyModel);
+        // Balloon pop-up for new message
+//        connect(messageModel, SIGNAL(rowsInserted(QModelIndex,int,int)), this, SLOT(processNewMessage(QModelIndex,int,int)));
+    }
+
+    // Refresh years filter, first address created is the start
+    int currentYear = QDateTime::currentDateTime().date().year();
+    QList<QString> yearsModel;
+
+    for(int i = 2019;  i < currentYear +1; i++)
+        yearsModel.append(QString::number(i));
+
+    this->rootContext()->setContextProperty("yearsModel", QVariant(yearsModel));
+    AssetList();
+
+    updateDisplayUnit();
+    updateWalletStatus();
+
+}
+
+void RainGUI::updateWalletStatus()
+{
+    setEncryptionStatus(m_walletModel->getEncryptionStatus());
+    setHDStatus(m_walletModel->wallet().privateKeysDisabled(), m_walletModel->wallet().hdEnabled());
+
+    this->rootContext()->setContextProperty("EncryptionStatus", QVariant(m_walletModel->getEncryptionStatus()));
+    this->rootContext()->setContextProperty("HDStatus", QVariant(m_walletModel->wallet().privateKeysDisabled()));
+    QMetaObject::invokeMethod(this->rootObject(), "changeStatus");
+}
+
+void RainGUI::setBalance(const interfaces::WalletBalances& balances)
+{
+    int unit = m_walletModel->getOptionsModel()->getDisplayUnit();
+    m_balances = balances;
+
+    CAmountMap tmp;
+    for (auto bal: m_balances.balance){
+        if (bal.first == Params().GetConsensus().subsidy_asset)
+            tmp.insert(bal);
+    }
+
+
+    QMetaObject::invokeMethod(m_frontPage, "updateBalance",
+                              Q_ARG(QVariant, formatMultiAssetAmount(tmp, unit, RainUnits::SeparatorStyle::ALWAYS, "")),
+                              Q_ARG(QVariant, formatMultiAssetAmount(balances.immature_balance, unit, RainUnits::SeparatorStyle::ALWAYS, "\n")),
+                              Q_ARG(QVariant, formatMultiAssetAmount(balances.unconfirmed_balance, unit, RainUnits::SeparatorStyle::ALWAYS, "\n")),
+                              Q_ARG(QVariant, formatMultiAssetAmount(balances.stake, unit, RainUnits::SeparatorStyle::ALWAYS, "\n")));
+
+   // SetExchangeInfoTextLabels();
+    AssetList();
+}
+
+void RainGUI::setSendBalance(QString assetname)
+{
+    int unit = m_walletModel->getOptionsModel()->getDisplayUnit();
+    CAmountMap tmp;
+    for (auto bal: m_balances.balance){
+        if (bal.first.getName() == assetname.toStdString())
+            tmp.insert(bal);
+    }
+
+    QMetaObject::invokeMethod(m_sendPane, "setsendbalance", Q_ARG(QVariant, formatMultiAssetAmount(tmp, unit, RainUnits::SeparatorStyle::ALWAYS, "")));
+}
+
+void RainGUI::setClipboard(QString text)
+{
+    GUIUtil::setClipboard(text);
+}
+
+void RainGUI::setDisplayUnit(int index)
+{
+    if(m_walletModel && m_walletModel->getOptionsModel())
+    {
+        m_walletModel->getOptionsModel()->setDisplayUnit(index);
+    }
+    setBalance(m_balances);
+}
+
+void RainGUI::executeRpcCommand(QString command)
+{
+    QString response;
+
+    try
+    {
+        std::string result;
+        std::string executableCommand = command.toStdString() + "\n";
+
+        if (!rpcConsole->RPCExecuteCommandLine(m_node, result, executableCommand, nullptr, m_walletModel)) {
+            response = "Parse error: unbalanced ' or \"";
+        }
+        else {
+            response = QString::fromStdString(result);
+        }
+    }
+    catch (UniValue& objError)
+    {
+        try // Nice formatting for standard-format error
+        {
+            int code = find_value(objError, "code").get_int();
+            std::string message = find_value(objError, "message").get_str();
+            response =  QString::fromStdString(message) + " (code " + QString::number(code) + ")";
+        }
+        catch (const std::runtime_error&) // raised when converting to invalid type, i.e. missing code or message
+        {   // Show raw JSON object
+            response = QString::fromStdString(objError.write());
+        }
+    }
+    catch (const std::exception& e)
+    {
+        response = QString("Error: ") + QString::fromStdString(e.what());
+    }
+
+    QMetaObject::invokeMethod(m_consolePane, "showReply", Q_ARG(QVariant, response));
+}
+
+void RainGUI::updateDisplayUnit()
+{
+    if(m_walletModel && m_walletModel->getOptionsModel())
+    {
+        if (m_balances.balance != CAmountMap()) {
+            setBalance(m_balances);
+        }
+
+        m_displayUnit = m_walletModel->getOptionsModel()->getDisplayUnit();
+        this->rootContext()->setContextProperty("displayUnit", m_displayUnit);
+    }
+}
+
+const QString marketdetails = "https://explorer.alqo.app/api/getmarketinfo";
+
+QString dequote(QString s)
+{
+    std::string str(s.toStdString());
+    boost::xpressive::sregex nums = boost::xpressive::sregex::compile(":\\\"(-?\\d*(\\.\\d+))\\\"");
+    std::string nm(":$1");
+    str = regex_replace(str, nums, nm);
+    boost::xpressive::sregex tru = boost::xpressive::sregex::compile("\\\"true\\\"");
+    std::string tr("true");
+    str = regex_replace(str, tru, tr);
+    boost::xpressive::sregex fal = boost::xpressive::sregex::compile("\\\"false\\\"");
+    std::string fl("false");
+    str = regex_replace(str, fal, fl);
+    QString res = str.c_str();
+    return res;
+}
+
+QString RainGUI::sendRequest(QString url)
+{
+    QString Response = "";
+    // create custom temporary event loop on stack
+    QEventLoop eventLoop;
+
+    // "quit()" the event-loop, when the network request "finished()"
+    QNetworkAccessManager mgr;
+    QObject::connect(&mgr, SIGNAL(finished(QNetworkReply*)), &eventLoop, SLOT(quit()));
+
+    // the HTTP request
+    QNetworkRequest req = QNetworkRequest(QUrl(url));
+
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+
+    req.setRawHeader("User-Agent", "AlQO Wallet"); //set header
+    req.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
+
+
+    QNetworkReply* reply = mgr.get(req);
+    eventLoop.exec();
+
+    if (reply->error() == QNetworkReply::NoError) {
+        Response = reply->readAll();
+        delete reply;
     } else {
-        notificator->notify(static_cast<Notificator::Class>(nNotifyIcon), strTitle, message);
+        Response = "Error";
+    //    QMessageBox::information(this,"Error",reply->errorString());
+
+        delete reply;
     }
+
+    return Response;
 }
 
-void RainGUI::changeEvent(QEvent *e)
+void RainGUI::SetExchangeInfoTextLabels()
 {
-    QMainWindow::changeEvent(e);
-#ifndef Q_OS_MAC // Ignored on Mac
-    if(e->type() == QEvent::WindowStateChange)
-    {
-        if(clientModel && clientModel->getOptionsModel() && clientModel->getOptionsModel()->getMinimizeToTray())
-        {
-            QWindowStateChangeEvent *wsevt = static_cast<QWindowStateChangeEvent*>(e);
-            if(!(wsevt->oldState() & Qt::WindowMinimized) && isMinimized())
-            {
-                QTimer::singleShot(0, this, &RainGUI::hide);
-                e->ignore();
-            }
-            else if((wsevt->oldState() & Qt::WindowMinimized) && !isMinimized())
-            {
-                QTimer::singleShot(0, this, &RainGUI::show);
-                e->ignore();
-            }
-        }
+#ifndef WIN32
+    // Get the current exchange information
+    QString str = "";
+    QString response = dequote(sendRequest(marketdetails));
+
+    // parse the json result to get values.
+    QJsonDocument jsonResponse = QJsonDocument::fromJson(response.toUtf8());       //get json from str.
+    QJsonObject obj = jsonResponse.object();
+
+    QJsonObject objmetrics = obj["metrics"].toArray().first().toObject();
+    QJsonObject prices = obj["base_prices"].toObject();
+
+    QJsonDocument doc(prices);
+    QString strJson(doc.toJson(QJsonDocument::Compact));
+
+    double newbtc = objmetrics["latest"].toDouble();
+    double newusd = prices["USD"].toDouble();
+    double newxlq = newusd * newbtc;
+
+    CAmount tally =0;
+    for(auto&balance: m_balances.balance){
+        CAmount temp = balance.second;// * balance.first.floor;
+        tally+=temp;
     }
+
+    double newwalletvalue = (tally/COIN * newxlq);
+
+    QMetaObject::invokeMethod(m_pricesWidget, "updateValue", Q_ARG(QVariant,"1 BTC = $ " + str.number(newusd, 'i', 2)),
+     Q_ARG(QVariant, "1 RAIN = $ " + str.number(newxlq, 'i', 2)));
+
+    QMetaObject::invokeMethod(m_frontPage, "updateWalletValue", Q_ARG(QVariant, str.number(newwalletvalue, 'i', 2) + " USD" ));
+
+    obj.empty();
+    objmetrics.empty();
+    prices.empty();
 #endif
 }
 
-void RainGUI::closeEvent(QCloseEvent *event)
+void RainGUI::onSortChanged(int idx)
 {
-#ifndef Q_OS_MAC // Ignored on Mac
-    if(clientModel && clientModel->getOptionsModel())
+  //  sortType = (AddressTableModel::ColumnIndex) ;
+    sortAddresses();
+}
+
+void RainGUI::onSortOrderChanged(int idx)
+{
+   // sortOrder = (Qt::SortOrder) ;
+    sortAddresses();
+}
+
+void RainGUI::sortAddresses()
+{
+    if (addrfilter)
+        addrfilter->sort(sortType, sortOrder);
+}
+
+void RainGUI::processSendCoinsReturn(const WalletModel::SendCoinsReturn &sendCoinsReturn, const QString &msgArg)
+{
+    QPair<QString, CClientUIInterface::MessageBoxFlags> msgParams;
+    // Default to a warning message, override if error message is needed
+    msgParams.second = CClientUIInterface::MSG_WARNING;
+
+    // This comment is specific to SendCoinsDialog usage of WalletModel::SendCoinsReturn.
+    // WalletModel::TransactionCommitFailed is used only in WalletModel::sendCoins()
+    // all others are used only in WalletModel::prepareTransaction()
+    switch(sendCoinsReturn.status)
     {
-        if(!clientModel->getOptionsModel()->getMinimizeOnClose())
-        {
-            // close rpcConsole in case it was open to make some space for the shutdown window
-            rpcConsole->close();
-
-            QApplication::quit();
-        }
-        else
-        {
-            QMainWindow::showMinimized();
-            event->ignore();
-        }
+    case WalletModel::InvalidAddress:
+        msgParams.first = tr("The recipient address is not valid. Please recheck.");
+        break;
+    case WalletModel::InvalidAmount:
+        msgParams.first = tr("The amount to pay must be larger than 0.");
+        break;
+    case WalletModel::AmountExceedsBalance:
+        msgParams.first = tr("The amount exceeds your balance.");
+        break;
+    case WalletModel::AmountWithFeeExceedsBalance:
+        msgParams.first = tr("The total exceeds your balance when the %1 transaction fee is included.").arg(msgArg);
+        break;
+    case WalletModel::DuplicateAddress:
+        msgParams.first = tr("Duplicate address found: addresses should only be used once each.");
+        break;
+    case WalletModel::TransactionCreationFailed:
+        msgParams.first = tr("Transaction creation failed!");
+        msgParams.second = CClientUIInterface::MSG_ERROR;
+        break;
+    case WalletModel::TransactionCommitFailed:
+        msgParams.first = tr("The transaction was rejected with the following reason: %1").arg(sendCoinsReturn.reasonCommitFailed);
+        msgParams.second = CClientUIInterface::MSG_ERROR;
+        break;
+    case WalletModel::AbsurdFee:
+        msgParams.first = tr("A fee higher than %1 is considered an absurdly high fee.").arg(RainUnits::formatWithUnit(m_walletModel->getOptionsModel()->getDisplayUnit(), m_walletModel->wallet().getDefaultMaxTxFee()));
+        break;
+    // included to prevent a compiler warning.
+    case WalletModel::TransactionCheckFailed:
+        msgParams.first = tr("TransactionCheckFailed!");
+        break;
+    case WalletModel::StakingOnlyUnlocked:
+        msgParams.first = tr("StakingOnlyUnlocked!");
+        break;
+    case WalletModel::CannotCreateInternalAddress:
+        msgParams.first = tr("CannotCreateInternalAddress!");
+        break;
+    case WalletModel::OK:
+        msgParams.first = tr("SENT!");
+        break;
+      default:
+        return;
     }
-#else
-    QMainWindow::closeEvent(event);
-#endif
+    LogPrintf("error : %s \n", msgParams.first.toStdString());
+    message(tr("Send Coins"), msgParams.first, msgParams.second);
 }
 
-void RainGUI::showEvent(QShowEvent *event)
+void RainGUI::AssetList(){
+    assetListModel.clear();
+    for(auto const& x : passetsCache->GetItemsMap()){
+        if(x.second->first !="UNDEFINED")
+            assetListModel.append(QString::fromStdString(x.second->first));
+//        assetListModel.append(QString::fromStdString(x.second->second.asset.GetAsset().getName()));
+    }
+
+    this->rootContext()->setContextProperty("assetListModel", QVariant(assetListModel));
+}
+
+void RainGUI::close(){
+    //QApplication::quit();
+    qApp->quit();
+}
+
+void RainGUI::processNewTransaction(const QModelIndex& parent, int start, int /*end*/)
 {
-    // enable the debug window when the main window shows up
-    openRPCConsoleAction->setEnabled(true);
-    aboutAction->setEnabled(true);
-    optionsAction->setEnabled(true);
+    // Prevent balloon-spam when initial block download is in progress
+    if (!m_walletModel || !m_clientModel || m_clientModel->node().isInitialBlockDownload())
+        return;
+
+    TransactionTableModel *ttm = m_walletModel->getTransactionTableModel();
+    if (!ttm || ttm->processingQueuedTransactions())
+        return;
+
+    QString date = ttm->index(start, TransactionTableModel::Date, parent).data().toString();
+    qint64 amount = ttm->index(start, TransactionTableModel::Amount, parent).data(Qt::EditRole).toULongLong();
+    QString type = ttm->index(start, TransactionTableModel::Type, parent).data().toString();
+    QModelIndex index = ttm->index(start, 0, parent);
+    QString address = ttm->data(index, TransactionTableModel::AddressRole).toString();
+    QString label = ttm->data(index, TransactionTableModel::LabelRole).toString();
+
+    incomingTransaction(date, m_walletModel->getOptionsModel()->getDisplayUnit(), amount, type, address, label, m_walletModel->getWalletName());
 }
 
-#ifdef ENABLE_WALLET
+void RainGUI::processNewMessage(const QModelIndex& parent, int start, int /*end*/)
+{
+    // Prevent balloon-spam when initial block download is in progress
+    if(!messageModel)
+        return;
+
+    MessageModel *mm = messageModel;
+
+    QString sent_datetime = mm->index(start, MessageModel::ReceivedDateTime, parent).data().toString();
+    QString from_address  = mm->index(start, MessageModel::FromAddress,      parent).data().toString();
+    QString to_address    = mm->index(start, MessageModel::ToAddress,        parent).data().toString();
+    QString message       = mm->index(start, MessageModel::Message,          parent).data().toString();
+    int type              = mm->index(start, MessageModel::TypeInt,          parent).data().toInt();
+
+    incomingMessage(sent_datetime, from_address, to_address, message, type);
+}
+
+void RainGUI::updateEncryptionStatus()
+{
+    encryptionStatusChanged();
+}
+
+void RainGUI::encryptWallet(QString pass)
+{
+    if(!m_walletModel)
+        return;
+    SecureString ppass;
+    ppass.assign(pass.toStdString().c_str());
+   // bool res = m_walletModel->setWalletEncrypted(ppass);
+
+    updateEncryptionStatus();
+}
+
+void RainGUI::backupWallet()
+{
+    //TODO
+    QString filename ="aa" ;//GUIUtil::getSaveFileName(this, tr("Backup Wallet"), QString(),  tr("Wallet Data (*.dat)"), nullptr);
+
+    if (filename.isEmpty())
+        return;
+
+    if (!m_walletModel->wallet().backupWallet(filename.toLocal8Bit().data())) {
+        message(tr("Backup Failed"), tr("There was an error trying to save the wallet data to %1.").arg(filename),
+            CClientUIInterface::MSG_ERROR);
+        }
+    else {
+        message(tr("Backup Successful"), tr("The wallet data was successfully saved to %1.").arg(filename),
+            CClientUIInterface::MSG_INFORMATION);
+    }
+}
+
+void RainGUI::changePassphrase(QString oldpass, QString newpass)
+{
+    SecureString opass, npass;
+    opass.assign(oldpass.toStdString().c_str());
+    npass.assign(newpass.toStdString().c_str());
+
+    if(m_walletModel->changePassphrase(opass, npass))
+        updateWalletStatus();
+}
+
+void RainGUI::unlockWallet(QString pass, bool stakingonly)
+{
+    if(!m_walletModel)
+        return;
+    // Unlock wallet when requested by wallet model
+    bool res = false;
+    SecureString opass;
+    opass.assign(pass.toStdString().c_str());
+    if (m_walletModel->getEncryptionStatus() == WalletModel::Locked)
+    {
+        res = m_walletModel->setWalletLocked(false, opass, stakingonly);
+    }
+    updateWalletStatus();
+}
+
+void RainGUI::lockWallet()
+{
+    if(!m_walletModel)
+        return;
+    if (m_walletModel->getEncryptionStatus() != WalletModel::Locked)
+    {
+        m_walletModel->setWalletLocked(true);
+    }
+    updateWalletStatus();
+}
+
 void RainGUI::incomingTransaction(const QString& date, int unit, const CAmount& amount, const QString& type, const QString& address, const QString& label, const QString& walletName)
 {
     // On new transaction, make an info balloon
-    QString msg = tr("Date: %1\n").arg(date) +
-                  tr("Amount: %1\n").arg(RainUnits::formatWithUnit(unit, amount, true));
+    QString msg = tr("Date: %1\n").arg(date) + tr("Amount: %1\n").arg(RainUnits::formatWithUnit(unit, amount, true));
     if (m_node.walletClient().getWallets().size() > 1 && !walletName.isEmpty()) {
         msg += tr("Wallet: %1\n").arg(walletName);
     }
@@ -1205,311 +1103,276 @@ void RainGUI::incomingTransaction(const QString& date, int unit, const CAmount& 
         msg += tr("Label: %1\n").arg(label);
     else if (!address.isEmpty())
         msg += tr("Address: %1\n").arg(address);
-    message((amount)<0 ? tr("Sent transaction") : tr("Incoming transaction"),
-             msg, CClientUIInterface::MSG_INFORMATION);
-}
-#endif // ENABLE_WALLET
-
-void RainGUI::dragEnterEvent(QDragEnterEvent *event)
-{
-    // Accept only URIs
-    if(event->mimeData()->hasUrls())
-        event->acceptProposedAction();
+    message((amount)<0 ? tr("Sent transaction") : tr("Incoming transaction"), msg, CClientUIInterface::MSG_INFORMATION);
 }
 
-void RainGUI::dropEvent(QDropEvent *event)
+void RainGUI::incomingMessage(const QString& sent_datetime, QString from_address, QString to_address, QString message, int type)
 {
-    if(event->mimeData()->hasUrls())
+/*
+    if (type == MessageTableEntry::Received)
     {
-        for (const QUrl &uri : event->mimeData()->urls())
+        notificator->notify(Notificator::Information,
+                            tr("Incoming Message"),
+                            tr("Date: %1\n"
+                               "From Address: %2\n"
+                               "To Address: %3\n"
+                               "Message: %4\n")
+                              .arg(sent_datetime)
+                              .arg(from_address)
+                              .arg(to_address)
+                              .arg(message));
+    };
+*/
+}
+
+void RainGUI::updateStakingIcon()
+{
+    if(m_node.shutdownRequested())
+        return;
+
+    uint64_t nWeight = 0;
+    if(m_walletModel)
+        nWeight = m_walletModel->getStakeWeight();
+
+    QString tooltip="";
+    bool staking = false;
+    if (m_walletModel && m_walletModel->wallet().getLastCoinStakeSearchInterval() && nWeight)
+    {
+        uint64_t nNetworkWeight = GetPoSKernelPS();
+        const Consensus::Params& consensusParams = Params().GetConsensus();
+        int64_t nTargetSpacing = consensusParams.nPowTargetSpacing;
+
+        unsigned nEstimateTime = nTargetSpacing * nNetworkWeight / nWeight;
+
+        QString text;
+        if (nEstimateTime < 60)
         {
-            Q_EMIT receivedURI(uri.toString());
+            text = tr("%n second(s)", "", nEstimateTime);
         }
+        else if (nEstimateTime < 60*60)
+        {
+            text = tr("%n minute(s)", "", nEstimateTime/60);
+        }
+        else if (nEstimateTime < 24*60*60)
+        {
+            text = tr("%n hour(s)", "", nEstimateTime/(60*60));
+        }
+        else
+        {
+            text = tr("%n day(s)", "", nEstimateTime/(60*60*24));
+        }
+
+        nWeight /= COIN;
+        nNetworkWeight /= COIN;
+
+        staking =true;
+
+        tooltip = tr("Stake weight is %1<br>Network weight is %2<br>Expected time is %3").arg(nWeight).arg(nNetworkWeight).arg(text);
     }
-    event->acceptProposedAction();
+    else
+    {
+        QString text;
+        if (m_node.getNodeCount(CConnman::CONNECTIONS_ALL) == 0)
+            text = "Not staking because wallet is offline";
+        else if (m_node.isInitialBlockDownload())
+            text = "Not staking because wallet is syncing";
+        else if (!nWeight)
+            text = "Not staking because you don't have mature coins";
+        else if (m_walletModel->wallet().isLocked())
+            text = "Not staking because wallet is locked";
+        else
+            text = "Not staking";
+
+        tooltip=text;
+    }
+
+    QMetaObject::invokeMethod(this->rootObject(), "updateStaking", Q_ARG(QVariant, staking), Q_ARG(QVariant, tooltip));
+
 }
 
-bool RainGUI::eventFilter(QObject *object, QEvent *event)
+void RainGUI::setNumBlocks(int count, const QDateTime& blockDate, double nVerificationProgress, bool header)
 {
-    // Catch status tip events
-    if (event->type() == QEvent::StatusTip)
-    {
-        // Prevent adding text from setStatusTip(), if we currently use the status bar for displaying other stuff
-        if (progressBarLabel->isVisible() || progressBar->isVisible())
-            return true;
-    }
-    return QMainWindow::eventFilter(object, event);
-}
 
-#ifdef ENABLE_WALLET
-bool RainGUI::handlePaymentRequest(const SendCoinsRecipient& recipient)
-{
-    // URI has to be valid
-    if (walletFrame && walletFrame->handlePaymentRequest(recipient))
-    {
-        showNormalIfMinimized();
-        gotoSendCoinsPage();
-        return true;
+    if (!m_clientModel)
+        return;
+
+    // Acquire current block source
+    enum BlockSource blockSource = m_clientModel->getBlockSource();
+    QString tooltip;
+    bool synced = false;
+    switch (blockSource) {
+        case BlockSource::NETWORK:
+            if (header) {
+                int64_t headersTipTime = m_clientModel->getHeaderTipTime();
+                int headersTipHeight = m_clientModel->getHeaderTipHeight();
+                int estHeadersLeft = (GetTime() - headersTipTime) / Params().GetConsensus().nPowTargetSpacing;
+                if (estHeadersLeft > HEADER_HEIGHT_DELTA_SYNC)
+                    tooltip =(tr("Syncing Headers (%1%)...").arg(QString::number(100.0 / (headersTipHeight+estHeadersLeft)*headersTipHeight, 'f', 1)));
+                return;
+            }
+            tooltip = "Synchronizing with network...";
+            break;
+        case BlockSource::DISK:
+            if (header) {
+                tooltip = "Indexing blocks on disk...";
+            } else {
+                tooltip = "Processing blocks on disk...";
+            }
+            break;
+        case BlockSource::REINDEX:
+            tooltip = "Reindexing blocks on disk...";
+            break;
+        case BlockSource::NONE:
+            if (header) {
+                return;
+            }
+            tooltip = "Connecting to peers...";
+            break;
     }
-    return false;
+
+    QDateTime currentDate = QDateTime::currentDateTime();
+    qint64 secs = blockDate.secsTo(currentDate);
+
+    tooltip = (tr(" Processed %n block(s) of transaction history.", "", count));
+
+    // Set icon state: spinning if catching up, tick otherwise
+    if (secs < MAX_BLOCK_TIME_GAP) {
+        tooltip = tr("Up to date") + QString(".<br>") + tooltip;
+        synced = true;
+    }
+    else
+    {
+        QString timeBehindText = GUIUtil::formatNiceTimeOffset(secs);
+        synced = false;
+
+        tooltip = tr("Catching up...") + QString("<br>") + tooltip;
+
+        prevBlocks = count;
+
+        tooltip += QString("<br>");
+        tooltip += tr("Last received block was generated %1 ago.").arg(timeBehindText);
+        tooltip += QString("<br>");
+        tooltip += tr("Transactions after this will not yet be visible.");
+    }
+
+    // Don't word-wrap this (fixed-width) tooltip
+    tooltip = QString("<nobr>") + tooltip + QString("</nobr>");
+
+    QMetaObject::invokeMethod(this->rootObject(), "updateBlocks", Q_ARG(QVariant, synced), Q_ARG(QVariant, tooltip));
+
 }
 
 void RainGUI::setHDStatus(bool privkeyDisabled, int hdEnabled)
 {
-    labelWalletHDStatusIcon->setPixmap(platformStyle->SingleColorIcon(privkeyDisabled ? ":/icons/eye" : hdEnabled ? ":/icons/hd_enabled" : ":/icons/hd_disabled").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
-    labelWalletHDStatusIcon->setToolTip(privkeyDisabled ? tr("Private key <b>disabled</b>") : hdEnabled ? tr("HD key generation is <b>enabled</b>") : tr("HD key generation is <b>disabled</b>"));
-    labelWalletHDStatusIcon->show();
-    // eventually disable the QLabel to set its opacity to 50%
-    labelWalletHDStatusIcon->setEnabled(hdEnabled);
+    hdstatus = hdEnabled;
+    privkeys = privkeyDisabled;
 }
 
 void RainGUI::setEncryptionStatus(int status)
 {
-    switch(status)
-    {
-    case WalletModel::Unencrypted:
-        labelWalletEncryptionIcon->hide();
-        encryptWalletAction->setChecked(false);
-        changePassphraseAction->setEnabled(false);
-        encryptWalletAction->setEnabled(true);
-        break;
-    case WalletModel::Unlocked:
-        labelWalletEncryptionIcon->show();
-        labelWalletEncryptionIcon->setPixmap(platformStyle->SingleColorIcon(":/icons/lock_open").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
-        labelWalletEncryptionIcon->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>unlocked</b>"));
-        encryptWalletAction->setChecked(true);
-        changePassphraseAction->setEnabled(true);
-        encryptWalletAction->setEnabled(false);
-        break;
-    case WalletModel::Locked:
-        labelWalletEncryptionIcon->show();
-        labelWalletEncryptionIcon->setPixmap(platformStyle->SingleColorIcon(":/icons/lock_closed").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
-        labelWalletEncryptionIcon->setToolTip(tr("Wallet is <b>encrypted</b> and currently <b>locked</b>"));
-        encryptWalletAction->setChecked(true);
-        changePassphraseAction->setEnabled(true);
-        encryptWalletAction->setEnabled(false);
-        break;
-    }
+    encryptionstatus = status;
 }
 
-void RainGUI::updateWalletStatus()
+// context menu action: lock coin
+void RainGUI::lockunlock(QString txhash, int n)
 {
-    if (!walletFrame) {
+    LogPrintf("LOCKUNLOCK %s , %d\n", txhash.toStdString(), n);
+    COutPoint outpt(uint256S(txhash.toStdString()), n);
+    bool locked = m_walletModel->wallet().isLockedCoin(outpt);
+    if(locked)
+        m_walletModel->unlockCoin(outpt);
+    else
+        m_walletModel->lockCoin(outpt);
+}
+
+void RainGUI::clearCoinCotrol(){
+    m_coin_control->SetNull();
+}
+
+void RainGUI::setCoinCotrolOutput(QString txhash, int n, bool set){
+
+    LogPrintf("SETCOINCONTROLOUTPUT %s , %d , %s\n", txhash.toStdString(), n, set ? "true":"false");
+
+    COutPoint outpt(uint256S(txhash.toStdString()), n);
+    if(set)
+        m_coin_control->Select(outpt);
+    else
+        m_coin_control->UnSelect(outpt);
+}
+
+void RainGUI::setCoinCotrolRbf(bool set){
+    LogPrintf("SETTINGCOINCONTROL RBF %s\n", set ? "true" :"false");
+    m_coin_control->m_signal_bip125_rbf = set;
+}
+
+void RainGUI::setCoinCotrolConfirmTarget(int num){
+    LogPrintf("SETTINGCOINCONTROL TARGET %d\n", num);
+    m_coin_control->m_confirm_target = num;
+}
+
+FileIO::FileIO(QObject *parent)
+    : QObject(parent)
+{
+}
+
+FileIO::~FileIO()
+{
+}
+
+void FileIO::read()
+{
+    if(m_source.isEmpty()) {
         return;
     }
-    WalletView * const walletView = walletFrame->currentWalletView();
-    if (!walletView) {
+    QFile file(m_source.toLocalFile());
+    if(!file.exists()) {
+        qWarning() << "Does not exits: " << m_source.toLocalFile();
         return;
     }
-    WalletModel * const walletModel = walletView->getWalletModel();
-    setEncryptionStatus(walletModel->getEncryptionStatus());
-    setHDStatus(walletModel->wallet().privateKeysDisabled(), walletModel->wallet().hdEnabled());
-}
-#endif // ENABLE_WALLET
-
-void RainGUI::updateProxyIcon()
-{
-    std::string ip_port;
-    bool proxy_enabled = clientModel->getProxyInfo(ip_port);
-
-    if (proxy_enabled) {
-        if (!GUIUtil::HasPixmap(labelProxyIcon)) {
-            QString ip_port_q = QString::fromStdString(ip_port);
-            labelProxyIcon->setPixmap(platformStyle->SingleColorIcon(":/icons/proxy").pixmap(STATUSBAR_ICONSIZE, STATUSBAR_ICONSIZE));
-            labelProxyIcon->setToolTip(tr("Proxy is <b>enabled</b>: %1").arg(ip_port_q));
-        } else {
-            labelProxyIcon->show();
-        }
-    } else {
-        labelProxyIcon->hide();
+    if(file.open(QIODevice::ReadOnly)) {
+        QTextStream stream(&file);
+        m_text = stream.readAll();
+        Q_EMIT textChanged(m_text);
     }
 }
 
-void RainGUI::updateWindowTitle()
+void FileIO::write()
 {
-    QString window_title = PACKAGE_NAME;
-#ifdef ENABLE_WALLET
-    if (walletFrame) {
-        WalletModel* const wallet_model = walletFrame->currentWalletModel();
-        if (wallet_model && !wallet_model->getWalletName().isEmpty()) {
-            window_title += " - " + wallet_model->getDisplayName();
-        }
+    if(m_source.isEmpty()) {
+        return;
     }
-#endif
-    if (!m_network_style->getTitleAddText().isEmpty()) {
-        window_title += " - " + m_network_style->getTitleAddText();
+    QFile file(m_source.toLocalFile());
+    if(file.open(QIODevice::WriteOnly)) {
+        QTextStream stream(&file);
+        stream << m_text;
     }
-    setWindowTitle(window_title);
 }
 
-void RainGUI::showNormalIfMinimized(bool fToggleHidden)
+QUrl FileIO::source() const
 {
-    if(!clientModel)
+    return m_source;
+}
+
+QString FileIO::text() const
+{
+    return m_text;
+}
+
+void FileIO::setSource(QUrl source)
+{
+    if (m_source == source)
         return;
 
-    if (!isHidden() && !isMinimized() && !GUIUtil::isObscured(this) && fToggleHidden) {
-        hide();
-    } else {
-        GUIUtil::bringToFront(this);
-    }
+    m_source = source;
+    Q_EMIT sourceChanged(source);
 }
 
-void RainGUI::toggleHidden()
+void FileIO::setText(QString text)
 {
-    showNormalIfMinimized(true);
+    if (m_text == text)
+        return;
+
+    m_text = text;
+    Q_EMIT textChanged(text);
 }
 
-void RainGUI::detectShutdown()
-{
-    if (m_node.shutdownRequested())
-    {
-        if(rpcConsole)
-            rpcConsole->hide();
-        qApp->quit();
-    }
-}
-
-void RainGUI::showProgress(const QString &title, int nProgress)
-{
-    if (nProgress == 0) {
-        progressDialog = new QProgressDialog(title, QString(), 0, 100);
-        GUIUtil::PolishProgressDialog(progressDialog);
-        progressDialog->setWindowModality(Qt::ApplicationModal);
-        progressDialog->setMinimumDuration(0);
-        progressDialog->setAutoClose(false);
-        progressDialog->setValue(0);
-    } else if (nProgress == 100) {
-        if (progressDialog) {
-            progressDialog->close();
-            progressDialog->deleteLater();
-            progressDialog = nullptr;
-        }
-    } else if (progressDialog) {
-        progressDialog->setValue(nProgress);
-    }
-}
-
-void RainGUI::showModalOverlay()
-{
-    if (modalOverlay && (progressBar->isVisible() || modalOverlay->isLayerVisible()))
-        modalOverlay->toggleVisibility();
-}
-
-static bool ThreadSafeMessageBox(RainGUI* gui, const bilingual_str& message, const std::string& caption, unsigned int style)
-{
-    bool modal = (style & CClientUIInterface::MODAL);
-    // The SECURE flag has no effect in the Qt GUI.
-    // bool secure = (style & CClientUIInterface::SECURE);
-    style &= ~CClientUIInterface::SECURE;
-    bool ret = false;
-
-    QString detailed_message; // This is original message, in English, for googling and referencing.
-    if (message.original != message.translated) {
-        detailed_message = RainGUI::tr("Original message:") + "\n" + QString::fromStdString(message.original);
-    }
-
-    // In case of modal message, use blocking connection to wait for user to click a button
-    bool invoked = QMetaObject::invokeMethod(gui, "message",
-                               modal ? GUIUtil::blockingGUIThreadConnection() : Qt::QueuedConnection,
-                               Q_ARG(QString, QString::fromStdString(caption)),
-                               Q_ARG(QString, QString::fromStdString(message.translated)),
-                               Q_ARG(unsigned int, style),
-                               Q_ARG(bool*, &ret),
-                               Q_ARG(QString, detailed_message));
-    assert(invoked);
-    return ret;
-}
-
-void RainGUI::subscribeToCoreSignals()
-{
-    // Connect signals to client
-    m_handler_message_box = m_node.handleMessageBox(std::bind(ThreadSafeMessageBox, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-    m_handler_question = m_node.handleQuestion(std::bind(ThreadSafeMessageBox, this, std::placeholders::_1, std::placeholders::_3, std::placeholders::_4));
-}
-
-void RainGUI::unsubscribeFromCoreSignals()
-{
-    // Disconnect signals from client
-    m_handler_message_box->disconnect();
-    m_handler_question->disconnect();
-}
-
-bool RainGUI::isPrivacyModeActivated() const
-{
-    assert(m_mask_values_action);
-    return m_mask_values_action->isChecked();
-}
-
-UnitDisplayStatusBarControl::UnitDisplayStatusBarControl(const PlatformStyle *platformStyle) :
-    optionsModel(nullptr),
-    menu(nullptr)
-{
-    createContextMenu();
-    setToolTip(tr("Unit to show amounts in. Click to select another unit."));
-    QList<RainUnits::Unit> units = RainUnits::availableUnits();
-    int max_width = 0;
-    const QFontMetrics fm(font());
-    for (const RainUnits::Unit unit : units)
-    {
-        max_width = qMax(max_width, GUIUtil::TextWidth(fm, RainUnits::longName(unit)));
-    }
-    setMinimumSize(max_width, 0);
-    setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    setStyleSheet(QString("QLabel { color : %1 }").arg(platformStyle->SingleColor().name()));
-}
-
-/** So that it responds to button clicks */
-void UnitDisplayStatusBarControl::mousePressEvent(QMouseEvent *event)
-{
-    onDisplayUnitsClicked(event->pos());
-}
-
-/** Creates context menu, its actions, and wires up all the relevant signals for mouse events. */
-void UnitDisplayStatusBarControl::createContextMenu()
-{
-    menu = new QMenu(this);
-    for (const RainUnits::Unit u : RainUnits::availableUnits())
-    {
-        QAction *menuAction = new QAction(QString(RainUnits::longName(u)), this);
-        menuAction->setData(QVariant(u));
-        menu->addAction(menuAction);
-    }
-    connect(menu, &QMenu::triggered, this, &UnitDisplayStatusBarControl::onMenuSelection);
-}
-
-/** Lets the control know about the Options Model (and its signals) */
-void UnitDisplayStatusBarControl::setOptionsModel(OptionsModel *_optionsModel)
-{
-    if (_optionsModel)
-    {
-        this->optionsModel = _optionsModel;
-
-        // be aware of a display unit change reported by the OptionsModel object.
-        connect(_optionsModel, &OptionsModel::displayUnitChanged, this, &UnitDisplayStatusBarControl::updateDisplayUnit);
-
-        // initialize the display units label with the current value in the model.
-        updateDisplayUnit(_optionsModel->getDisplayUnit());
-    }
-}
-
-/** When Display Units are changed on OptionsModel it will refresh the display text of the control on the status bar */
-void UnitDisplayStatusBarControl::updateDisplayUnit(int newUnits)
-{
-    setText(RainUnits::longName(newUnits));
-}
-
-/** Shows context menu with Display Unit options by the mouse coordinates */
-void UnitDisplayStatusBarControl::onDisplayUnitsClicked(const QPoint& point)
-{
-    QPoint globalPos = mapToGlobal(point);
-    menu->exec(globalPos);
-}
-
-/** Tells underlying optionsModel to update its current display unit. */
-void UnitDisplayStatusBarControl::onMenuSelection(QAction* action)
-{
-    if (action)
-    {
-        optionsModel->setDisplayUnit(action->data());
-    }
-}

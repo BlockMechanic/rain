@@ -6,6 +6,7 @@
 #define RAIN_RPC_RAWTRANSACTION_UTIL_H
 
 #include <map>
+#include <vector>
 #include <string>
 
 class FillableSigningProvider;
@@ -14,7 +15,8 @@ struct CMutableTransaction;
 class Coin;
 class COutPoint;
 class SigningProvider;
-
+class CPubKey;
+class CAsset;
 /**
  * Sign a transaction with the given keystore and previous transactions
  *
@@ -36,7 +38,8 @@ void SignTransactionResultToJSON(CMutableTransaction& mtx, bool complete, const 
   */
 void ParsePrevouts(const UniValue& prevTxsUnival, FillableSigningProvider* keystore, std::map<COutPoint, Coin>& coins);
 
+
 /** Create a transaction from univalue parameters */
-CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, bool rbf);
+CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, bool rbf, const CAsset &asset, std::vector<CPubKey>* output_pubkeys_out = nullptr);
 
 #endif // RAIN_RPC_RAWTRANSACTION_UTIL_H

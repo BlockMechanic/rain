@@ -23,6 +23,8 @@ std::string ScriptErrorString(const ScriptError serror)
             return "Script failed an OP_CHECKMULTISIGVERIFY operation";
         case SCRIPT_ERR_CHECKSIGVERIFY:
             return "Script failed an OP_CHECKSIGVERIFY operation";
+        case SCRIPT_ERR_CHECKDATASIGVERIFY:
+            return "Script failed an OP_CHECKDATASIGVERIFY operation";
         case SCRIPT_ERR_NUMEQUALVERIFY:
             return "Script failed an OP_NUMEQUALVERIFY operation";
         case SCRIPT_ERR_SCRIPT_SIZE:
@@ -37,6 +39,13 @@ std::string ScriptErrorString(const ScriptError serror)
             return "Signature count negative or greater than pubkey count";
         case SCRIPT_ERR_PUBKEY_COUNT:
             return "Pubkey count negative or limit exceeded";
+        case SCRIPT_ERR_INVALID_NUMBER_RANGE:
+            return "Given operand is not a number within the valid range "
+                   "[-2^31...2^31]";
+        case SCRIPT_ERR_IMPOSSIBLE_ENCODING:
+            return "The requested encoding is impossible to satisfy";
+        case SCRIPT_ERR_INVALID_SPLIT_RANGE:
+            return "Invalid OP_SPLIT range";
         case SCRIPT_ERR_BAD_OPCODE:
             return "Opcode missing or not understood";
         case SCRIPT_ERR_DISABLED_OPCODE:
@@ -69,6 +78,8 @@ std::string ScriptErrorString(const ScriptError serror)
             return "OP_IF/NOTIF argument must be minimal";
         case SCRIPT_ERR_SIG_NULLFAIL:
             return "Signature must be zero for failed CHECK(MULTI)SIG operation";
+        case SCRIPT_ERR_SIG_BADLENGTH:
+            return "Signature cannot be 65 bytes in CHECKMULTISIG";
         case SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS:
             return "NOPx reserved for soft-fork upgrades";
         case SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM:
@@ -115,6 +126,10 @@ std::string ScriptErrorString(const ScriptError serror)
             return "Using OP_CODESEPARATOR in non-witness script";
         case SCRIPT_ERR_SIG_FINDANDDELETE:
             return "Signature is found in scriptCode";
+        case SCRIPT_ERR_RANGEPROOF:
+            return "RangeProof error";
+        case SCRIPT_ERR_PEDERSEN_TALLY:
+            return "Pedersen tally error";   
         case SCRIPT_ERR_UNKNOWN_ERROR:
         case SCRIPT_ERR_ERROR_COUNT:
         default: break;

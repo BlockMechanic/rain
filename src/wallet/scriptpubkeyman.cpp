@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
+#include <crypto/hmac_sha256.h>
 
 #include <key_io.h>
 #include <logging.h>
@@ -13,8 +14,8 @@
 #include <util/system.h>
 #include <util/time.h>
 #include <util/translation.h>
-#include <external_signer.h>
 #include <wallet/scriptpubkeyman.h>
+#include <validation.h>
 
 #include <optional>
 
@@ -65,6 +66,7 @@ enum class IsMineResult
     WATCH_ONLY = 1, //!< Included in watch-only balance
     SPENDABLE = 2,  //!< Included in all balances
     INVALID = 3,    //!< Not spendable by anyone (uncompressed pubkey in segwit, P2SH inside P2SH or witness, witness inside witness)
+    WATCH_SOLVABLE = 4 //!< htlc
 };
 
 bool PermitsUncompressed(IsMineSigVersion sigversion)
@@ -84,7 +86,7 @@ bool HaveKeys(const std::vector<valtype>& pubkeys, const LegacyScriptPubKeyMan& 
 //! Recursively solve script and return spendable/watchonly/invalid status.
 //!
 //! @param keystore            legacy key and script store
-//! @param scriptPubKey        script to solve
+//! @param script              script to solve
 //! @param sigversion          script type (top-level / redeemscript / witnessscript)
 //! @param recurse_scripthash  whether to recurse into nested p2sh and p2wsh
 //!                            scripts or simply treat any script that has been
@@ -102,6 +104,7 @@ IsMineResult IsMineInner(const LegacyScriptPubKeyMan& keystore, const CScript& s
     case TxoutType::NULL_DATA:
     case TxoutType::WITNESS_UNKNOWN:
     case TxoutType::WITNESS_V1_TAPROOT:
+    case TxoutType::FEE:
         break;
     case TxoutType::PUBKEY:
         keyID = CPubKey(vSolutions[0]).GetID();
@@ -171,7 +174,21 @@ IsMineResult IsMineInner(const LegacyScriptPubKeyMan& keystore, const CScript& s
         break;
     }
 
+    case TxoutType::HTLC:
+    {
+        // Only consider HTLC's "mine" if we own ALL the keys
+        // involved.
+        std::vector<valtype> keys;
+        keys.push_back(vSolutions[1]);
+        keys.push_back(vSolutions[3]);
+        if (HaveKeys(keys, keystore) == keys.size()) {
+            return std::max(ret, IsMineResult::WATCH_SOLVABLE);
+        }
+        break;
+    }
+
     case TxoutType::MULTISIG:
+    case TxoutType::MULTISIG_CLTV:
     {
         // Never treat bare multisig outputs as ours (they can still be made watchonly-though)
         if (sigversion == IsMineSigVersion::TOP) {
@@ -196,6 +213,38 @@ IsMineResult IsMineInner(const LegacyScriptPubKeyMan& keystore, const CScript& s
         }
         break;
     }
+    case TxoutType::CLTV:
+    {
+        keyID = CKeyID(uint160(vSolutions[1]));
+        if (keystore.HaveKey(keyID))
+        {
+            CScriptNum nFreezeLockTime(vSolutions[0], true, 5);
+
+            LogPrintf("Found Freeze Have Key. nFreezeLockTime=%d \n", nFreezeLockTime.GetInt64());
+            if (nFreezeLockTime < LOCKTIME_THRESHOLD)
+            {
+                // locktime is a block
+                //if (nFreezeLockTime > ::ChainActive().Tip()->nHeight)
+                //    ret = std::max(ret, IsMineResult::WATCH_SOLVABLE);
+                //else
+                    ret = std::max(ret, IsMineResult::SPENDABLE);
+            }
+            else
+            {
+                // locktime is a time
+                //if (nFreezeLockTime > ::ChainActive().Tip()->GetMedianTimePast())
+                //    ret = std::max(ret, IsMineResult::WATCH_SOLVABLE);
+                //else
+                    ret = std::max(ret, IsMineResult::SPENDABLE);
+            }
+        }
+        else
+        {
+            LogPrintf("Found Freeze DONT HAVE KEY!! \n");
+            ret = IsMineResult::NO;
+        }
+        break;
+    }
     } // no default case, so the compiler can warn about missing cases
 
     if (ret == IsMineResult::NO && keystore.HaveWatchOnly(scriptPubKey)) {
@@ -216,6 +265,8 @@ isminetype LegacyScriptPubKeyMan::IsMine(const CScript& script) const
         return ISMINE_WATCH_ONLY;
     case IsMineResult::SPENDABLE:
         return ISMINE_SPENDABLE;
+    case IsMineResult::WATCH_SOLVABLE:
+        return ISMINE_WATCH_SOLVABLE;
     }
     assert(false);
 }
@@ -1598,6 +1649,68 @@ std::set<CKeyID> LegacyScriptPubKeyMan::GetKeys() const
 }
 
 void LegacyScriptPubKeyMan::SetInternal(bool internal) {}
+
+CKey LegacyScriptPubKeyMan::GetBlindingKey(const CScript* script) const
+{
+    CKey key;
+
+    if (script != nullptr) {
+        std::map<CScriptID, uint256>::const_iterator it = mapSpecificBlindingKeys.find(CScriptID(*script));
+        if (it != mapSpecificBlindingKeys.end()) {
+            key.Set(it->second.begin(), it->second.end(), true);
+            if (key.IsValid()) {
+                return key;
+            }
+        }
+    }
+
+    if (script != nullptr && !blinding_derivation_key.IsNull()) {
+        unsigned char vch[32];
+        CHMAC_SHA256(blinding_derivation_key.begin(), blinding_derivation_key.size()).Write(&((*script)[0]), script->size()).Finalize(vch);
+        key.Set(&vch[0], &vch[32], true);
+        if (key.IsValid()) {
+            return key;
+        }
+    }
+
+    return CKey();
+}
+
+CPubKey LegacyScriptPubKeyMan::GetBlindingPubKey(const CScript& script) const
+{
+    CKey key = GetBlindingKey(&script);
+    if (key.IsValid()) {
+        return key.GetPubKey();
+    }
+
+    return CPubKey();
+}
+
+bool LegacyScriptPubKeyMan::LoadSpecificBlindingKey(const CScriptID& scriptid, const uint256& key)
+{
+    AssertLockHeld(cs_KeyStore); // mapSpecificBlindingKeys
+    mapSpecificBlindingKeys[scriptid] = key;
+    return true;
+}
+
+bool LegacyScriptPubKeyMan::AddSpecificBlindingKey(const CScriptID& scriptid, const uint256& key)
+{
+    AssertLockHeld(cs_KeyStore); // mapSpecificBlindingKeys
+    if (!LoadSpecificBlindingKey(scriptid, key))
+        return false;
+
+    return WalletBatch(m_storage.GetDatabase()).WriteSpecificBlindingKey(scriptid, key);
+}
+
+bool LegacyScriptPubKeyMan::SetMasterBlindingKey(const uint256& key)
+{
+    AssertLockHeld(cs_KeyStore);
+    if (!WalletBatch(m_storage.GetDatabase()).WriteBlindingDerivationKey(key)) {
+        return false;
+    }
+    blinding_derivation_key = key;
+    return true;
+}
 
 bool DescriptorScriptPubKeyMan::GetNewDestination(const OutputType type, CTxDestination& dest, std::string& error)
 {

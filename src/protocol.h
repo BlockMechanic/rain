@@ -260,6 +260,38 @@ extern const char* CFCHECKPT;
  * @since protocol version 70016 as described by BIP 339.
  */
 extern const char* WTXIDRELAY;
+
+extern const char *SMSGIGNORE;
+extern const char *SMSGPING;
+extern const char *SMSGPONG;
+extern const char *SMSGDISABLED;
+extern const char *SMSGSHOW;
+extern const char *SMSGMATCH;
+extern const char *SMSGHAVE;
+extern const char *SMSGWANT;
+extern const char *SMSGMSG;
+extern const char *SMSGINV;
+
+/**
+ * Contains a AssetDataRequest.
+ * Peer should respond with assetdata
+ * @since protocol version 70017
+ */
+extern const char *GETASSETDATA;
+
+/**
+ * Contains a AssetData
+ * Sent in response to a "getassetdata" message.
+ * @since protocol version 70017
+ */
+extern const char *ASSETDATA;
+
+/**
+ * The asstnotfound message is a reply to a getassetdata message which requested an
+ * object the receiving node does not have available for relay.
+ * @since protocol version 70018.
+ */
+extern const char *ASSETNOTFOUND;
 }; // namespace NetMsgType
 
 /* Get a vector of all valid message types (see above) */
@@ -280,6 +312,9 @@ enum ServiceFlags : uint64_t {
     // NODE_WITNESS indicates that a node can be asked for blocks and transactions including
     // witness data.
     NODE_WITNESS = (1 << 3),
+    // NODE_SMSG means the node supports Secure Messaging
+    NODE_SMSG = (1 << 5),
+
     // NODE_COMPACT_FILTERS means the node will service basic block filter requests.
     // See BIP157 and BIP158 for details on how this is implemented.
     NODE_COMPACT_FILTERS = (1 << 6),
@@ -453,6 +488,26 @@ public:
 
     uint32_t type;
     uint256 hash;
+};
+
+/** inv message data */
+class CInvAsset
+{
+public:
+    CInvAsset();
+    CInvAsset(std::string name);
+
+    SERIALIZE_METHODS (CInvAsset, obj) 
+    {
+        READWRITE(obj.name);
+    }
+
+    friend bool operator<(const CInvAsset& a, const CInvAsset& b);
+
+    std::string ToString() const;
+
+public:
+    std::string name; // block height that asset data should come from
 };
 
 /** Convert a TX/WITNESS_TX/WTX CInv to a GenTxid. */

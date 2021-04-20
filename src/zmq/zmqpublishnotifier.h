@@ -8,7 +8,10 @@
 #include <zmq/zmqabstractnotifier.h>
 
 class CBlockIndex;
-
+class uint160;
+namespace smsg {
+class SecureMessage;
+}
 class CZMQAbstractPublishNotifier : public CZMQAbstractNotifier
 {
 private:
@@ -61,4 +64,9 @@ public:
     bool NotifyTransactionRemoval(const CTransaction &transaction, uint64_t mempool_sequence) override;
 };
 
+class CZMQPublishSMSGNotifier : public CZMQAbstractPublishNotifier
+{
+public:
+    bool NotifySecureMessage(const smsg::SecureMessage *psmsg, const uint160 &hash) override;
+};
 #endif // RAIN_ZMQ_ZMQPUBLISHNOTIFIER_H

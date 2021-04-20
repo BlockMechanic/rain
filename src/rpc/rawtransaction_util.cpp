@@ -18,8 +18,9 @@
 #include <univalue.h>
 #include <util/rbf.h>
 #include <util/strencodings.h>
+#include <validation.h>
 
-CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, bool rbf)
+CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, bool rbf, const CAsset& asset, std::vector<CPubKey>* output_pubkeys_out)
 {
     if (outputs_in.isNull()) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, output argument must be non-null");
@@ -44,6 +45,13 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
         rawTx.nLockTime = nLockTime;
     }
 
+  //  UniValue assets;
+  //  if (!assets_in.isNull()) {
+  //      assets = assets_in.get_obj();
+  //  }
+        // Asset defaults to policyAsset
+  //  CAsset asset;
+
     for (unsigned int idx = 0; idx < inputs.size(); idx++) {
         const UniValue& input = inputs[idx];
         const UniValue& o = input.get_obj();
@@ -64,7 +72,10 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
             nSequence = CTxIn::SEQUENCE_FINAL - 1;
         } else {
             nSequence = CTxIn::SEQUENCE_FINAL;
-        }
+        }      
+
+//        asset = CAsset(ParseHashO(assets, name_));
+
 
         // set the sequence number if passed in the parameters object
         const UniValue& sequenceObj = find_value(o, "sequence");
@@ -78,7 +89,8 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
         }
 
         CTxIn in(COutPoint(txid, nOutput), CScript(), nSequence);
-
+        //CCoinsViewCache view(&::ChainstateActive().CoinsTip());
+        //asset = view.AccessCoin(COutPoint(txid, nOutput)).out.nAsset.GetAsset();
         rawTx.vin.push_back(in);
     }
 
@@ -98,11 +110,14 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
         outputs = std::move(outputs_dict);
     }
 
+    CTxOut fee_out;
+
     // Duplicate checking
     std::set<CTxDestination> destinations;
     bool has_data{false};
 
     for (const std::string& name_ : outputs.getKeys()) {
+
         if (name_ == "data") {
             if (has_data) {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, duplicate key: data");
@@ -110,8 +125,34 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
             has_data = true;
             std::vector<unsigned char> data = ParseHexV(outputs[name_].getValStr(), "Data");
 
-            CTxOut out(0, CScript() << OP_RETURN << data);
+            CTxOut out(asset, 0, CScript() << OP_RETURN << data);
             rawTx.vout.push_back(out);
+        } else if (name_ == "vdata") {
+            // ELEMENTS: support multi-push OP_RETURN
+            UniValue vdata = outputs[name_].get_array();
+            CScript datascript = CScript() << OP_RETURN;
+            for (size_t i = 0; i < vdata.size(); i++) {
+                std::vector<unsigned char> data = ParseHexV(vdata[i].get_str(), "Data");
+                datascript << data;
+            }
+
+            CTxOut out(asset, 0, datascript);
+            rawTx.vout.push_back(out);
+            if (output_pubkeys_out) {
+                output_pubkeys_out->push_back(CPubKey());
+            }
+        } else if (name_ == "fee") {
+            // ELEMENTS: explicit fee outputs
+            CAmount nAmount = AmountFromValue(outputs[name_]);
+            fee_out = CTxOut(asset, nAmount, CScript());
+        } else if (name_ == "burn") {
+            CScript datascript = CScript() << OP_RETURN;
+            CAmount nAmount = AmountFromValue(outputs[name_]);
+            CTxOut out(asset, nAmount, datascript);
+            rawTx.vout.push_back(out);
+            if (output_pubkeys_out) {
+                output_pubkeys_out->push_back(CPubKey());
+            }
         } else {
             CTxDestination destination = DecodeDestination(name_);
             if (!IsValidDestination(destination)) {
@@ -125,7 +166,7 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
             CScript scriptPubKey = GetScriptForDestination(destination);
             CAmount nAmount = AmountFromValue(outputs[name_]);
 
-            CTxOut out(nAmount, scriptPubKey);
+            CTxOut out(asset, nAmount, scriptPubKey);
             rawTx.vout.push_back(out);
         }
     }
@@ -138,14 +179,14 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
 }
 
 /** Pushes a JSON object for script verification or signing errors to vErrorsRet. */
-static void TxInErrorToJSON(const CTxIn& txin, UniValue& vErrorsRet, const std::string& strMessage)
+static void TxInErrorToJSON(const CTxIn& txin, const CTxInWitness& txinwit, UniValue& vErrorsRet, const std::string& strMessage)
 {
     UniValue entry(UniValue::VOBJ);
     entry.pushKV("txid", txin.prevout.hash.ToString());
     entry.pushKV("vout", (uint64_t)txin.prevout.n);
     UniValue witness(UniValue::VARR);
-    for (unsigned int i = 0; i < txin.scriptWitness.stack.size(); i++) {
-        witness.push_back(HexStr(txin.scriptWitness.stack[i]));
+    for (unsigned int i = 0; i < txinwit.scriptWitness.stack.size(); i++) {
+        witness.push_back(HexStr(txinwit.scriptWitness.stack[i]));
     }
     entry.pushKV("witness", witness);
     entry.pushKV("scriptSig", HexStr(txin.scriptSig));
@@ -290,12 +331,15 @@ void SignTransactionResultToJSON(CMutableTransaction& mtx, bool complete, const 
 {
     // Make errors UniValue
     UniValue vErrors(UniValue::VARR);
+    int i =0;
     for (const auto& err_pair : input_errors) {
+        const CTxInWitness& inWitness = mtx.witness.vtxinwit[i];
         if (err_pair.second == "Missing amount") {
             // This particular error needs to be an exception for some reason
             throw JSONRPCError(RPC_TYPE_ERROR, strprintf("Missing amount for %s", coins.at(mtx.vin.at(err_pair.first).prevout).out.ToString()));
         }
-        TxInErrorToJSON(mtx.vin.at(err_pair.first), vErrors, err_pair.second);
+        TxInErrorToJSON(mtx.vin.at(err_pair.first), inWitness, vErrors, err_pair.second);
+        i++;
     }
 
     result.pushKV("hex", EncodeHexTx(CTransaction(mtx)));

@@ -103,11 +103,9 @@ FUZZ_TARGET_INIT(script, initialize_script)
     (void)ScriptToAsmStr(script, true);
 
     UniValue o1(UniValue::VOBJ);
-    ScriptPubKeyToUniv(script, o1, true, true);
-    ScriptPubKeyToUniv(script, o1, true, false);
+    ScriptPubKeyToUniv(script, o1, true);
     UniValue o2(UniValue::VOBJ);
-    ScriptPubKeyToUniv(script, o2, false, true);
-    ScriptPubKeyToUniv(script, o2, false, false);
+    ScriptPubKeyToUniv(script, o2, false);
     UniValue o3(UniValue::VOBJ);
     ScriptToUniv(script, o3, true);
     UniValue o4(UniValue::VOBJ);

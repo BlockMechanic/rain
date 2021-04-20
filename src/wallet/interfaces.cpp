@@ -15,8 +15,10 @@
 #include <sync.h>
 #include <uint256.h>
 #include <util/check.h>
+#include <util/ref.h>
 #include <util/system.h>
 #include <util/ui_change_type.h>
+
 #include <wallet/context.h>
 #include <wallet/feebumper.h>
 #include <wallet/fees.h>
@@ -29,6 +31,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <smsg/smessage.h>
 
 using interfaces::Chain;
 using interfaces::FoundBlock;
@@ -53,8 +57,14 @@ WalletTx MakeWalletTx(CWallet& wallet, const CWalletTx& wtx)
     WalletTx result;
     result.tx = wtx.tx;
     result.txin_is_mine.reserve(wtx.tx->vin.size());
-    for (const auto& txin : wtx.tx->vin) {
+    result.txin_issuance_asset.resize(wtx.tx->vin.size());
+    result.txin_issuance_token.resize(wtx.tx->vin.size());
+    for (unsigned int i = 0; i < wtx.tx->vin.size(); ++i) {
+        const auto& txin = wtx.tx->vin[i];
         result.txin_is_mine.emplace_back(wallet.IsMine(txin));
+        wtx.GetIssuanceAssets(i, &result.txin_issuance_asset[i], &result.txin_issuance_token[i]);
+        result.txin_issuance_asset_amount.emplace_back(wtx.GetIssuanceAmount(i, false));
+        result.txin_issuance_token_amount.emplace_back(wtx.GetIssuanceAmount(i, true));
     }
     result.txout_is_mine.reserve(wtx.tx->vout.size());
     result.txout_address.reserve(wtx.tx->vout.size());
@@ -66,12 +76,21 @@ WalletTx MakeWalletTx(CWallet& wallet, const CWalletTx& wtx)
                                                       wallet.IsMine(result.txout_address.back()) :
                                                       ISMINE_NO);
     }
+    // ELEMENTS: Retrieve unblinded information about outputs
+    for (unsigned int i = 0; i < wtx.tx->vout.size(); ++i) {
+        CAmount amount =0;
+        if(wtx.tx->vout[i].nValue.IsExplicit() && wtx.tx->vout[i].nAsset.IsExplicit()){
+            result.txout_amounts.emplace_back(wtx.tx->vout[i].nValue.GetAmount());
+            result.txout_assets.emplace_back(wtx.tx->vout[i].nAsset.GetAsset());
+        }
+    }
     result.credit = wtx.GetCredit(ISMINE_ALL);
     result.debit = wtx.GetDebit(ISMINE_ALL);
     result.change = wtx.GetChange();
     result.time = wtx.GetTxTime();
     result.value_map = wtx.mapValue;
     result.is_coinbase = wtx.IsCoinBase();
+    result.is_coinstake = wtx.IsCoinStake();
     return result;
 }
 
@@ -88,6 +107,7 @@ WalletTxStatus MakeWalletTxStatus(const CWallet& wallet, const CWalletTx& wtx)
     result.is_trusted = wtx.IsTrusted();
     result.is_abandoned = wtx.isAbandoned();
     result.is_coinbase = wtx.IsCoinBase();
+    result.is_coinstake = wtx.IsCoinStake();
     result.is_in_main_chain = wtx.IsInMainChain();
     return result;
 }
@@ -117,7 +137,8 @@ public:
     }
     bool isCrypted() override { return m_wallet->IsCrypted(); }
     bool lock() override { return m_wallet->Lock(); }
-    bool unlock(const SecureString& wallet_passphrase) override { return m_wallet->Unlock(wallet_passphrase); }
+    bool unlock(const SecureString& wallet_passphrase, bool fStakingOnly) override { return m_wallet->Unlock(wallet_passphrase, fStakingOnly); }
+    
     bool isLocked() override { return m_wallet->IsLocked(); }
     bool changeWalletPassphrase(const SecureString& old_wallet_passphrase,
         const SecureString& new_wallet_passphrase) override
@@ -127,6 +148,22 @@ public:
     void abortRescan() override { m_wallet->AbortRescan(); }
     bool backupWallet(const std::string& filename) override { return m_wallet->BackupWallet(filename); }
     std::string getWalletName() override { return m_wallet->GetName(); }
+    CWallet* getWallet() override { return m_wallet.get(); }
+/*
+    int secureMsgDecrypt(const SecMsgStored& smsgStored, MessageData &msg, std::string &errorMsg) override
+    {
+		return m_wallet->chain().secureMsgDecrypt(m_wallet.get(), smsgStored, msg, errorMsg);
+	}
+	
+    int secureMsgDecrypt(bool fTestOnly, const CKeyID& address, const SecureMessageHeader& smsg, const unsigned char *pPayload, MessageData& msg) override
+    {
+		return m_wallet->chain().secureMsgDecrypt(m_wallet.get(),fTestOnly,address,smsg,pPayload,msg);
+	}
+*/	
+    int64_t getLastCoinStakeSearchInterval() override
+    {
+        return m_wallet->m_last_coin_stake_search_interval;
+    }
     bool getNewDestination(const OutputType type, const std::string label, CTxDestination& dest) override
     {
         LOCK(m_wallet->cs_wallet);
@@ -141,6 +178,25 @@ public:
         }
         return false;
     }
+    bool tryGetStakeWeight(uint64_t& nWeight) override
+    {
+        nWeight = m_wallet->GetStakeWeight();
+        return true;
+    }
+    CPubKey getBlindingPubKey(const CScript& script) override
+    {
+        return m_wallet->GetBlindingPubKey(script);
+    }
+
+    bool getWalletUnlockStakingOnly() override
+    {
+        return m_wallet->fWalletUnlockStaking;
+    }
+
+    void setWalletUnlockStakingOnly(bool unlock) override
+    {
+        m_wallet->fWalletUnlockStaking = unlock;
+    }
     SigningResult signMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) override
     {
         return m_wallet->SignMessage(message, pkhash, str_sig);
@@ -149,6 +205,10 @@ public:
     {
         LOCK(m_wallet->cs_wallet);
         return m_wallet->IsMine(dest) & ISMINE_SPENDABLE;
+    }
+    bool isMine(CTxDestination& dest) override
+    {
+        return m_wallet->IsMine(dest);
     }
     bool haveWatchOnly() override
     {
@@ -238,7 +298,7 @@ public:
         const CCoinControl& coin_control,
         bool sign,
         int& change_pos,
-        CAmount& fee,
+        CAmountMap& fee,
         bilingual_str& fail_reason) override
     {
         LOCK(m_wallet->cs_wallet);
@@ -383,8 +443,8 @@ public:
         balances = getBalances();
         return true;
     }
-    CAmount getBalance() override { return m_wallet->GetBalance().m_mine_trusted; }
-    CAmount getAvailableBalance(const CCoinControl& coin_control) override
+    CAmountMap getBalance() override { return m_wallet->GetBalance().m_mine_trusted; }
+    CAmountMap getAvailableBalance(const CCoinControl& coin_control) override
     {
         return m_wallet->GetAvailableBalance(&coin_control);
     }
@@ -398,12 +458,17 @@ public:
         LOCK(m_wallet->cs_wallet);
         return m_wallet->IsMine(txout);
     }
-    CAmount getDebit(const CTxIn& txin, isminefilter filter) override
+    CAmountMap getDebit(const CTxIn& txin, isminefilter filter) override
     {
         LOCK(m_wallet->cs_wallet);
         return m_wallet->GetDebit(txin, filter);
     }
-    CAmount getCredit(const CTxOut& txout, isminefilter filter) override
+    CAmountMap getCredit(const CTransaction& tx, const size_t out_index, isminefilter filter) override
+    {
+        LOCK(m_wallet->cs_wallet);
+        return m_wallet->GetCredit(tx, out_index, filter);
+    }
+    CAmountMap getCredit(const CTxOut& txout, isminefilter filter) override
     {
         LOCK(m_wallet->cs_wallet);
         return m_wallet->GetCredit(txout, filter);
@@ -460,6 +525,7 @@ public:
     void remove() override
     {
         RemoveWallet(m_wallet, false /* load_on_start */);
+            //smsgModule.WalletUnloaded(m_wallet_part);
     }
     bool isLegacy() override { return m_wallet->IsLegacy(); }
     std::unique_ptr<Handler> handleUnload(UnloadFn fn) override
@@ -513,9 +579,7 @@ public:
     {
         for (const CRPCCommand& command : GetWalletRPCCommands()) {
             m_rpc_commands.emplace_back(command.category, command.name, [this, &command](const JSONRPCRequest& request, UniValue& result, bool last_handler) {
-                JSONRPCRequest wallet_request = request;
-                wallet_request.context = &m_context;
-                return command.actor(wallet_request, result, last_handler);
+                return command.actor({request, m_context}, result, last_handler);
             }, command.argNames, command.unique_id);
             m_rpc_handlers.emplace_back(m_context.chain->handleRpc(m_rpc_commands.back()));
         }

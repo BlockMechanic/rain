@@ -25,7 +25,6 @@
 #include <util/threadnames.h>
 #include <util/time.h>
 
-#include <any>
 #include <exception>
 #include <map>
 #include <optional>
@@ -52,6 +51,22 @@ bool error(const char* fmt, const Args&... args)
     LogPrintf("ERROR: %s\n", tfm::format(fmt, args...));
     return false;
 }
+
+template<typename... Args>
+int errorN(int n, const char *fmt, const Args&... args)
+{
+    LogPrintf("ERROR: %s\n", tfm::format(fmt, args...));
+    return n;
+}
+
+template<typename... Args>
+int errorN(int n, std::string &s, const char *func, const char *fmt, const Args&... args)
+{
+    s = tfm::format(fmt, args...);
+    LogPrintf("ERROR: %s\n", std::string(func) + ": " + s);
+    return n;
+}
+
 
 void PrintExceptionContinue(const std::exception *pex, const char* pszThread);
 
@@ -108,7 +123,7 @@ std::string ShellEscape(const std::string& arg);
 #if HAVE_SYSTEM
 void runCommand(const std::string& strCommand);
 #endif
-#ifdef ENABLE_EXTERNAL_SIGNER
+#ifdef HAVE_BOOST_PROCESS
 /**
  * Execute a command which returns JSON, and parse the result.
  *
@@ -117,7 +132,7 @@ void runCommand(const std::string& strCommand);
  * @return parsed JSON
  */
 UniValue RunCommandParseJSON(const std::string& str_command, const std::string& str_std_in="");
-#endif // ENABLE_EXTERNAL_SIGNER
+#endif // HAVE_BOOST_PROCESS
 
 /**
  * Most paths passed as configuration arguments are treated as relative to
@@ -152,7 +167,7 @@ enum class OptionsCategory {
     GUI,
     COMMANDS,
     REGISTER_COMMANDS,
-
+    SMSG,
     HIDDEN // Always the last option to avoid printing these in the help
 };
 
@@ -499,18 +514,6 @@ inline void insert(Tdst& dst, const Tsrc& src) {
 template <typename TsetT, typename Tsrc>
 inline void insert(std::set<TsetT>& dst, const Tsrc& src) {
     dst.insert(src.begin(), src.end());
-}
-
-/**
- * Helper function to access the contained object of a std::any instance.
- * Returns a pointer to the object if passed instance has a value and the type
- * matches, nullptr otherwise.
- */
-template<typename T>
-T* AnyPtr(const std::any& any) noexcept
-{
-    T* const* ptr = std::any_cast<T*>(&any);
-    return ptr ? *ptr : nullptr;
 }
 
 #ifdef WIN32

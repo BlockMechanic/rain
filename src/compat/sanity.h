@@ -5,6 +5,7 @@
 #ifndef RAIN_COMPAT_SANITY_H
 #define RAIN_COMPAT_SANITY_H
 
+bool glibc_sanity_test();
 bool glibcxx_sanity_test();
 
 #endif // RAIN_COMPAT_SANITY_H

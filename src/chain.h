@@ -33,7 +33,7 @@ static constexpr int64_t TIMESTAMP_WINDOW = MAX_FUTURE_BLOCK_TIME;
  * Maximum gap between node time and block time used
  * for the "Catching up..." mode in GUI.
  *
- * Ref: https://github.com/rain/rain/pull/1026
+ * Ref: https://github.com/bitcoin/bitcoin/pull/1026
  */
 static constexpr int64_t MAX_BLOCK_TIME_GAP = 90 * 60;
 
@@ -143,6 +143,9 @@ public:
     //! pointer to the index of the predecessor of this block
     CBlockIndex* pprev{nullptr};
 
+    //! pointer to the index of the next block
+    CBlockIndex* pnext;
+
     //! pointer to the index of some further predecessor of this block
     CBlockIndex* pskip{nullptr};
 
@@ -193,11 +196,18 @@ public:
     uint32_t nBits{0};
     uint32_t nNonce{0};
 
+    // block signature - proof-of-stake protect the block by signing the block using a stake holder private key
+    std::vector<unsigned char> vchBlockSig;
+    uint256 nStakeModifier{};
+    COutPoint prevoutStake;
+    uint256 hashProof{};
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     int32_t nSequenceId{0};
 
     //! (memory only) Maximum nTime in the chain up to and including this block.
     unsigned int nTimeMax{0};
+
+    CAmountMap nMoneySupply;
 
     CBlockIndex()
     {
@@ -208,7 +218,9 @@ public:
           hashMerkleRoot{block.hashMerkleRoot},
           nTime{block.nTime},
           nBits{block.nBits},
-          nNonce{block.nNonce}
+          nNonce{block.nNonce},
+          vchBlockSig{block.vchBlockSig},
+          prevoutStake{block.prevoutStake}
     {
     }
 
@@ -238,8 +250,11 @@ public:
             block.hashPrevBlock = pprev->GetBlockHash();
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
+        block.nHeight        = nHeight;
         block.nBits          = nBits;
         block.nNonce         = nNonce;
+        block.vchBlockSig    = vchBlockSig;
+        block.prevoutStake   = prevoutStake;
         return block;
     }
 
@@ -283,10 +298,20 @@ public:
         return pbegin[(pend - pbegin)/2];
     }
 
+    bool IsProofOfWork() const
+    {
+        return !IsProofOfStake();
+    }
+
+    bool IsProofOfStake() const
+    {
+        return !prevoutStake.IsNull();
+    }
+
     std::string ToString() const
     {
-        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, merkle=%s, hashBlock=%s)",
-            pprev, nHeight,
+        return strprintf("CBlockIndex(pprev=%p, nHeight=%d, moneysupply=%s, merkle=%s, hashBlock=%s)",
+            pprev, nHeight, nMoneySupply,
             hashMerkleRoot.ToString(),
             GetBlockHash().ToString());
     }
@@ -334,9 +359,11 @@ class CDiskBlockIndex : public CBlockIndex
 {
 public:
     uint256 hashPrev;
+    uint256 hashNext;
 
     CDiskBlockIndex() {
         hashPrev = uint256();
+        hashNext = uint256();
     }
 
     explicit CDiskBlockIndex(const CBlockIndex* pindex) : CBlockIndex(*pindex) {
@@ -355,13 +382,19 @@ public:
         if (obj.nStatus & BLOCK_HAVE_DATA) READWRITE(VARINT(obj.nDataPos));
         if (obj.nStatus & BLOCK_HAVE_UNDO) READWRITE(VARINT(obj.nUndoPos));
 
+        READWRITE(obj.nMoneySupply);
         // block header
         READWRITE(obj.nVersion);
         READWRITE(obj.hashPrev);
+        READWRITE(obj.hashNext);
         READWRITE(obj.hashMerkleRoot);
         READWRITE(obj.nTime);
         READWRITE(obj.nBits);
         READWRITE(obj.nNonce);
+        READWRITE(obj.nStakeModifier);
+        READWRITE(obj.prevoutStake);
+        READWRITE(obj.hashProof);
+        READWRITE(obj.vchBlockSig);
     }
 
     uint256 GetBlockHash() const
@@ -371,11 +404,13 @@ public:
         block.hashPrevBlock   = hashPrev;
         block.hashMerkleRoot  = hashMerkleRoot;
         block.nTime           = nTime;
+        block.nHeight         = nHeight;
         block.nBits           = nBits;
         block.nNonce          = nNonce;
+        block.vchBlockSig     = vchBlockSig;
+        block.prevoutStake    = prevoutStake;
         return block.GetHash();
     }
-
 
     std::string ToString() const
     {

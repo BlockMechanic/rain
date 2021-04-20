@@ -5,6 +5,7 @@
 
 #ifndef RAIN_WALLET_WALLET_H
 #define RAIN_WALLET_WALLET_H
+#include <addressbook.h>
 
 #include <amount.h>
 #include <interfaces/chain.h>
@@ -22,7 +23,6 @@
 #include <wallet/coinselection.h>
 #include <wallet/crypter.h>
 #include <wallet/scriptpubkeyman.h>
-#include <external_signer.h>
 #include <wallet/walletdb.h>
 #include <wallet/walletutil.h>
 
@@ -59,7 +59,12 @@ std::shared_ptr<CWallet> GetWallet(const std::string& name);
 std::shared_ptr<CWallet> LoadWallet(interfaces::Chain& chain, const std::string& name, std::optional<bool> load_on_start, const DatabaseOptions& options, DatabaseStatus& status, bilingual_str& error, std::vector<bilingual_str>& warnings);
 std::shared_ptr<CWallet> CreateWallet(interfaces::Chain& chain, const std::string& name, std::optional<bool> load_on_start, DatabaseOptions& options, DatabaseStatus& status, bilingual_str& error, std::vector<bilingual_str>& warnings);
 std::unique_ptr<interfaces::Handler> HandleLoadWallet(LoadWalletFn load_wallet);
+
+extern boost::signals2::signal<void (const std::shared_ptr<CWallet>& wallet)> NotifyWalletAdded;
+
 std::unique_ptr<WalletDatabase> MakeWalletDatabase(const std::string& name, const DatabaseOptions& options, DatabaseStatus& status, bilingual_str& error);
+
+unsigned int GetStakeSplitOutputs();
 
 //! -paytxfee default
 constexpr CAmount DEFAULT_PAY_TX_FEE = 0;
@@ -97,6 +102,8 @@ constexpr CAmount DEFAULT_TRANSACTION_MAXFEE{COIN / 10};
 constexpr CAmount HIGH_TX_FEE_PER_KB{COIN / 100};
 //! -maxtxfee will warn if called with a higher fee than this amount (in satoshis)
 constexpr CAmount HIGH_MAX_TX_FEE{100 * HIGH_TX_FEE_PER_KB};
+static const CAmount DEFAULT_RESERVE_BALANCE = 100 *COIN;
+static const CAmount DEFAULT_STAKE_SPLIT_THRESHOLD = 200 * COIN;
 //! Pre-calculated constants for input size estimation in *virtual size*
 static constexpr size_t DUMMY_NESTED_P2WPKH_INPUT_SIZE = 91;
 
@@ -107,6 +114,7 @@ class CWalletTx;
 struct FeeCalculation;
 enum class FeeEstimateMode;
 class ReserveDestination;
+class SecureMessaging;
 
 //! Default for -addresstype
 constexpr OutputType DEFAULT_ADDRESS_TYPE{OutputType::BECH32};
@@ -116,8 +124,7 @@ static constexpr uint64_t KNOWN_WALLET_FLAGS =
     |   WALLET_FLAG_BLANK_WALLET
     |   WALLET_FLAG_KEY_ORIGIN_METADATA
     |   WALLET_FLAG_DISABLE_PRIVATE_KEYS
-    |   WALLET_FLAG_DESCRIPTORS
-    |   WALLET_FLAG_EXTERNAL_SIGNER;
+    |   WALLET_FLAG_DESCRIPTORS;
 
 static constexpr uint64_t MUTABLE_WALLET_FLAGS =
         WALLET_FLAG_AVOID_REUSE;
@@ -128,7 +135,6 @@ static const std::map<std::string,WalletFlags> WALLET_FLAG_MAP{
     {"key_origin_metadata", WALLET_FLAG_KEY_ORIGIN_METADATA},
     {"disable_private_keys", WALLET_FLAG_DISABLE_PRIVATE_KEYS},
     {"descriptor_wallet", WALLET_FLAG_DESCRIPTORS},
-    {"external_signer", WALLET_FLAG_EXTERNAL_SIGNER}
 };
 
 extern const std::map<uint64_t,std::string> WALLET_FLAG_CAVEATS;
@@ -186,32 +192,12 @@ public:
     void KeepDestination();
 };
 
-/** Address book data */
-class CAddressBookData
-{
-private:
-    bool m_change{true};
-    std::string m_label;
-public:
-    std::string purpose;
-
-    CAddressBookData() : purpose("unknown") {}
-
-    typedef std::map<std::string, std::string> StringMap;
-    StringMap destdata;
-
-    bool IsChange() const { return m_change; }
-    const std::string& GetLabel() const { return m_label; }
-    void SetLabel(const std::string& label) {
-        m_change = false;
-        m_label = label;
-    }
-};
-
 struct CRecipient
 {
     CScript scriptPubKey;
     CAmount nAmount;
+    CAsset asset;
+    CPubKey confidentiality_key;
     bool fSubtractFeeFromAmount;
 };
 
@@ -241,6 +227,9 @@ struct COutputEntry
     CTxDestination destination;
     CAmount amount;
     int vout;
+    CAsset asset;
+    uint256 amount_blinding_factor;
+    uint256 asset_blinding_factor;
 };
 
 /** Legacy class used for deserializing vtxPrev for backwards compatibility.
@@ -306,7 +295,7 @@ public:
      *     "spent"           - serialized vfSpent value that existed prior to
      *                         2014 (removed in commit 93a18a3)
      */
-    mapValue_t mapValue;
+    mutable mapValue_t mapValue;
     std::vector<std::pair<std::string, std::string> > vOrderForm;
     unsigned int fTimeReceivedIsTxTime;
     unsigned int nTimeReceived; //!< time received by this node
@@ -330,8 +319,8 @@ public:
     std::multimap<int64_t, CWalletTx*>::const_iterator m_it_wtxOrdered;
 
     // memory only
-    enum AmountType { DEBIT, CREDIT, IMMATURE_CREDIT, AVAILABLE_CREDIT, AMOUNTTYPE_ENUM_ELEMENTS };
-    CAmount GetCachableAmount(AmountType type, const isminefilter& filter, bool recalculate = false) const;
+    enum AmountType { DEBIT, CREDIT, IMMATURE_CREDIT, AVAILABLE_CREDIT, LOCKED, UNLOCKED, STAKE, AMOUNTTYPE_ENUM_ELEMENTS };
+    CAmountMap GetCachableAmount(AmountType type, const isminefilter& filter, bool recalculate = false) const;
     mutable CachableAmount m_amounts[AMOUNTTYPE_ENUM_ELEMENTS];
     /**
      * This flag is true if all m_amounts caches are empty. This is particularly
@@ -342,7 +331,7 @@ public:
     mutable bool m_is_cache_empty{true};
     mutable bool fChangeCached;
     mutable bool fInMempool;
-    mutable CAmount nChangeCached;
+    mutable CAmountMap nChangeCached;
 
     CWalletTx(const CWallet* wallet, CTransactionRef arg)
         : pwallet(wallet),
@@ -361,7 +350,7 @@ public:
         fFromMe = false;
         fChangeCached = false;
         fInMempool = false;
-        nChangeCached = 0;
+        nChangeCached = CAmountMap();
         nOrderPos = -1;
         m_confirm = Confirmation{};
     }
@@ -465,21 +454,31 @@ public:
         m_amounts[CREDIT].Reset();
         m_amounts[IMMATURE_CREDIT].Reset();
         m_amounts[AVAILABLE_CREDIT].Reset();
+        m_amounts[LOCKED].Reset();
+        m_amounts[UNLOCKED].Reset();
+        m_amounts[STAKE].Reset();
         fChangeCached = false;
         m_is_cache_empty = true;
     }
 
     //! filter decides which addresses will count towards the debit
-    CAmount GetDebit(const isminefilter& filter) const;
-    CAmount GetCredit(const isminefilter& filter) const;
-    CAmount GetImmatureCredit(bool fUseCache = true) const;
+    CAmountMap GetDebit(const isminefilter& filter) const;
+    CAmountMap GetCredit(const isminefilter& filter) const;
+    CAmountMap GetImmatureCredit(bool fUseCache = true) const;
+
     // TODO: Remove "NO_THREAD_SAFETY_ANALYSIS" and replace it with the correct
+    // Return sum of unlocked coins
+    CAmountMap GetUnlockedCredit(const isminefilter& filter) const;
     // annotation "EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet)". The
+    // Return sum of locked coins
+    CAmountMap GetLockedCredit(const isminefilter& filter) const;
     // annotation "NO_THREAD_SAFETY_ANALYSIS" was temporarily added to avoid
+    // Return sum of staked coins
+    CAmountMap GetStakeCredit(const isminefilter& filter) const;
     // having to resolve the issue of member access into incomplete type CWallet.
-    CAmount GetAvailableCredit(bool fUseCache = true, const isminefilter& filter = ISMINE_SPENDABLE) const NO_THREAD_SAFETY_ANALYSIS;
-    CAmount GetImmatureWatchOnlyCredit(const bool fUseCache = true) const;
-    CAmount GetChange() const;
+    CAmountMap GetAvailableCredit(bool fUseCache = true, const isminefilter& filter = ISMINE_SPENDABLE) const NO_THREAD_SAFETY_ANALYSIS;
+    CAmountMap GetImmatureWatchOnlyCredit(const bool fUseCache = true) const;
+    CAmountMap GetChange() const;
 
     // Get the marginal bytes if spending the specified output from this transaction
     int GetSpendSize(unsigned int out, bool use_max_sig = false) const
@@ -488,11 +487,11 @@ public:
     }
 
     void GetAmounts(std::list<COutputEntry>& listReceived,
-                    std::list<COutputEntry>& listSent, CAmount& nFee, const isminefilter& filter) const;
+                    std::list<COutputEntry>& listSent, CAmountMap& mapFee, const isminefilter& filter) const;
 
     bool IsFromMe(const isminefilter& filter) const
     {
-        return (GetDebit(filter) > 0);
+        return (GetDebit(filter) > CAmountMap());
     }
 
     // True if only scriptSigs are different
@@ -504,7 +503,39 @@ public:
     int64_t GetTxTime() const;
 
     // Pass this transaction to node for mempool insertion and relay to peers if flag set to true
-    bool SubmitMemoryPoolAndRelay(std::string& err_string, bool relay);
+    bool SubmitMemoryPoolAndRelay(std::string& err_string, bool relay, CAmount override_max_fee=-1);
+
+    void GetBlindingData(const unsigned int map_index, const std::vector<unsigned char>& vchRangeproof, const CConfidentialValue& conf_value, const CConfidentialAsset& conf_asset, const CConfidentialNonce nonce, const CScript& scriptPubKey, CPubKey* blinding_pubkey_out, CAmount* value_out, uint256* value_factor_out, CAsset* asset_out, uint256* asset_factor_out) const;
+    void WipeUnknownBlindingData();
+
+    // For use in wallet transaction creation to remember 3rd party values
+    // Unneeded for issuance.
+    void SetBlindingData(const unsigned int output_index, const CPubKey& blinding_pubkey, const CAmount value, const uint256& value_factor, const CAsset& asset, const uint256& asset_factor);
+
+    // Convenience method to retrieve all blinding data at once, for an ordinary non-issuance tx
+    void GetNonIssuanceBlindingData(const unsigned int output_index, CPubKey* blinding_pubkey_out, CAmount* value_out, uint256* value_factor_out, CAsset* asset_out, uint256* asset_factor_out) const;
+
+    //! Returns either the value out (if it is known) or -1
+    CAmount GetOutputValueOut(unsigned int ouput_index) const;
+
+    //! Returns either the blinding factor (if it is to us) or 0
+    uint256 GetOutputAmountBlindingFactor(unsigned int output_index) const;
+    uint256 GetOutputAssetBlindingFactor(unsigned int output_index) const;
+    //! Returns the underlying asset type, or 0 if unknown
+    CAsset GetOutputAsset(unsigned int output_index) const;
+    //! Get the issuance CAssets for both the asset itself and the issuing tokens
+    void GetIssuanceAssets(unsigned int vinIndex, CAsset* out_asset, CAsset* out_reissuance_token) const;
+    // ! Return map of issued assets at input_index
+    CAmountMap GetIssuanceAssets(unsigned int input_index) const;
+    // ! Returns receiver's blinding pubkey
+    CPubKey GetOutputBlindingPubKey(unsigned int output_index) const;
+    //! Get the issuance blinder for either the asset itself or the issuing tokens
+    uint256 GetIssuanceBlindingFactor(unsigned int input_index, bool reissuance_token) const;
+    //! Get the issuance amount for either the asset itself or the issuing tokens
+    CAmount GetIssuanceAmount(unsigned int input_index, bool reissuance_token) const;
+
+    // TODO: Remove "NO_THREAD_SAFETY_ANALYSIS" and replace it with the correct
+    unsigned int GetPseudoInputOffset(unsigned int input_index, bool reissuance_token) const;
 
     // TODO: Remove "NO_THREAD_SAFETY_ANALYSIS" and replace it with the correct
     // annotation "EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet)". The annotation
@@ -552,6 +583,7 @@ public:
     const uint256& GetHash() const { return tx->GetHash(); }
     bool IsCoinBase() const { return tx->IsCoinBase(); }
     bool IsImmatureCoinBase() const;
+    bool IsCoinStake() const { return tx->IsCoinStake(); }
 
     // Disable copying of CWalletTx objects to prevent bugs where instances get
     // copied in and out of the mapWallet map, and fields are updated in the
@@ -571,10 +603,9 @@ public:
     int nInputBytes;
 
     /** Whether we have the private keys to spend this output */
-    bool fSpendable;
-
+    bool fMaybeSpendable;
     /** Whether we know how to spend this output, ignoring the lack of keys */
-    bool fSolvable;
+    bool fMaybeSolvable;
 
     /** Whether to use the maximum sized, 72 byte signature when calculating the size of the input spend. This should only be set when watch-only outputs are allowed */
     bool use_max_sig;
@@ -588,15 +619,36 @@ public:
 
     COutput(const CWalletTx *txIn, int iIn, int nDepthIn, bool fSpendableIn, bool fSolvableIn, bool fSafeIn, bool use_max_sig_in = false)
     {
-        tx = txIn; i = iIn; nDepth = nDepthIn; fSpendable = fSpendableIn; fSolvable = fSolvableIn; fSafe = fSafeIn; nInputBytes = -1; use_max_sig = use_max_sig_in;
+        tx = txIn; i = iIn; nDepth = nDepthIn; fMaybeSpendable = fSpendableIn; fMaybeSolvable = fSolvableIn; fSafe = fSafeIn; nInputBytes = -1; use_max_sig = use_max_sig_in;
         // If known and signable by the given wallet, compute nInputBytes
         // Failure will keep this value -1
-        if (fSpendable && tx) {
+        if (fMaybeSpendable && tx) {
             nInputBytes = tx->GetSpendSize(i, use_max_sig);
         }
     }
 
+    CAmount Value() const
+    {
+        return tx->tx->vout[i].nValue.GetAmount();
+    }
+
+    CAsset Asset() const
+    {
+        return tx->tx->vout[i].nAsset.GetAsset();
+    }
+
+    std::vector<unsigned char> Nonce() const
+    {
+        return tx->tx->vout[i].nNonce.vchCommitment;
+    }
+
     std::string ToString() const;
+
+    bool IsMature(int nBlockHeight, int64_t nBlockTime, const CWallet& keystore) const;
+    bool IsSpendableAt(int nBlockHeight, int64_t nBlockTime, const CWallet& keystore) const;
+    bool IsSpendableAfter(const CBlockIndex& blockindex, const CWallet& keystore) const;
+    bool IsSolvableAt(int nBlockHeight, int64_t nBlockTime, const CWallet& keystore) const;
+    bool IsSolvableAfter(const CBlockIndex& blockindex, const CWallet& keystore) const;
 
     inline CInputCoin GetInputCoin() const
     {
@@ -629,6 +681,40 @@ struct CoinSelectionParams
         m_avoid_partial_spends(avoid_partial)
     {}
     CoinSelectionParams() {}
+};
+
+struct IssuanceDetails {
+    bool issuing = false;
+
+    bool blind_issuance = true;
+    CAsset reissuance_asset;
+    CAsset reissuance_token;
+    uint256 entropy;
+};
+
+struct BlindDetails {
+    bool ignore_blind_failure = true; // Certain corner-cases are hard to avoid
+
+    // Temporary tx-specific details.
+    std::vector<uint256> i_amount_blinds;
+    std::vector<uint256> i_asset_blinds;
+    std::vector<CAsset>  i_assets;
+    std::vector<CAmount> i_amounts;
+    std::vector<CAmount> o_amounts;
+    std::vector<CPubKey> o_pubkeys;
+    std::vector<uint256> o_amount_blinds;
+    std::vector<CAsset>  o_assets;
+    std::vector<uint256> o_asset_blinds;
+    // We need to store an unblinded and unsigned version of the transaction
+    // in case of !sign
+    CMutableTransaction tx_unblinded_unsigned;
+
+    int num_to_blind;
+    int change_to_blind;
+    // Only used to strip blinding if its the only blind output in certain situations
+    int only_recipient_blind_index;
+    // Needed in case of one blinded output that is change and no blind inputs
+    int only_change_pos;
 };
 
 class WalletRescanReserver; //forward declarations for ScanForWalletTransactions/RescanFromTime
@@ -665,7 +751,9 @@ private:
     typedef std::multimap<COutPoint, uint256> TxSpends;
     TxSpends mapTxSpends GUARDED_BY(cs_wallet);
     void AddToSpends(const COutPoint& outpoint, const uint256& wtxid) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    void RemoveFromSpends(const COutPoint& outpoint, const uint256& wtxid) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     void AddToSpends(const uint256& wtxid) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    void RemoveFromSpends(const uint256& wtxid) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /**
      * Add a transaction to the wallet, or update it.  pIndex and posInBlock should
@@ -722,6 +810,10 @@ private:
      */
     uint256 m_last_block_processed GUARDED_BY(cs_wallet);
 
+    std::thread* stakeThread = nullptr;
+    std::thread *secureMsgThread = nullptr;
+    SecureMessaging *m_secmsg = nullptr;
+
     /* Height of last block processed is used by wallet to know depth of transactions
      * without relying on Chain interface beyond asynchronous updates. For safety, we
      * initialize it to -1. Height is a pointer on node's tip and doesn't imply
@@ -736,7 +828,7 @@ private:
     // ScriptPubKeyMan::GetID. In many cases it will be the hash of an internal structure
     std::map<uint256, std::unique_ptr<ScriptPubKeyMan>> m_spk_managers;
 
-    bool CreateTransactionInternal(const std::vector<CRecipient>& vecSend, CTransactionRef& tx, CAmount& nFeeRet, int& nChangePosInOut, bilingual_str& error, const CCoinControl& coin_control, FeeCalculation& fee_calc_out, bool sign);
+    bool CreateTransactionInternal(const std::vector<CRecipient>& vecSend, CTransactionRef& tx, CAmountMap& nFeeRet, int& nChangePosInOut, bilingual_str& error, const CCoinControl& coin_control, FeeCalculation& fee_calc_out, bool sign, BlindDetails* blind_details, const IssuanceDetails* issuance_details);
 
 public:
     /*
@@ -756,16 +848,21 @@ public:
      * all coins from coinControl are selected; Never select unconfirmed coins
      * if they are not ours
      */
-    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet,
+    bool SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmountMap& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmountMap& nValueRet,
                     const CCoinControl& coin_control, CoinSelectionParams& coin_selection_params, bool& bnb_used) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /** Get a name for this wallet for logging/debugging purposes.
      */
     const std::string& GetName() const { return m_name; }
 
+    bool fWalletUnlockStaking;
+
     typedef std::map<unsigned int, CMasterKey> MasterKeyMap;
     MasterKeyMap mapMasterKeys;
     unsigned int nMasterKeyMaxID = 0;
+
+    int64_t m_smsg_fee_rate_target = 0;
+    uint32_t m_smsg_difficulty_target = 0; // 0 = auto
 
     /** Construct wallet with specified name and database implementation. */
     CWallet(interfaces::Chain* chain, const std::string& name, std::unique_ptr<WalletDatabase> database)
@@ -773,6 +870,7 @@ public:
           m_name(name),
           m_database(std::move(database))
     {
+		fWalletUnlockStaking = false;
     }
 
     ~CWallet()
@@ -816,12 +914,18 @@ public:
     /**
      * populate vCoins with vector of available COutputs.
      */
-    void AvailableCoins(std::vector<COutput>& vCoins, bool fOnlySafe = true, const CCoinControl* coinControl = nullptr, const CAmount& nMinimumAmount = 1, const CAmount& nMaximumAmount = MAX_MONEY, const CAmount& nMinimumSumAmount = MAX_MONEY, const uint64_t nMaximumCount = 0) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    void AvailableCoins(std::vector<COutput>& vCoins, bool fOnlySafe = true, const CCoinControl* coinControl = nullptr, const CAmount& nMinimumAmount = 1, const CAmount& nMaximumAmount = MAX_MONEY, const CAmount& nMinimumSumAmount = MAX_MONEY, const uint64_t nMaximumCount = 0, const CAsset* asset_filter=nullptr, uint32_t nSpendTime =0, bool fStake=false) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    bool SelectCoinsForStaking(CAmountMap& nTargetValue, unsigned int nSpendTime, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, CAmountMap& nValueRet) const;
+    bool HaveAvailableCoinsForStaking() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
+    std::map<CTxDestination, std::vector<COutput> > AvailableCoinsByAddress(bool fConfirmed = true, CAmount maxCoinValue = 0);
     /**
      * Return list of available coins and locked coins grouped by non-change output address.
      */
     std::map<CTxDestination, std::vector<COutput>> ListCoins() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+
+    bool SignBlock(std::shared_ptr<CBlock> pblock) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    bool SignAsset(CAsset &asset) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     /**
      * Find non-change parent output.
@@ -834,8 +938,8 @@ public:
      * completion the coin set and corresponding actual target value is
      * assembled
      */
-    bool SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<COutput> coins,
-        std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CoinSelectionParams& coin_selection_params, bool& bnb_used) const;
+    bool SelectCoinsMinConf(const CAmountMap& mapTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<OutputGroup> groups,
+        std::set<CInputCoin>& setCoinsRet, CAmountMap& mapValueRet, const CoinSelectionParams& coin_selection_params, bool& bnb_used) const;
 
     bool IsSpent(const uint256& hash, unsigned int n) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
@@ -845,11 +949,10 @@ public:
 
     std::vector<OutputGroup> GroupOutputs(const std::vector<COutput>& outputs, bool separate_coins, const CFeeRate& effective_feerate, const CFeeRate& long_term_feerate, const CoinEligibilityFilter& filter, bool positive_only) const;
 
-    /** Display address on an external signer. Returns false if external signer support is not compiled */
-    bool DisplayAddress(const CTxDestination& dest) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    std::vector<OutputGroup> GroupOutputs(const std::vector<COutput>& outputs, bool single_coin) const;
 
     bool IsLockedCoin(uint256 hash, unsigned int n) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-    void LockCoin(const COutPoint& output) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    void LockCoin(const COutPoint& output, bool fPermanent=false) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     void UnlockCoin(const COutPoint& output) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     void UnlockAllCoins() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     void ListLockedCoins(std::vector<COutPoint>& vOutpts) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
@@ -887,7 +990,7 @@ public:
 
     // Used to prevent concurrent calls to walletpassphrase RPC.
     Mutex m_unlock_mutex;
-    bool Unlock(const SecureString& strWalletPassphrase, bool accept_no_keys = false);
+    bool Unlock(const SecureString& strWalletPassphrase, bool anonimizeOnly = false, bool accept_no_keys = false);
     bool ChangeWalletPassphrase(const SecureString& strOldWalletPassphrase, const SecureString& strNewWalletPassphrase);
     bool EncryptWallet(const SecureString& strWalletPassphrase);
 
@@ -939,23 +1042,30 @@ public:
     void ReacceptWalletTransactions() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     void ResendWalletTransactions();
     struct Balance {
-        CAmount m_mine_trusted{0};           //!< Trusted, at depth=GetBalance.min_depth or more
-        CAmount m_mine_untrusted_pending{0}; //!< Untrusted, but in mempool (pending)
-        CAmount m_mine_immature{0};          //!< Immature coinbases in the main chain
-        CAmount m_watchonly_trusted{0};
-        CAmount m_watchonly_untrusted_pending{0};
-        CAmount m_watchonly_immature{0};
+        CAmountMap m_mine_trusted{CAmountMap()};           //!< Trusted, at depth=GetBalance.min_depth or more
+        CAmountMap m_mine_untrusted_pending{CAmountMap()}; //!< Untrusted, but in mempool (pending)
+        CAmountMap m_mine_immature{CAmountMap()};          //!< Immature coinbases in the main chain
+        CAmountMap m_mine_stake{CAmountMap()};
+        CAmountMap m_mine_locked{CAmountMap()};
+        CAmountMap m_mine_unlocked{CAmountMap()};
+        CAmountMap m_watchonly_trusted{CAmountMap()};
+        CAmountMap m_watchonly_untrusted_pending{CAmountMap()};
+        CAmountMap m_watchonly_immature{CAmountMap()};
+        CAmountMap m_watchonly_stake{CAmountMap()};
     };
     Balance GetBalance(int min_depth = 0, bool avoid_reuse = true) const;
-    CAmount GetAvailableBalance(const CCoinControl* coinControl = nullptr) const;
-
+    CAmountMap GetAvailableBalance(const CCoinControl* coinControl = nullptr) const;
+    CAmountMap GetLockedCoins() const;
+    CAmountMap GetUnlockedCoins() const;
+    CAmountMap GetStake() const;
+    CAmountMap GetWatchOnlyStake() const;
     OutputType TransactionChangeType(const std::optional<OutputType>& change_type, const std::vector<CRecipient>& vecSend) const;
 
     /**
      * Insert additional inputs into the transaction by
      * calling CreateTransaction();
      */
-    bool FundTransaction(CMutableTransaction& tx, CAmount& nFeeRet, int& nChangePosInOut, bilingual_str& error, bool lockUnspents, const std::set<int>& setSubtractFeeFromOutputs, CCoinControl);
+    bool FundTransaction(CMutableTransaction& tx, CAmountMap& nFeeRet, int& nChangePosInOut, bilingual_str& error, bool lockUnspents, const std::set<int>& setSubtractFeeFromOutputs, CCoinControl);
     // Fetch the inputs and sign with SIGHASH_ALL.
     bool SignTransaction(CMutableTransaction& tx) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     // Sign the tx given the input coins and sighash.
@@ -987,7 +1097,7 @@ public:
      * selected by SelectCoins(); Also create the change output, when needed
      * @note passing nChangePosInOut as -1 will result in setting a random position
      */
-    bool CreateTransaction(const std::vector<CRecipient>& vecSend, CTransactionRef& tx, CAmount& nFeeRet, int& nChangePosInOut, bilingual_str& error, const CCoinControl& coin_control, FeeCalculation& fee_calc_out, bool sign = true);
+    bool CreateTransaction(const std::vector<CRecipient>& vecSend, CTransactionRef& tx, CAmountMap& nFeeRet, int& nChangePosInOut, bilingual_str& error, const CCoinControl& coin_control, FeeCalculation& fee_calc_out, bool sign = true, BlindDetails* blind_details=nullptr, const IssuanceDetails* issuance_details=nullptr);
     /**
      * Submit the transaction to the node's mempool and then relay to peers.
      * Should be called after CreateTransaction unless you want to abort
@@ -997,8 +1107,12 @@ public:
      * @param[in] mapValue key-values to be set on the transaction.
      * @param[in] orderForm BIP 70 / BIP 21 order form details to be set on the transaction.
      */
-    void CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::vector<std::pair<std::string, std::string>> orderForm);
 
+    bool CreateAsset(const CCoinControl& coin_control,std::string assetname, std::string shortname, std::string addressTo, CAmount inputamt,CAmount outputamt, bool transferable,bool convertable, bool restricted, bool limited);
+
+    void CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::vector<std::pair<std::string, std::string>> orderForm, const BlindDetails* blind_details = nullptr);
+    uint64_t GetStakeWeight() const;
+    bool CreateCoinStake(unsigned int nBits, CMutableTransaction& txNew, COutPoint& headerPrevout) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool DummySignTx(CMutableTransaction &txNew, const std::set<CTxOut> &txouts, bool use_max_sig = false) const
     {
         std::vector<CTxOut> v_txouts(txouts.size());
@@ -1006,7 +1120,7 @@ public:
         return DummySignTx(txNew, v_txouts, use_max_sig);
     }
     bool DummySignTx(CMutableTransaction &txNew, const std::vector<CTxOut> &txouts, bool use_max_sig = false) const;
-    bool DummySignInput(CTxIn &tx_in, const CTxOut &txout, bool use_max_sig = false) const;
+    bool DummySignInput(CMutableTransaction& tx, const size_t nIn, const CTxOut &txout, bool use_max_sig = false) const;
 
     bool ImportScripts(const std::set<CScript> scripts, int64_t timestamp) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool ImportPrivKeys(const std::map<CKeyID, CKey>& privkey_map, const int64_t timestamp) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
@@ -1028,6 +1142,10 @@ public:
     CFeeRate m_discard_rate{DEFAULT_DISCARD_FEE};
     CAmount m_max_aps_fee{DEFAULT_MAX_AVOIDPARTIALSPEND_FEE}; //!< note: this is absolute fee, not fee rate
     OutputType m_default_address_type{DEFAULT_ADDRESS_TYPE};
+
+    CAmount m_reserve_balance{DEFAULT_RESERVE_BALANCE};
+    int64_t m_last_coin_stake_search_time{0};
+    int64_t m_last_coin_stake_search_interval{0};
     /**
      * Default output type for change outputs. When unset, automatically choose type
      * based on address type setting and the types other of non-change outputs
@@ -1043,8 +1161,10 @@ public:
 
     int64_t GetOldestKeyPoolTime() const;
 
+    CAmount GetStakeSplitThreshold();
+
     std::set<std::set<CTxDestination>> GetAddressGroupings() const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-    std::map<CTxDestination, CAmount> GetAddressBalances() const;
+    std::map<CTxDestination, CAmountMap> GetAddressBalances() const;
 
     std::set<CTxDestination> GetLabelAddresses(const std::string& label) const;
 
@@ -1064,20 +1184,26 @@ public:
      * Returns amount of debit if the input matches the
      * filter, otherwise returns 0
      */
-    CAmount GetDebit(const CTxIn& txin, const isminefilter& filter) const;
+    CAmountMap GetDebit(const CTxIn& txin, const isminefilter& filter) const;
     isminetype IsMine(const CTxOut& txout) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-    CAmount GetCredit(const CTxOut& txout, const isminefilter& filter) const;
+    CAmountMap GetCredit(const CTransaction& tx, const size_t out_index, const isminefilter& filter) const;
+    CAmountMap GetCredit(const CTxOut& txout, const isminefilter& filter) const;
     bool IsChange(const CTxOut& txout) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool IsChange(const CScript& script) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-    CAmount GetChange(const CTxOut& txout) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    CAmountMap GetChange(const CTxOut& txout) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool IsMine(const CTransaction& tx) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     /** should probably be renamed to IsRelevantToMe */
     bool IsFromMe(const CTransaction& tx) const;
-    CAmount GetDebit(const CTransaction& tx, const isminefilter& filter) const;
+    CAmountMap GetDebit(const CTransaction& tx, const isminefilter& filter) const;
     /** Returns whether all of the inputs match the filter */
     bool IsAllFromMe(const CTransaction& tx, const isminefilter& filter) const;
-    CAmount GetCredit(const CTransaction& tx, const isminefilter& filter) const;
-    CAmount GetChange(const CTransaction& tx) const;
+    CAmountMap GetCredit(const CTransaction& tx, const isminefilter& filter) const;
+    CAmountMap GetChange(const CTransaction& tx) const;
+
+    // ELEMENTS:
+    CAmountMap GetCredit(const CWalletTx& wtx, const isminefilter& filter) const;
+    CAmountMap GetChange(const CWalletTx& wtx) const;
+
     void chainStateFlushed(const CBlockLocator& loc) override;
 
     DBErrors LoadWallet(bool& fFirstRunRet);
@@ -1095,6 +1221,8 @@ public:
     //! get the current wallet format (the oldest client version guaranteed to understand this wallet)
     int GetVersion() const { LOCK(cs_wallet); return nWalletVersion; }
 
+    //! disable transaction for coinstake
+    void DisableTransaction(const CTransaction &tx);
     //! Get wallet transactions that conflict with given transaction (spend same outputs)
     std::set<uint256> GetConflicts(const uint256& txid) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
@@ -1178,7 +1306,7 @@ public:
      * Obviously holding cs_main/cs_wallet when going into this call may cause
      * deadlock
      */
-    void BlockUntilSyncedToCurrentChain() const LOCKS_EXCLUDED(::cs_main) EXCLUSIVE_LOCKS_REQUIRED(!cs_wallet);
+    void BlockUntilSyncedToCurrentChain() const EXCLUSIVE_LOCKS_REQUIRED(!::cs_main, !cs_wallet);
 
     /** set a single wallet flag */
     void SetWalletFlag(uint64_t flags);
@@ -1209,6 +1337,20 @@ public:
     void WalletLogPrintf(std::string fmt, Params... parameters) const {
         LogPrintf(("%s " + fmt).c_str(), GetDisplayName(), parameters...);
     };
+
+    void ComputeBlindingData(const CConfidentialValue& conf_value, const CConfidentialAsset& conf_asset, const CConfidentialNonce& nonce, const CScript& scriptPubKey, const std::vector<unsigned char>& vchRangeproof, CAmount& value, CPubKey& blinding_pubkey, uint256& value_factor, CAsset& asset, uint256& asset_factor) const;
+
+    // First looks in imported blinding key store, then derives on its own
+    CKey GetBlindingKey(const CScript* script) const;
+    // Pubkey accessor for GetBlindingKey
+    CPubKey GetBlindingPubKey(const CScript& script) const;
+
+//    bool LoadSpecificBlindingKey(const CScriptID& scriptid, const uint256& key);
+//    bool AddSpecificBlindingKey(const CScriptID& scriptid, const uint256& key);
+//    bool SetMasterBlindingKey(const uint256& key);
+
+    /// Returns a map of entropy to the respective pair of reissuance token and issuance asset.
+    std::map<uint256, std::pair<CAsset, CAsset> > GetReissuanceTokenTypes() const;
 
     /** Upgrade the wallet */
     bool UpgradeWallet(int version, bilingual_str& error);
@@ -1291,6 +1433,10 @@ public:
 
     //! Add a descriptor to the wallet, return a ScriptPubKeyMan & associated output type
     ScriptPubKeyMan* AddWalletDescriptor(WalletDescriptor& desc, const FlatSigningProvider& signing_provider, const std::string& label, bool internal);
+
+    void SecureMessagingStart(bool start);
+    void Stake(bool fStake);
+    bool m_smsg_enabled = true;
 };
 
 /**
@@ -1337,13 +1483,13 @@ public:
 // Use DummySignatureCreator, which inserts 71 byte signatures everywhere.
 // NOTE: this requires that all inputs must be in mapWallet (eg the tx should
 // be IsAllFromMe).
-std::pair<int64_t, int64_t> CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *wallet, bool use_max_sig = false) EXCLUSIVE_LOCKS_REQUIRED(wallet->cs_wallet);
-std::pair<int64_t, int64_t> CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *wallet, const std::vector<CTxOut>& txouts, bool use_max_sig = false);
+bool IsSimpleCLTV(CScript script, bool& failure, int64_t& cltv_height, int64_t& cltv_time, const CWallet& keystore);
+int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *wallet, bool use_max_sig = false) EXCLUSIVE_LOCKS_REQUIRED(wallet->cs_wallet);
+int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *wallet, const std::vector<CTxOut>& txouts, bool use_max_sig = false);
 
 //! Add wallet name to persistent configuration so it will be loaded on startup.
 bool AddWalletSetting(interfaces::Chain& chain, const std::string& wallet_name);
 
 //! Remove wallet name from persistent configuration so it will not be loaded on startup.
 bool RemoveWalletSetting(interfaces::Chain& chain, const std::string& wallet_name);
-
 #endif // RAIN_WALLET_WALLET_H

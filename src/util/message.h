@@ -64,7 +64,8 @@ bool MessageSign(
     const CKey& privkey,
     const std::string& message,
     std::string& signature);
-
+std::vector<unsigned char> signmessage(const std::vector<unsigned char> &data, const CKey &key);
+std::vector<unsigned char> signmessage(const std::string &data, const CKey &key);
 /**
  * Hashes a message for signing and verification in a manner that prevents
  * inadvertently signing a transaction.

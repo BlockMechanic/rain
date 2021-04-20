@@ -6,28 +6,68 @@
 
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
+#include <issuance.h>
 #include <key_io.h>
 #include <script/script.h>
+#include <script/sighashtype.h>
+
 #include <script/standard.h>
 #include <serialize.h>
 #include <streams.h>
 #include <undo.h>
 #include <univalue.h>
 #include <util/check.h>
-#include <util/strencodings.h>
 #include <util/system.h>
+#include <util/strencodings.h>
+#include <spentindex.h>
 
-UniValue ValueFromAmount(const CAmount amount)
-{
-    static_assert(COIN > 1);
-    int64_t quotient = amount / COIN;
-    int64_t remainder = amount % COIN;
-    if (amount < 0) {
-        quotient = -quotient;
-        remainder = -remainder;
+
+#include <secp256k1_rangeproof.h>
+
+static secp256k1_context* secp256k1_blind_context = NULL;
+
+class RPCRawTransaction_ECC_Init {
+public:
+    RPCRawTransaction_ECC_Init() {
+        assert(secp256k1_blind_context == NULL);
+
+        secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
+        assert(ctx != NULL);
+
+        secp256k1_blind_context = ctx;
     }
+
+    ~RPCRawTransaction_ECC_Init() {
+        secp256k1_context *ctx = secp256k1_blind_context;
+        secp256k1_blind_context = NULL;
+
+        if (ctx) {
+            secp256k1_context_destroy(ctx);
+        }
+    }
+};
+
+UniValue ValueFromAmountMap(const CAmountMap& amount)
+{
+    UniValue result(UniValue::VOBJ);
+    for(auto& i : amount){
+        bool sign = i.second < 0;
+        int64_t n_abs = (sign ? -i.second : i.second);
+        int64_t quotient = n_abs / COIN;
+        int64_t remainder = n_abs % COIN;
+        result.pushKV(i.first.GetHex(), strprintf("%s%d.%08d", sign ? "-" : "", quotient, remainder));
+    }
+    return result;
+}
+
+UniValue ValueFromAmount(const CAmount& amount)
+{
+    bool sign = amount < 0;
+    int64_t n_abs = (sign ? -amount : amount);
+    int64_t quotient = n_abs / COIN;
+    int64_t remainder = n_abs % COIN;
     return UniValue(UniValue::VNUM,
-            strprintf("%s%d.%08d", amount < 0 ? "-" : "", quotient, remainder));
+            strprintf("%s%d.%08d", sign ? "-" : "", quotient, remainder));
 }
 
 std::string FormatScript(const CScript& script)
@@ -156,13 +196,10 @@ void ScriptToUniv(const CScript& script, UniValue& out, bool include_address)
     }
 }
 
-// TODO: from v23 ("addresses" and "reqSigs" deprecated) this method should be refactored to remove the `include_addresses` option
-// this method can also be combined with `ScriptToUniv` as they will overlap
 void ScriptPubKeyToUniv(const CScript& scriptPubKey,
-                        UniValue& out, bool fIncludeHex, bool include_addresses)
+                        UniValue& out, bool fIncludeHex)
 {
     TxoutType type;
-    CTxDestination address;
     std::vector<CTxDestination> addresses;
     int nRequired;
 
@@ -175,28 +212,25 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey,
         return;
     }
 
-    if (ExtractDestination(scriptPubKey, address)) {
-        out.pushKV("address", EncodeDestination(address));
-    }
+    out.pushKV("reqSigs", nRequired);
     out.pushKV("type", GetTxnOutputType(type));
 
-    if (include_addresses) {
-        UniValue a(UniValue::VARR);
-        for (const CTxDestination& addr : addresses) {
-            a.push_back(EncodeDestination(addr));
-        }
-        out.pushKV("addresses", a);
-        out.pushKV("reqSigs", nRequired);
+    UniValue a(UniValue::VARR);
+    for (const CTxDestination& addr : addresses) {
+        a.push_back(EncodeDestination(addr));
     }
+    out.pushKV("addresses", a);
 }
 
-void TxToUniv(const CTransaction& tx, const uint256& hashBlock, bool include_addresses, UniValue& entry, bool include_hex, int serialize_flags, const CTxUndo* txundo)
+void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry, bool include_hex, int serialize_flags, const CTxUndo* txundo, const CSpentIndexTxInfo* ptxSpentInfo)
 {
+    uint256 txid = tx.GetHash();
     entry.pushKV("txid", tx.GetHash().GetHex());
-    entry.pushKV("hash", tx.GetWitnessHash().GetHex());
+    entry.pushKV("hash", tx.GetWitnessOnlyHash().GetHex());
     // Transaction version is actually unsigned in consensus checks, just signed in memory,
     // so cast to unsigned before giving it to the user.
     entry.pushKV("version", static_cast<int64_t>(static_cast<uint32_t>(tx.nVersion)));
+    entry.pushKV("time", (int64_t)tx.nTime);
     entry.pushKV("size", (int)::GetSerializeSize(tx, PROTOCOL_VERSION));
     entry.pushKV("vsize", (GetTransactionWeight(tx) + WITNESS_SCALE_FACTOR - 1) / WITNESS_SCALE_FACTOR);
     entry.pushKV("weight", GetTransactionWeight(tx));
@@ -222,22 +256,78 @@ void TxToUniv(const CTransaction& tx, const uint256& hashBlock, bool include_add
             o.pushKV("asm", ScriptToAsmStr(txin.scriptSig, true));
             o.pushKV("hex", HexStr(txin.scriptSig));
             in.pushKV("scriptSig", o);
-        }
-        if (!tx.vin[i].scriptWitness.IsNull()) {
-            UniValue txinwitness(UniValue::VARR);
-            for (const auto& item : tx.vin[i].scriptWitness.stack) {
-                txinwitness.push_back(HexStr(item));
+
+            // Add address and value info if spentindex enabled
+            if (ptxSpentInfo != nullptr) {
+                CSpentIndexKey spentKey(txin.prevout.hash, txin.prevout.n);
+                auto it = ptxSpentInfo->mSpentInfo.find(spentKey);
+                if (it != ptxSpentInfo->mSpentInfo.end()) {
+                    auto spentInfo = it->second;
+                    in.pushKV("value", ValueFromAmount(spentInfo.satoshis));
+                    in.pushKV("valueSat", spentInfo.satoshis);
+                    if (spentInfo.addressType == 1) {
+                        in.pushKV("address", EncodeDestination(PKHash(CKeyID(spentInfo.addressHash))));
+                    } else if (spentInfo.addressType == 2) {
+                        in.pushKV("address", EncodeDestination(ScriptHash(CScriptID(spentInfo.addressHash))));
+                    }
+                }
             }
-            in.pushKV("txinwitness", txinwitness);
-        }
-        if (calculate_fee) {
-            const CTxOut& prev_txout = txundo->vprevout[i].out;
-            amt_total_in += prev_txout.nValue;
         }
         in.pushKV("sequence", (int64_t)txin.nSequence);
+
+        if (tx.witness.vtxinwit.size() > i) {
+            const CScriptWitness &scriptWitness = tx.witness.vtxinwit[i].scriptWitness;
+            if (!scriptWitness.IsNull()) {
+                UniValue txinwitness(UniValue::VARR);
+                for (const auto &item : scriptWitness.stack) {
+                    txinwitness.push_back(HexStr(item));
+                }
+                in.pushKV("txinwitness", txinwitness);
+            }
+        }
+
+        // ELEMENTS:
+        const CAssetIssuance& issuance = txin.assetIssuance;
+        if (!issuance.IsNull()) {
+            UniValue issue(UniValue::VOBJ);
+            issue.pushKV("assetBlindingNonce", issuance.assetBlindingNonce.GetHex());
+            CAsset asset;
+            CAsset token;
+            uint256 entropy;
+            if (issuance.assetBlindingNonce.IsNull()) {
+                GenerateAssetEntropy(entropy, txin.prevout, issuance.assetEntropy);
+                issue.pushKV("assetEntropy", entropy.GetHex());
+                CalculateAsset(asset, entropy);
+                CalculateReissuanceToken(token, entropy, issuance.nAmount.IsCommitment());
+                issue.pushKV("isreissuance", false);
+                issue.pushKV("token", token.GetHex());
+            }
+            else {
+                issue.pushKV("assetEntropy", issuance.assetEntropy.GetHex());
+                issue.pushKV("isreissuance", true);
+                CalculateAsset(asset, issuance.assetEntropy);
+            }
+            issue.pushKV("asset", asset.GetHex());
+
+            if (issuance.nAmount.IsExplicit()) {
+                issue.pushKV("assetamount", ValueFromAmount(issuance.nAmount.GetAmount()));
+            } else if (issuance.nAmount.IsCommitment()) {
+                issue.pushKV("assetamountcommitment", HexStr(issuance.nAmount.vchCommitment));
+            }
+            if (issuance.nInflationKeys.IsExplicit()) {
+                issue.pushKV("tokenamount", ValueFromAmount(issuance.nInflationKeys.GetAmount()));
+            } else if (issuance.nInflationKeys.IsCommitment()) {
+                issue.pushKV("tokenamountcommitment", HexStr(issuance.nInflationKeys.vchCommitment));
+            }
+            in.pushKV("issuance", issue);
+        }
+        // END ELEMENTS
+
         vin.push_back(in);
     }
     entry.pushKV("vin", vin);
+
+    entry.pushKV("data", HexStr(tx.data.vData));
 
     UniValue vout(UniValue::VARR);
     for (unsigned int i = 0; i < tx.vout.size(); i++) {
@@ -245,17 +335,59 @@ void TxToUniv(const CTransaction& tx, const uint256& hashBlock, bool include_add
 
         UniValue out(UniValue::VOBJ);
 
-        out.pushKV("value", ValueFromAmount(txout.nValue));
+        if (txout.nValue.IsExplicit()) {
+            out.pushKV("value", ValueFromAmount(txout.nValue.GetAmount()));
+        } else {
+            int exp;
+            int mantissa;
+            uint64_t minv;
+            uint64_t maxv;
+            const CTxOutWitness* ptxoutwit = tx.witness.vtxoutwit.size() <= i? NULL: &tx.witness.vtxoutwit[i];
+            if (ptxoutwit) {
+                if (ptxoutwit->vchRangeproof.size() && secp256k1_rangeproof_info(secp256k1_blind_context, &exp, &mantissa, &minv, &maxv, &ptxoutwit->vchRangeproof[0], ptxoutwit->vchRangeproof.size())) {
+                    if (exp == -1) {
+                        out.pushKV("value", ValueFromAmount((CAmount)minv));
+                    } else {
+                        out.pushKV("value-minimum", ValueFromAmount((CAmount)minv));
+                        out.pushKV("value-maximum", ValueFromAmount((CAmount)maxv));
+                    }
+                    out.pushKV("ct-exponent", exp);
+                    out.pushKV("ct-bits", mantissa);
+                }
+
+                if (ptxoutwit->vchSurjectionproof.size()) {
+                    out.pushKV("surjectionproof", HexStr(ptxoutwit->vchSurjectionproof));
+                }
+            }
+            out.pushKV("valuecommitment", txout.nValue.GetHex());
+        }
+        if (txout.nAsset.IsExplicit()) {
+            out.pushKV("asset", txout.nAsset.GetAsset().getName());
+        } else {
+            out.pushKV("assetcommitment", txout.nAsset.GetHex());
+        }
+
+        out.pushKV("commitmentnonce", txout.nNonce.GetHex());
+        CPubKey pubkey(txout.nNonce.vchCommitment);
+        out.pushKV("commitmentnonce_fully_valid", pubkey.IsFullyValid());
         out.pushKV("n", (int64_t)i);
 
         UniValue o(UniValue::VOBJ);
-        ScriptPubKeyToUniv(txout.scriptPubKey, o, true, include_addresses);
+        ScriptPubKeyToUniv(txout.scriptPubKey, o, true);
         out.pushKV("scriptPubKey", o);
-        vout.push_back(out);
 
-        if (calculate_fee) {
-            amt_total_out += txout.nValue;
+        // Add spent information if spentindex is enabled
+        if (ptxSpentInfo != nullptr) {
+            CSpentIndexKey spentKey(txid, i);
+            auto it = ptxSpentInfo->mSpentInfo.find(spentKey);
+            if (it != ptxSpentInfo->mSpentInfo.end()) {
+                auto spentInfo = it->second;
+                out.pushKV("spentTxId", spentInfo.txid.GetHex());
+                out.pushKV("spentIndex", (int)spentInfo.inputIndex);
+                out.pushKV("spentHeight", spentInfo.blockHeight);
+            }
         }
+        vout.push_back(out);
     }
     entry.pushKV("vout", vout);
 

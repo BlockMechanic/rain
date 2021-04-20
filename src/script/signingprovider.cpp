@@ -175,6 +175,33 @@ bool FillableSigningProvider::GetCScript(const CScriptID &hash, CScript& redeemS
     return false;
 }
 
+bool FillableSigningProvider::GetPreimage(
+    const std::vector<unsigned char>& image,
+    std::vector<unsigned char>& preimage
+) const
+{
+    LOCK(cs_KeyStore);
+
+    PreimageMap::const_iterator it = mapPreimages.find(image);
+    if (it != mapPreimages.end()) {
+        preimage = it->second;
+
+        return true;
+    }
+    return false;
+}
+
+bool FillableSigningProvider::AddPreimage(
+    const std::vector<unsigned char>& image,
+    const std::vector<unsigned char>& preimage
+)
+{
+    LOCK(cs_KeyStore);
+
+    mapPreimages[image] = preimage;
+    return true;
+}
+
 CKeyID GetKeyForDestination(const SigningProvider& store, const CTxDestination& dest)
 {
     // Only supports destinations which map to single public keys, i.e. P2PKH,

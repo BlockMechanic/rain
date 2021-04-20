@@ -56,6 +56,7 @@ const std::string WALLETDESCRIPTORCKEY{"walletdescriptorckey"};
 const std::string WALLETDESCRIPTORKEY{"walletdescriptorkey"};
 const std::string WATCHMETA{"watchmeta"};
 const std::string WATCHS{"watchs"};
+const std::string PART_LOCKEDUTXO{"luo"};
 } // namespace DBKeys
 
 //
@@ -246,6 +247,14 @@ bool WalletBatch::WriteDescriptorParentCache(const CExtPubKey& xpub, const uint2
     std::vector<unsigned char> ser_xpub(BIP32_EXTKEY_SIZE);
     xpub.Encode(ser_xpub.data());
     return WriteIC(std::make_pair(std::make_pair(DBKeys::WALLETDESCRIPTORCACHE, desc_id), key_exp_index), ser_xpub);
+}
+
+bool WalletBatch::WriteBlindingDerivationKey(const uint256& key) {
+     return WriteIC(std::string("blindingderivationkey"), key);
+}
+
+bool WalletBatch::WriteSpecificBlindingKey(const CScriptID& scriptid, const uint256& key) {
+    return WriteIC(std::make_pair(std::string("specificblindingkey"), scriptid), key);
 }
 
 class CWalletScanState {
@@ -452,7 +461,7 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             if (keyMeta.nVersion >= CKeyMetadata::VERSION_WITH_HDDATA && !keyMeta.hd_seed_id.IsNull() && keyMeta.hdKeypath.size() > 0) {
                 // Get the path from the key origin or from the path string
                 // Not applicable when path is "s" or "m" as those indicate a seed
-                // See https://github.com/rain/rain/pull/12924
+                // See https://github.com/bitcoin/bitcoin/pull/12924
                 bool internal = false;
                 uint32_t index = 0;
                 if (keyMeta.hdKeypath != "s" && keyMeta.hdKeypath != "m") {
@@ -555,6 +564,10 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
         } else if (strType == DBKeys::OLD_KEY) {
             strErr = "Found unsupported 'wkey' record, try loading with version 0.18";
             return false;
+        } else if (strType == DBKeys::PART_LOCKEDUTXO) {
+            COutPoint output;
+            ssKey >> output;
+            pwallet->LockCoin(output);
         } else if (strType == DBKeys::ACTIVEEXTERNALSPK || strType == DBKeys::ACTIVEINTERNALSPK) {
             uint8_t type;
             ssKey >> type;
@@ -660,6 +673,24 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
                    strType != DBKeys::FLAGS) {
             wss.m_unknown_records++;
         }
+        else if (strType == "blindingderivationkey")
+        {
+            assert(pwallet->GetOrCreateLegacyScriptPubKeyMan()->blinding_derivation_key.IsNull());
+            uint256 key;
+            ssValue >> key;
+            pwallet->GetOrCreateLegacyScriptPubKeyMan()->blinding_derivation_key = key;
+        }
+        else if (strType == "specificblindingkey")
+        {
+            CScriptID scriptid;
+            ssKey >> scriptid;
+            uint256 key;
+            ssValue >> key;
+            if (!pwallet->GetOrCreateLegacyScriptPubKeyMan()->LoadSpecificBlindingKey(scriptid, key)) {
+                strErr = "Error reading wallet database: LoadSpecificBlindingKey failed";
+                return false;
+            }
+       }
     } catch (const std::exception& e) {
         if (strErr.empty()) {
             strErr = e.what();
@@ -1004,6 +1035,17 @@ bool WalletBatch::TxnAbort()
 {
     return m_batch->TxnAbort();
 }
+
+bool WalletBatch::WriteLockedUnspentOutput(const COutPoint &o)
+{
+    bool tmp = true;
+    return WriteIC(std::make_pair(DBKeys::PART_LOCKEDUTXO, o), tmp);
+};
+
+bool WalletBatch::EraseLockedUnspentOutput(const COutPoint &o)
+{
+    return EraseIC(std::make_pair(DBKeys::PART_LOCKEDUTXO, o));
+};
 
 std::unique_ptr<WalletDatabase> MakeDatabase(const fs::path& path, const DatabaseOptions& options, DatabaseStatus& status, bilingual_str& error)
 {

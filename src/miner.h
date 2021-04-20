@@ -20,10 +20,11 @@
 class CBlockIndex;
 class CChainParams;
 class CScript;
-
+class CWallet;
 namespace Consensus { struct Params; };
 
 static const bool DEFAULT_PRINTPRIORITY = false;
+extern int64_t nLastCoinStakeSearchTime;
 
 struct CBlockTemplate
 {
@@ -146,7 +147,6 @@ private:
     int64_t nLockTimeCutoff;
     const CChainParams& chainparams;
     const CTxMemPool& m_mempool;
-    CChainState& m_chainstate;
 
 public:
     struct Options {
@@ -155,11 +155,11 @@ public:
         CFeeRate blockMinFeeRate;
     };
 
-    explicit BlockAssembler(CChainState& chainstate, const CTxMemPool& mempool, const CChainParams& params);
-    explicit BlockAssembler(CChainState& chainstate, const CTxMemPool& mempool, const CChainParams& params, const Options& options);
+    explicit BlockAssembler(const CTxMemPool& mempool, const CChainParams& params);
+    explicit BlockAssembler(const CTxMemPool& mempool, const CChainParams& params, const Options& options);
 
     /** Construct a new block template with coinbase to scriptPubKeyIn */
-    std::unique_ptr<CBlockTemplate> CreateNewBlock(const CScript& scriptPubKeyIn);
+    std::unique_ptr<CBlockTemplate> CreateNewBlock(const CScript& scriptPubKeyIn, bool fProofOfStake=false, CWallet* pwallet=nullptr, bool* pfPoSCancel=nullptr);
 
     inline static std::optional<int64_t> m_last_block_num_txs{};
     inline static std::optional<int64_t> m_last_block_weight{};
@@ -197,12 +197,15 @@ private:
       * of updated descendants. */
     int UpdatePackagesForAdded(const CTxMemPool::setEntries& alreadyAdded, indexed_modified_transaction_set& mapModifiedTx) EXCLUSIVE_LOCKS_REQUIRED(m_mempool.cs);
 };
+/** Generate a new block, without valid proof-of-work */
+void Stake(bool fStake, CWallet *pwallet, std::thread* stakeThread);
+bool CheckStake(const CBlock* pblock);
 
 /** Modify the extranonce in a block */
 void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev);
-
 /** Update an old GenerateCoinbaseCommitment from CreateNewBlock after the block txs have changed */
-void RegenerateCommitments(CBlock& block, CBlockIndex* prev_block);
-
+void RegenerateCommitments(CBlock& block);
+double GetPoSKernelPS();
+double GetDifficulty(const CBlockIndex* blockindex);
 #endif // RAIN_MINER_H

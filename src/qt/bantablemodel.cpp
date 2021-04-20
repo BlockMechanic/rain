@@ -23,13 +23,15 @@ bool BannedNodeLessThan::operator()(const CCombinedBan& left, const CCombinedBan
     if (order == Qt::DescendingOrder)
         std::swap(pLeft, pRight);
 
-    switch (static_cast<BanTableModel::ColumnIndex>(column)) {
+    switch(column)
+    {
     case BanTableModel::Address:
         return pLeft->subnet.ToString().compare(pRight->subnet.ToString()) < 0;
     case BanTableModel::Bantime:
         return pLeft->banEntry.nBanUntil < pRight->banEntry.nBanUntil;
-    } // no default case, so the compiler can warn about missing cases
-    assert(false);
+    }
+
+    return false;
 }
 
 // private implementation
@@ -117,17 +119,16 @@ QVariant BanTableModel::data(const QModelIndex &index, int role) const
 
     CCombinedBan *rec = static_cast<CCombinedBan*>(index.internalPointer());
 
-    const auto column = static_cast<ColumnIndex>(index.column());
     if (role == Qt::DisplayRole) {
-        switch (column) {
+        switch(index.column())
+        {
         case Address:
             return QString::fromStdString(rec->subnet.ToString());
         case Bantime:
             QDateTime date = QDateTime::fromMSecsSinceEpoch(0);
             date = date.addSecs(rec->banEntry.nBanUntil);
             return QLocale::system().toString(date, QLocale::LongFormat);
-        } // no default case, so the compiler can warn about missing cases
-        assert(false);
+        }
     }
 
     return QVariant();

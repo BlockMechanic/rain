@@ -8,7 +8,7 @@
 
 #include <cassert>
 
-static constexpr auto MAX_DIGITS_RAIN = 16;
+static constexpr auto MAX_DIGITS_BTC = 16;
 
 RainUnits::RainUnits(QObject *parent):
         QAbstractListModel(parent),
@@ -19,9 +19,9 @@ RainUnits::RainUnits(QObject *parent):
 QList<RainUnits::Unit> RainUnits::availableUnits()
 {
     QList<RainUnits::Unit> unitlist;
-    unitlist.append(RAIN);
-    unitlist.append(mRAIN);
-    unitlist.append(uRAIN);
+    unitlist.append(COIN);
+    unitlist.append(CENT);
+    unitlist.append(BIT);
     unitlist.append(SAT);
     return unitlist;
 }
@@ -30,9 +30,9 @@ bool RainUnits::valid(int unit)
 {
     switch(unit)
     {
-    case RAIN:
-    case mRAIN:
-    case uRAIN:
+    case COIN:
+    case CENT:
+    case BIT:
     case SAT:
         return true;
     default:
@@ -44,9 +44,9 @@ QString RainUnits::longName(int unit)
 {
     switch(unit)
     {
-    case RAIN: return QString("RAIN");
-    case mRAIN: return QString("mRAIN");
-    case uRAIN: return QString::fromUtf8("µRAIN (bits)");
+    case COIN: return QString("COIN");
+    case CENT: return QString("CENT");
+    case BIT: return QString::fromUtf8("BIT (bits)");
     case SAT: return QString("Satoshi (sat)");
     default: return QString("???");
     }
@@ -56,7 +56,7 @@ QString RainUnits::shortName(int unit)
 {
     switch(unit)
     {
-    case uRAIN: return QString::fromUtf8("bits");
+    case BIT: return QString::fromUtf8("bits");
     case SAT: return QString("sat");
     default: return longName(unit);
     }
@@ -66,9 +66,9 @@ QString RainUnits::description(int unit)
 {
     switch(unit)
     {
-    case RAIN: return QString("Rains");
-    case mRAIN: return QString("Milli-Rains (1 / 1" THIN_SP_UTF8 "000)");
-    case uRAIN: return QString("Micro-Rains (bits) (1 / 1" THIN_SP_UTF8 "000" THIN_SP_UTF8 "000)");
+    case COIN: return QString("Full unit");
+    case CENT: return QString("Milli-unit (1 / 1" THIN_SP_UTF8 "000)");
+    case BIT: return QString("Micro-unit (bits) (1 / 1" THIN_SP_UTF8 "000" THIN_SP_UTF8 "000)");
     case SAT: return QString("Satoshi (sat) (1 / 100" THIN_SP_UTF8 "000" THIN_SP_UTF8 "000)");
     default: return QString("???");
     }
@@ -78,10 +78,10 @@ qint64 RainUnits::factor(int unit)
 {
     switch(unit)
     {
-    case RAIN: return 100000000;
-    case mRAIN: return 100000;
-    case uRAIN: return 100;
-    case SAT: return 1;
+    case COIN: return 100000000;
+    case CENT: return 100000;
+    case BIT:  return 100;
+    case SAT:  return 1;
     default: return 100000000;
     }
 }
@@ -90,9 +90,9 @@ int RainUnits::decimals(int unit)
 {
     switch(unit)
     {
-    case RAIN: return 8;
-    case mRAIN: return 5;
-    case uRAIN: return 2;
+    case COIN: return 8;
+    case CENT: return 5;
+    case BIT: return 2;
     case SAT: return 0;
     default: return 0;
     }
@@ -111,7 +111,7 @@ QString RainUnits::format(int unit, const CAmount& nIn, bool fPlus, SeparatorSty
     qint64 quotient = n_abs / coin;
     QString quotient_str = QString::number(quotient);
     if (justify) {
-        quotient_str = quotient_str.rightJustified(MAX_DIGITS_RAIN - num_decimals, ' ');
+        quotient_str = quotient_str.rightJustified(MAX_DIGITS_BTC - num_decimals, ' ');
     }
 
     // Use SI-style thin space separators as these are locale independent and can't be
@@ -144,6 +144,24 @@ QString RainUnits::format(int unit, const CAmount& nIn, bool fPlus, SeparatorSty
 //
 // Please take care to use formatHtmlWithUnit instead, when
 // appropriate.
+
+QString RainUnits::simplestFormat(int unit, const CAmount& amount, int digits, bool plussign, SeparatorStyle separators)
+{
+    QString result = format(unit, amount, plussign, separators);
+    if(decimals(unit) > digits) {
+		int lenght = result.mid(result.indexOf("."), result.length() - 1).length() - 1;
+		if (lenght > digits) {
+			result.chop(lenght - digits);
+		}      
+    }
+
+    return result;
+}
+
+QString RainUnits::simpleFormat(int unit, const CAmount& amount, bool plussign, SeparatorStyle separators)
+{
+    return format(unit, amount, plussign, separators);
+}
 
 QString RainUnits::formatWithUnit(int unit, const CAmount& amount, bool plussign, SeparatorStyle separators)
 {
@@ -247,4 +265,42 @@ QVariant RainUnits::data(const QModelIndex &index, int role) const
 CAmount RainUnits::maxMoney()
 {
     return MAX_MONEY;
+}
+
+
+QString formatAssetAmount(const CAsset& asset, const CAmount& amount, const int rain_unit, RainUnits::SeparatorStyle separators, bool include_asset_name)
+{
+    qlonglong abs = qAbs(amount);
+    qlonglong whole = abs / 100000000;
+    qlonglong fraction = abs % 100000000;
+    QString str = QString("%1").arg(whole);
+    if (amount < 0) {
+        str.insert(0, '-');
+    }
+    if (fraction) {
+        str += QString(".%1").arg(fraction, 8, 10, QLatin1Char('0'));
+    }
+    if (include_asset_name) {
+        str += QString(" ") + QString::fromStdString(asset.getShortName());
+    }
+//    return str;
+    return RainUnits::simplestFormat(rain_unit, amount, 4, false, separators) + QString(" ") + QString::fromStdString(asset.getShortName());
+}
+
+QString formatMultiAssetAmount(const CAmountMap& amountmap, const int rain_unit, RainUnits::SeparatorStyle separators, QString line_separator)
+{
+    QStringList ret;
+
+    QString rmp = ret.join(line_separator);
+    for (const auto& assetamount : amountmap) {
+        ret << formatAssetAmount(assetamount.first, assetamount.second, rain_unit, separators);
+    }
+    QString tmp = ret.join(line_separator);
+
+    return ret.join(line_separator);
+}
+
+bool parseAssetAmount(const CAsset& asset, const QString& text, const int rain_unit, CAmount *val_out)
+{
+    return RainUnits::parse(rain_unit, text, val_out);
 }

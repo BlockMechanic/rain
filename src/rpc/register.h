@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2018 The Rain Core developers
+// Copyright (c) 2009-2020 The Rain Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -19,8 +19,10 @@ void RegisterMiscRPCCommands(CRPCTable &tableRPC);
 void RegisterMiningRPCCommands(CRPCTable &tableRPC);
 /** Register raw transaction RPC commands */
 void RegisterRawTransactionRPCCommands(CRPCTable &tableRPC);
-/** Register raw transaction RPC commands */
-void RegisterSignerRPCCommands(CRPCTable &tableRPC);
+/** Register messaging RPC commands */
+void RegisterSmsgRPCCommands(CRPCTable &tableRPC);
+/** Register Contract RPC commands */
+void RegisterContractRPCCommands(CRPCTable &tableRPC);
 
 static inline void RegisterAllCoreRPCCommands(CRPCTable &t)
 {
@@ -28,10 +30,9 @@ static inline void RegisterAllCoreRPCCommands(CRPCTable &t)
     RegisterNetRPCCommands(t);
     RegisterMiscRPCCommands(t);
     RegisterMiningRPCCommands(t);
+    RegisterSmsgRPCCommands(t);
     RegisterRawTransactionRPCCommands(t);
-#ifdef ENABLE_EXTERNAL_SIGNER
-    RegisterSignerRPCCommands(t);
-#endif // ENABLE_EXTERNAL_SIGNER
+    RegisterContractRPCCommands(t);
 }
 
 #endif // RAIN_RPC_REGISTER_H

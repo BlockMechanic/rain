@@ -42,3 +42,9 @@ bool CZMQAbstractNotifier::NotifyTransactionRemoval(const CTransaction &/*transa
 {
     return true;
 }
+
+bool CZMQAbstractNotifier::NotifySecureMessage(const smsg::SecureMessage *psmsg, const uint160 &/*hash*/)
+{
+    return true;
+}
+

@@ -10,13 +10,13 @@
 
 #include <policy/policy.h>
 
-WalletModelTransaction::WalletModelTransaction(const QList<SendCoinsRecipient> &_recipients) :
+WalletModelTransaction::WalletModelTransaction(const QList<SendAssetsRecipient> &_recipients) :
     recipients(_recipients),
     fee(0)
 {
 }
 
-QList<SendCoinsRecipient> WalletModelTransaction::getRecipients() const
+QList<SendAssetsRecipient> WalletModelTransaction::getRecipients() const
 {
     return recipients;
 }
@@ -45,24 +45,24 @@ void WalletModelTransaction::reassignAmounts(int nChangePosRet)
 {
     const CTransaction* walletTransaction = wtx.get();
     int i = 0;
-    for (QList<SendCoinsRecipient>::iterator it = recipients.begin(); it != recipients.end(); ++it)
+    for (QList<SendAssetsRecipient>::iterator it = recipients.begin(); it != recipients.end(); ++it)
     {
-        SendCoinsRecipient& rcp = (*it);
+        SendAssetsRecipient& rcp = (*it);
         {
             if (i == nChangePosRet)
                 i++;
-            rcp.amount = walletTransaction->vout[i].nValue;
+            rcp.amount = walletTransaction->vout[i].nValue.GetAmount();
             i++;
         }
     }
 }
 
-CAmount WalletModelTransaction::getTotalTransactionAmount() const
+CAmountMap WalletModelTransaction::getTotalTransactionAmount() const
 {
-    CAmount totalTransactionAmount = 0;
-    for (const SendCoinsRecipient &rcp : recipients)
+    CAmountMap totalTransactionAmount;
+    for (const auto &rcp : recipients)
     {
-        totalTransactionAmount += rcp.amount;
+        totalTransactionAmount[rcp.asset] += rcp.amount;
     }
     return totalTransactionAmount;
 }

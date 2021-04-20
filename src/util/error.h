@@ -30,8 +30,6 @@ enum class TransactionError {
     PSBT_MISMATCH,
     SIGHASH_MISMATCH,
     MAX_FEE_EXCEEDED,
-    EXTERNAL_SIGNER_NOT_FOUND,
-    EXTERNAL_SIGNER_FAILED,
 };
 
 bilingual_str TransactionErrorString(const TransactionError error);

@@ -5,12 +5,14 @@
 #ifndef RAIN_HTTPRPC_H
 #define RAIN_HTTPRPC_H
 
-#include <any>
+namespace util {
+class Ref;
+} // namespace util
 
 /** Start HTTP RPC subsystem.
  * Precondition; HTTP and RPC has been started.
  */
-bool StartHTTPRPC(const std::any& context);
+bool StartHTTPRPC(const util::Ref& context);
 /** Interrupt HTTP RPC subsystem.
  */
 void InterruptHTTPRPC();
@@ -22,7 +24,7 @@ void StopHTTPRPC();
 /** Start HTTP REST subsystem.
  * Precondition; HTTP and RPC has been started.
  */
-void StartREST(const std::any& context);
+void StartREST(const util::Ref& context);
 /** Interrupt RPC REST subsystem.
  */
 void InterruptREST();

@@ -66,7 +66,7 @@ EXPORT_SYMBOL int rainconsensus_verify_script(const unsigned char *scriptPubKey,
                                                  const unsigned char *txTo        , unsigned int txToLen,
                                                  unsigned int nIn, unsigned int flags, rainconsensus_error* err);
 
-EXPORT_SYMBOL int rainconsensus_verify_script_with_amount(const unsigned char *scriptPubKey, unsigned int scriptPubKeyLen, int64_t amount,
+EXPORT_SYMBOL int rainconsensus_verify_script_with_amount(const unsigned char *scriptPubKey, unsigned int scriptPubKeyLen, const unsigned char *amount, unsigned int amountLen,
                                     const unsigned char *txTo        , unsigned int txToLen,
                                     unsigned int nIn, unsigned int flags, rainconsensus_error* err);
 

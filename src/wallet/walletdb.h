@@ -79,6 +79,7 @@ extern const std::string WALLETDESCRIPTORCKEY;
 extern const std::string WALLETDESCRIPTORKEY;
 extern const std::string WATCHMETA;
 extern const std::string WATCHS;
+extern const std::string PART_LOCKEDUTXO;
 } // namespace DBKeys
 
 /* simple HD chain data model */
@@ -254,6 +255,9 @@ public:
 
     bool WriteActiveScriptPubKeyMan(uint8_t type, const uint256& id, bool internal);
 
+    bool WriteBlindingDerivationKey(const uint256& key);
+    bool WriteSpecificBlindingKey(const CScriptID& scriptid, const uint256& key);
+
     DBErrors LoadWallet(CWallet* pwallet);
     DBErrors FindWalletTx(std::vector<uint256>& vTxHash, std::list<CWalletTx>& vWtx);
     DBErrors ZapSelectTx(std::vector<uint256>& vHashIn, std::vector<uint256>& vHashOut);
@@ -270,6 +274,9 @@ public:
     bool TxnCommit();
     //! Abort current transaction
     bool TxnAbort();
+
+    bool WriteLockedUnspentOutput(const COutPoint &o);
+    bool EraseLockedUnspentOutput(const COutPoint &o);
 private:
     std::unique_ptr<DatabaseBatch> m_batch;
     WalletDatabase& m_database;

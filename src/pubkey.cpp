@@ -4,7 +4,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <pubkey.h>
-
+#include <hash.h>
 #include <secp256k1.h>
 #include <secp256k1_recovery.h>
 #include <secp256k1_schnorrsig.h>
@@ -206,6 +206,22 @@ bool CPubKey::Verify(const uint256 &hash, const std::vector<unsigned char>& vchS
     return secp256k1_ecdsa_verify(secp256k1_context_verify, &sig, hash.begin(), &pubkey);
 }
 
+bool CPubKey::RecoverLaxDER(const uint256 &hash, const std::vector<unsigned char>& vchSig, uint8_t recid, bool fComp) {
+    secp256k1_ecdsa_signature sig;
+    if (!ecdsa_signature_parse_der_lax(secp256k1_context_verify, &sig, vchSig.data(), vchSig.size())) {
+        return false;
+    }
+
+    std::vector<unsigned char> strictVchSig(65);
+    strictVchSig[0] = recid | (fComp ? 4 : 0);
+    strictVchSig[0] += 27;
+    if(!secp256k1_ecdsa_signature_serialize_compact(secp256k1_context_verify, strictVchSig.data()+1, &sig)) {
+        return false;
+    }
+
+    return RecoverCompact(hash, strictVchSig);
+}
+
 bool CPubKey::RecoverCompact(const uint256 &hash, const std::vector<unsigned char>& vchSig) {
     if (vchSig.size() != COMPACT_SIGNATURE_SIZE)
         return false;
@@ -272,6 +288,17 @@ bool CPubKey::Derive(CPubKey& pubkeyChild, ChainCode &ccChild, unsigned int nChi
     return true;
 }
 
+CKeyID CPubKey::GetID() const
+{
+	return CKeyID(Hash160(MakeSpan(vch).first(size())));
+}
+
+//! Get the 256-bit hash of this public key.
+uint256 CPubKey::GetHash() const
+{
+	return Hash(MakeSpan(vch).first(size()));
+}
+
 void CExtPubKey::Encode(unsigned char code[BIP32_EXTKEY_SIZE]) const {
     code[0] = nDepth;
     memcpy(code+1, vchFingerprint, 4);
@@ -296,6 +323,18 @@ bool CExtPubKey::Derive(CExtPubKey &out, unsigned int _nChild) const {
     memcpy(&out.vchFingerprint[0], &id, 4);
     out.nChild = _nChild;
     return pubkey.Derive(out.pubkey, out.chaincode, _nChild, chaincode);
+}
+
+bool CPubKey::CheckLowS(const boost::sliced_range<const std::vector<uint8_t>> &vchSig) {
+    secp256k1_ecdsa_signature sig;
+    assert(secp256k1_context_verify &&
+           "secp256k1_context_verify must be initialized to use CPubKey.");
+    if (!ecdsa_signature_parse_der_lax(secp256k1_context_verify, &sig,
+                                       &vchSig.front(), vchSig.size())) {
+        return false;
+    }
+    return (!secp256k1_ecdsa_signature_normalize(secp256k1_context_verify,
+                                                 nullptr, &sig));
 }
 
 /* static */ bool CPubKey::CheckLowS(const std::vector<unsigned char>& vchSig) {

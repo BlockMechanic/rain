@@ -6,8 +6,11 @@
 #ifndef RAIN_CONSENSUS_PARAMS_H
 #define RAIN_CONSENSUS_PARAMS_H
 
+#include <primitives/asset.h>
 #include <uint256.h>
 #include <limits>
+
+#include <script/script.h> // mandatory_coinbase_destination
 
 namespace Consensus {
 
@@ -29,11 +32,6 @@ struct BIP9Deployment {
     int64_t nStartTime;
     /** Timeout/expiry MedianTime for the deployment attempt. */
     int64_t nTimeout;
-    /** If lock in occurs, delay activation until at least this block
-     *  height.  Note that activation will only occur on a retarget
-     *  boundary.
-     */
-    int min_activation_height{0};
 
     /** Constant for nTimeout very far in the future. */
     static constexpr int64_t NO_TIMEOUT = std::numeric_limits<int64_t>::max();
@@ -43,11 +41,6 @@ struct BIP9Deployment {
      *  process (which takes at least 3 BIP9 intervals). Only tests that specifically test the
      *  behaviour during activation cannot use this. */
     static constexpr int64_t ALWAYS_ACTIVE = -1;
-
-    /** Special value for nStartTime indicating that the deployment is never active.
-     *  This is useful for integrating the code changes for a new feature
-     *  prior to deploying it on some or all networks. */
-    static constexpr int64_t NEVER_ACTIVE = -2;
 };
 
 /**
@@ -74,6 +67,20 @@ struct Params {
     /** Don't warn about unknown BIP 9 activations below this height.
      * This prevents us from warning about the CSV and segwit activations. */
     int MinBIP9WarningHeight;
+    /** Time at which Paid SMSG becomes active */
+    uint32_t nPaidSmsgTime;
+    /** Time at which variable SMSG fee become active */
+    uint32_t smsg_fee_time;
+    /** Time at which SMSG difficulty tokens are enforced */
+    uint32_t smsg_difficulty_time;
+
+    uint32_t smsg_fee_period;
+    int64_t smsg_fee_funding_tx_per_k;
+    int64_t smsg_fee_msg_per_day_per_k;
+    int64_t smsg_fee_max_delta_percent; /* Divided by 1000000 */
+    uint32_t smsg_min_difficulty;
+    uint32_t smsg_difficulty_max_delta;
+
     /**
      * Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,
      * (nPowTargetTimespan / nPowTargetSpacing) which is also used for BIP9 deployments.
@@ -84,6 +91,7 @@ struct Params {
     BIP9Deployment vDeployments[MAX_VERSION_BITS_DEPLOYMENTS];
     /** Proof of work parameters */
     uint256 powLimit;
+    uint256 posLimit;
     bool fPowAllowMinDifficultyBlocks;
     bool fPowNoRetargeting;
     int64_t nPowTargetSpacing;
@@ -92,7 +100,18 @@ struct Params {
     /** The best chain should have at least this much work */
     uint256 nMinimumChainWork;
     /** By default assume that the signatures in ancestors of this block are valid */
+    int64_t nCOIN_YEAR_REWARD;
+    int nLastPOWBlock;
+    int64_t nStakeMinAge;
+    int64_t nStakeMaxAge;
+    int64_t nModifierInterval;
     uint256 defaultAssumeValid;
+    CScript mandatory_coinbase_destination;
+    CAmount genesis_subsidy;
+    CAsset subsidy_asset;
+    CAsset masternode_asset;
+    CAsset founder_asset;
+    CAsset dev_asset;
 
     /**
      * If true, witness commitments contain a payload equal to a Rain Script solution

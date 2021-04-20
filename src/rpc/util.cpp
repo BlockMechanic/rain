@@ -11,7 +11,7 @@
 #include <util/strencodings.h>
 #include <util/string.h>
 #include <util/translation.h>
-
+#include <core_io.h>
 #include <tuple>
 
 #include <boost/algorithm/string/classification.hpp>
@@ -113,78 +113,15 @@ std::vector<unsigned char> ParseHexO(const UniValue& o, std::string strKey)
     return ParseHexV(find_value(o, strKey), strKey);
 }
 
-namespace {
-
-/**
- * Quote an argument for shell.
- *
- * @note This is intended for help, not for security-sensitive purposes.
- */
-std::string ShellQuote(const std::string& s)
-{
-    std::string result;
-    result.reserve(s.size() * 2);
-    for (const char ch: s) {
-        if (ch == '\'') {
-            result += "'\''";
-        } else {
-            result += ch;
-        }
-    }
-    return "'" + result + "'";
-}
-
-/**
- * Shell-quotes the argument if it needs quoting, else returns it literally, to save typing.
- *
- * @note This is intended for help, not for security-sensitive purposes.
- */
-std::string ShellQuoteIfNeeded(const std::string& s)
-{
-    for (const char ch: s) {
-        if (ch == ' ' || ch == '\'' || ch == '"') {
-            return ShellQuote(s);
-        }
-    }
-
-    return s;
-}
-
-}
-
 std::string HelpExampleCli(const std::string& methodname, const std::string& args)
 {
     return "> rain-cli " + methodname + " " + args + "\n";
-}
-
-std::string HelpExampleCliNamed(const std::string& methodname, const RPCArgList& args)
-{
-    std::string result = "> rain-cli -named " + methodname;
-    for (const auto& argpair: args) {
-        const auto& value = argpair.second.isStr()
-                ? argpair.second.get_str()
-                : argpair.second.write();
-        result += " " + argpair.first + "=" + ShellQuoteIfNeeded(value);
-    }
-    result += "\n";
-    return result;
 }
 
 std::string HelpExampleRpc(const std::string& methodname, const std::string& args)
 {
     return "> curl --user myusername --data-binary '{\"jsonrpc\": \"1.0\", \"id\": \"curltest\", "
         "\"method\": \"" + methodname + "\", \"params\": [" + args + "]}' -H 'content-type: text/plain;' http://127.0.0.1:8332/\n";
-}
-
-std::string HelpExampleRpcNamed(const std::string& methodname, const RPCArgList& args)
-{
-    UniValue params(UniValue::VOBJ);
-    for (const auto& param: args) {
-        params.pushKV(param.first, param.second);
-    }
-
-    return "> curl --user myusername --data-binary '{\"jsonrpc\": \"1.0\", \"id\": \"curltest\", "
-           "\"method\": \"" + methodname + "\", \"params\": " + params.write() + "}' -H 'content-type: text/plain;' http://127.0.0.1:8332/\n";
 }
 
 // Converts a hex string to a public key if possible
@@ -309,6 +246,14 @@ public:
         obj.pushKV("witness_program", HexStr(Span<const unsigned char>(id.program, id.length)));
         return obj;
     }
+
+    UniValue operator()(const NullData& id) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        obj.pushKV("isscript", false);
+        obj.pushKV("iswitness", false);
+        return obj;
+    }
 };
 
 UniValue DescribeAddress(const CTxDestination& dest)
@@ -325,6 +270,21 @@ unsigned int ParseConfirmTarget(const UniValue& value, unsigned int max_target)
     }
     return unsigned_target;
 }
+
+bool GetBool(const UniValue &uv)
+{
+    if (uv.isBool()) {
+        return uv.get_bool();
+    }
+    if (!uv.isStr()) {
+        throw std::runtime_error("Not a boolean or string value.");
+    }
+    bool rv;
+    if (!part::GetStringBool(uv.get_str(), rv)) {
+        throw std::runtime_error("String not a boolean value.");
+    }
+    return rv;
+};
 
 RPCErrorCode RPCErrorFromTransactionError(TransactionError terr)
 {
@@ -498,33 +458,6 @@ RPCHelpMan::RPCHelpMan(std::string name, std::string description, std::vector<RP
         for (const std::string& name : names) {
             CHECK_NONFATAL(named_args.insert(name).second);
         }
-        // Default value type should match argument type only when defined
-        if (arg.m_fallback.index() == 2) {
-            const RPCArg::Type type = arg.m_type;
-            switch (std::get<RPCArg::Default>(arg.m_fallback).getType()) {
-            case UniValue::VOBJ:
-                CHECK_NONFATAL(type == RPCArg::Type::OBJ);
-                break;
-            case UniValue::VARR:
-                CHECK_NONFATAL(type == RPCArg::Type::ARR);
-                break;
-            case UniValue::VSTR:
-                CHECK_NONFATAL(type == RPCArg::Type::STR || type == RPCArg::Type::STR_HEX || type == RPCArg::Type::AMOUNT);
-                break;
-            case UniValue::VNUM:
-                CHECK_NONFATAL(type == RPCArg::Type::NUM || type == RPCArg::Type::AMOUNT || type == RPCArg::Type::RANGE);
-                break;
-            case UniValue::VBOOL:
-                CHECK_NONFATAL(type == RPCArg::Type::BOOL);
-                break;
-            case UniValue::VNULL:
-                // Null values are accepted in all arguments
-                break;
-            default:
-                CHECK_NONFATAL(false);
-                break;
-            }
-        }
     }
 }
 
@@ -532,7 +465,6 @@ std::string RPCResults::ToDescriptionString() const
 {
     std::string result;
     for (const auto& r : m_results) {
-        if (r.m_type == RPCResult::Type::ANY) continue; // for testing only
         if (r.m_cond.empty()) {
             result += "\nResult:\n";
         } else {
@@ -548,23 +480,6 @@ std::string RPCResults::ToDescriptionString() const
 std::string RPCExamples::ToDescriptionString() const
 {
     return m_examples.empty() ? m_examples : "\nExamples:\n" + m_examples;
-}
-
-UniValue RPCHelpMan::HandleRequest(const JSONRPCRequest& request) const
-{
-    if (request.mode == JSONRPCRequest::GET_ARGS) {
-        return GetArgMap();
-    }
-    /*
-     * Check if the given request is valid according to this command or if
-     * the user is asking for help information, and throw help when appropriate.
-     */
-    if (request.mode == JSONRPCRequest::GET_HELP || !IsValidNumArgs(request.params.size())) {
-        throw std::runtime_error(ToString());
-    }
-    const UniValue ret = m_fun(*this, request);
-    CHECK_NONFATAL(std::any_of(m_results.m_results.begin(), m_results.m_results.end(), [ret](const RPCResult& res) { return res.MatchesType(ret); }));
-    return ret;
 }
 
 bool RPCHelpMan::IsValidNumArgs(size_t num_args) const
@@ -640,9 +555,8 @@ std::string RPCHelpMan::ToString() const
     return ret;
 }
 
-UniValue RPCHelpMan::GetArgMap() const
+void RPCHelpMan::AppendArgMap(UniValue& arr) const
 {
-    UniValue arr{UniValue::VARR};
     for (int i{0}; i < int(m_args.size()); ++i) {
         const auto& arg = m_args.at(i);
         std::vector<std::string> arg_names;
@@ -657,7 +571,6 @@ UniValue RPCHelpMan::GetArgMap() const
             arr.push_back(map);
         }
     }
-    return arr;
 }
 
 std::string RPCArg::GetFirstName() const
@@ -673,7 +586,7 @@ std::string RPCArg::GetName() const
 
 bool RPCArg::IsOptional() const
 {
-    if (m_fallback.index() != 0) {
+    if (m_fallback.index() == 1) {
         return true;
     } else {
         return RPCArg::Optional::NO != std::get<RPCArg::Optional>(m_fallback);
@@ -721,9 +634,7 @@ std::string RPCArg::ToDescriptionString() const
         } // no default case, so the compiler can warn about missing cases
     }
     if (m_fallback.index() == 1) {
-        ret += ", optional, default=" + std::get<RPCArg::DefaultHint>(m_fallback);
-    } else if (m_fallback.index() == 2) {
-        ret += ", optional, default=" + std::get<RPCArg::Default>(m_fallback).write();
+        ret += ", optional, default=" + std::get<std::string>(m_fallback);
     } else {
         switch (std::get<RPCArg::Optional>(m_fallback)) {
         case RPCArg::Optional::OMITTED: {
@@ -771,9 +682,6 @@ void RPCResult::ToSections(Sections& sections, const OuterType outer_type, const
         // If the inner result is empty, use three dots for elision
         sections.PushSection({indent + "..." + maybe_separator, m_description});
         return;
-    }
-    case Type::ANY: {
-        CHECK_NONFATAL(false); // Only for testing
     }
     case Type::NONE: {
         sections.PushSection({indent + "null" + maybe_separator, Description("json null")});
@@ -835,42 +743,6 @@ void RPCResult::ToSections(Sections& sections, const OuterType outer_type, const
         }
         sections.PushSection({indent + "}" + maybe_separator, ""});
         return;
-    }
-    } // no default case, so the compiler can warn about missing cases
-    CHECK_NONFATAL(false);
-}
-
-bool RPCResult::MatchesType(const UniValue& result) const
-{
-    switch (m_type) {
-    case Type::ELISION: {
-        return false;
-    }
-    case Type::ANY: {
-        return true;
-    }
-    case Type::NONE: {
-        return UniValue::VNULL == result.getType();
-    }
-    case Type::STR:
-    case Type::STR_HEX: {
-        return UniValue::VSTR == result.getType();
-    }
-    case Type::NUM:
-    case Type::STR_AMOUNT:
-    case Type::NUM_TIME: {
-        return UniValue::VNUM == result.getType();
-    }
-    case Type::BOOL: {
-        return UniValue::VBOOL == result.getType();
-    }
-    case Type::ARR_FIXED:
-    case Type::ARR: {
-        return UniValue::VARR == result.getType();
-    }
-    case Type::OBJ_DYN:
-    case Type::OBJ: {
-        return UniValue::VOBJ == result.getType();
     }
     } // no default case, so the compiler can warn about missing cases
     CHECK_NONFATAL(false);
@@ -960,6 +832,159 @@ static std::pair<int64_t, int64_t> ParseRange(const UniValue& value)
         return {low, high};
     }
     throw JSONRPCError(RPC_INVALID_PARAMETER, "Range must be specified as end or as [begin,end]");
+}
+
+class BlindingPubkeyVisitor
+{
+public:
+    explicit BlindingPubkeyVisitor() {}
+
+    CPubKey operator()(const CNoDestination& dest) const
+    {
+        return CPubKey();
+    }
+
+    CPubKey operator()(const PKHash& keyID) const
+    {
+        return keyID.blinding_pubkey;
+    }
+
+    CPubKey operator()(const ScriptHash& scriptID) const
+    {
+        return scriptID.blinding_pubkey;
+    }
+
+    CPubKey operator()(const WitnessV0KeyHash& id) const
+    {
+        return id.blinding_pubkey;
+    }
+
+    CPubKey operator()(const WitnessV0ScriptHash& id) const
+    {
+        return id.blinding_pubkey;
+    }
+
+    CPubKey operator()(const WitnessUnknown& id) const
+    {
+        return id.blinding_pubkey;
+    }
+
+    CPubKey operator()(const NullData& id) const
+    {
+        return CPubKey();
+    }
+};
+
+CPubKey GetDestinationBlindingKey(const CTxDestination& dest) {
+    return std::visit(BlindingPubkeyVisitor(), dest);
+}
+
+bool IsBlindDestination(const CTxDestination& dest) {
+    return GetDestinationBlindingKey(dest).IsFullyValid();
+}
+
+class DescribeBlindAddressVisitor
+{
+public:
+
+    explicit DescribeBlindAddressVisitor() {}
+
+    UniValue operator()(const CNoDestination& dest) const { return UniValue(UniValue::VOBJ); }
+
+    UniValue operator()(const PKHash& pkhash) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        const CPubKey& blind_pub = pkhash.blinding_pubkey;
+        if (IsBlindDestination(pkhash)) {
+            obj.pushKV("confidential_key", HexStr(blind_pub));
+            PKHash unblinded(pkhash);
+            unblinded.blinding_pubkey = CPubKey();
+            obj.pushKV("unconfidential", EncodeDestination(unblinded));
+        } else {
+            obj.pushKV("confidential_key", "");
+            obj.pushKV("unconfidential", EncodeDestination(pkhash));
+        }
+        return obj;
+    }
+
+    UniValue operator()(const ScriptHash& scripthash) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        const CPubKey& blind_pub = scripthash.blinding_pubkey;
+        if (IsBlindDestination(scripthash)) {
+            obj.pushKV("confidential_key", HexStr(blind_pub));
+            ScriptHash unblinded(scripthash);
+            unblinded.blinding_pubkey = CPubKey();
+            obj.pushKV("unconfidential", EncodeDestination(unblinded));
+        } else {
+            obj.pushKV("confidential_key", "");
+            obj.pushKV("unconfidential", EncodeDestination(scripthash));
+        }
+
+        return obj;
+    }
+
+    UniValue operator()(const WitnessV0KeyHash& id) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        const CPubKey& blind_pub = id.blinding_pubkey;
+        if (IsBlindDestination(id)) {
+            obj.pushKV("confidential_key", HexStr(blind_pub));
+            WitnessV0KeyHash unblinded(id);
+            unblinded.blinding_pubkey = CPubKey();
+            obj.pushKV("unconfidential", EncodeDestination(unblinded));
+        } else {
+            obj.pushKV("confidential_key", "");
+            obj.pushKV("unconfidential", EncodeDestination(id));
+        }
+
+        return obj;
+    }
+
+    UniValue operator()(const WitnessV0ScriptHash& id) const
+    {
+        UniValue obj(UniValue::VOBJ);
+        const CPubKey& blind_pub = id.blinding_pubkey;
+        if (IsBlindDestination(id)) {
+            obj.pushKV("confidential_key", HexStr(blind_pub));
+            WitnessV0ScriptHash unblinded(id);
+            unblinded.blinding_pubkey = CPubKey();
+            obj.pushKV("unconfidential", EncodeDestination(unblinded));
+        } else {
+            obj.pushKV("confidential_key", "");
+            obj.pushKV("unconfidential", EncodeDestination(id));
+        }
+        return obj;
+    }
+
+    UniValue operator()(const WitnessUnknown& id) const { return UniValue(UniValue::VOBJ); }
+    UniValue operator()(const NullData& id) const { return NullUniValue; }
+};
+
+UniValue DescribeBlindAddress(const CTxDestination& dest)
+{
+    UniValue ret(UniValue::VOBJ);
+    ret.pushKVs(std::visit(DescribeBlindAddressVisitor(), dest));
+//    ret.pushKVs(std::visit(DescribeBlindAddressVisitor(provider.get()), dest));
+    return ret;
+}
+
+UniValue AmountMapToUniv(const CAmountMap& balanceOrig)
+{
+    // Make sure the policyAsset is always present in the balance map.
+    CAmountMap balance = balanceOrig;
+
+    UniValue obj(UniValue::VOBJ);
+    for(auto it = balance.begin(); it != balance.end(); ++it) {
+        // Unknown assets
+        if (it->first.IsNull())
+            continue;
+        UniValue pair(UniValue::VOBJ);
+        std::string label = it->first.getAssetName();
+
+        obj.pushKV(label, ValueFromAmount(it->second));
+    }
+    return obj;
 }
 
 std::pair<int64_t, int64_t> ParseDescriptorRange(const UniValue& value)

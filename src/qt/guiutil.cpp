@@ -42,7 +42,6 @@
 #include <QGuiApplication>
 #include <QJsonObject>
 #include <QKeyEvent>
-#include <QLatin1String>
 #include <QLineEdit>
 #include <QList>
 #include <QLocale>
@@ -52,16 +51,14 @@
 #include <QProgressDialog>
 #include <QScreen>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QShortcut>
 #include <QSize>
 #include <QString>
-#include <QStringBuilder>
 #include <QTextDocument> // for Qt::mightBeRichText
 #include <QThread>
 #include <QUrlQuery>
 #include <QtGlobal>
-
-#include <chrono>
 
 #if defined(Q_OS_MAC)
 
@@ -82,11 +79,8 @@ QString dateTimeStr(qint64 nTime)
     return dateTimeStr(QDateTime::fromTime_t((qint32)nTime));
 }
 
-QFont fixedPitchFont(bool use_embedded_font)
+QFont fixedPitchFont()
 {
-    if (use_embedded_font) {
-        return {"Roboto Mono"};
-    }
     return QFontDatabase::systemFont(QFontDatabase::FixedFont);
 }
 
@@ -110,7 +104,7 @@ static std::string DummyAddress(const CChainParams &params)
 
 void setupAddressWidget(QValidatedLineEdit *widget, QWidget *parent)
 {
-    parent->setFocusProxy(widget);
+/*    parent->setFocusProxy(widget);
 
     widget->setFont(fixedPitchFont());
     // We don't want translators to use own addresses in translations
@@ -118,16 +112,16 @@ void setupAddressWidget(QValidatedLineEdit *widget, QWidget *parent)
     widget->setPlaceholderText(QObject::tr("Enter a Rain address (e.g. %1)").arg(
         QString::fromStdString(DummyAddress(Params()))));
     widget->setValidator(new RainAddressEntryValidator(parent));
-    widget->setCheckValidator(new RainAddressCheckValidator(parent));
+    widget->setCheckValidator(new RainAddressCheckValidator(parent));*/
 }
 
-bool parseRainURI(const QUrl &uri, SendCoinsRecipient *out)
+bool parseRainURI(const QUrl &uri, SendAssetsRecipient *out)
 {
     // return if URI is not valid or is no rain: URI
     if(!uri.isValid() || uri.scheme() != QString("rain"))
         return false;
 
-    SendCoinsRecipient rv;
+    SendAssetsRecipient rv;
     rv.address = uri.path();
     // Trim any following forward slash which may have been added by the OS
     if (rv.address.endsWith("/")) {
@@ -160,7 +154,7 @@ bool parseRainURI(const QUrl &uri, SendCoinsRecipient *out)
         {
             if(!i->second.isEmpty())
             {
-                if(!RainUnits::parse(RainUnits::RAIN, i->second, &rv.amount))
+                if(!RainUnits::parse(RainUnits::COIN, i->second, &rv.amount))
                 {
                     return false;
                 }
@@ -178,13 +172,13 @@ bool parseRainURI(const QUrl &uri, SendCoinsRecipient *out)
     return true;
 }
 
-bool parseRainURI(QString uri, SendCoinsRecipient *out)
+bool parseRainURI(QString uri, SendAssetsRecipient *out)
 {
     QUrl uriInstance(uri);
     return parseRainURI(uriInstance, out);
 }
 
-QString formatRainURI(const SendCoinsRecipient &info)
+QString formatRainURI(const SendAssetsRecipient &info)
 {
     bool bech_32 = info.address.startsWith(QString::fromStdString(Params().Bech32HRP() + "1"));
 
@@ -193,7 +187,7 @@ QString formatRainURI(const SendCoinsRecipient &info)
 
     if (info.amount)
     {
-        ret += QString("?amount=%1").arg(RainUnits::format(RainUnits::RAIN, info.amount, false, RainUnits::SeparatorStyle::NEVER));
+        ret += QString("?amount=%1").arg(RainUnits::format(RainUnits::COIN, info.amount, false, RainUnits::SeparatorStyle::NEVER));
         paramCount++;
     }
 
@@ -218,7 +212,7 @@ bool isDust(interfaces::Node& node, const QString& address, const CAmount& amoun
 {
     CTxDestination dest = DecodeDestination(address.toStdString());
     CScript script = GetScriptForDestination(dest);
-    CTxOut txOut(amount, script);
+    CTxOut txOut(CAsset(), amount, script);
     return IsDust(txOut, node.getDustRelayFee());
 }
 
@@ -266,7 +260,12 @@ bool hasEntryData(const QAbstractItemView *view, int column, int role)
 
 QString getDefaultDataDirectory()
 {
+#ifdef Q_OS_ANDROID
+    QString writableLocation = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    return writableLocation+"/.rain/";
+#else
     return boostPathToQString(GetDefaultDataDir());
+#endif
 }
 
 QString getSaveFileName(QWidget *parent, const QString &caption, const QString &dir,
@@ -477,6 +476,120 @@ bool LabelOutOfFocusEventFilter::eventFilter(QObject* watched, QEvent* event)
     return QObject::eventFilter(watched, event);
 }
 
+void TableViewLastColumnResizingFixer::connectViewHeadersSignals()
+{
+    connect(tableView->horizontalHeader(), &QHeaderView::sectionResized, this, &TableViewLastColumnResizingFixer::on_sectionResized);
+    connect(tableView->horizontalHeader(), &QHeaderView::geometriesChanged, this, &TableViewLastColumnResizingFixer::on_geometriesChanged);
+}
+
+// We need to disconnect these while handling the resize events, otherwise we can enter infinite loops.
+void TableViewLastColumnResizingFixer::disconnectViewHeadersSignals()
+{
+    disconnect(tableView->horizontalHeader(), &QHeaderView::sectionResized, this, &TableViewLastColumnResizingFixer::on_sectionResized);
+    disconnect(tableView->horizontalHeader(), &QHeaderView::geometriesChanged, this, &TableViewLastColumnResizingFixer::on_geometriesChanged);
+}
+
+// Setup the resize mode, handles compatibility for Qt5 and below as the method signatures changed.
+// Refactored here for readability.
+void TableViewLastColumnResizingFixer::setViewHeaderResizeMode(int logicalIndex, QHeaderView::ResizeMode resizeMode)
+{
+    tableView->horizontalHeader()->setSectionResizeMode(logicalIndex, resizeMode);
+}
+
+void TableViewLastColumnResizingFixer::resizeColumn(int nColumnIndex, int width)
+{
+    tableView->setColumnWidth(nColumnIndex, width);
+    tableView->horizontalHeader()->resizeSection(nColumnIndex, width);
+}
+
+int TableViewLastColumnResizingFixer::getColumnsWidth()
+{
+    int nColumnsWidthSum = 0;
+    for (int i = 0; i < columnCount; i++)
+    {
+        nColumnsWidthSum += tableView->horizontalHeader()->sectionSize(i);
+    }
+    return nColumnsWidthSum;
+}
+
+int TableViewLastColumnResizingFixer::getAvailableWidthForColumn(int column)
+{
+    int nResult = lastColumnMinimumWidth;
+    int nTableWidth = tableView->horizontalHeader()->width();
+
+    if (nTableWidth > 0)
+    {
+        int nOtherColsWidth = getColumnsWidth() - tableView->horizontalHeader()->sectionSize(column);
+        nResult = std::max(nResult, nTableWidth - nOtherColsWidth);
+    }
+
+    return nResult;
+}
+
+// Make sure we don't make the columns wider than the table's viewport width.
+void TableViewLastColumnResizingFixer::adjustTableColumnsWidth()
+{
+    disconnectViewHeadersSignals();
+    resizeColumn(lastColumnIndex, getAvailableWidthForColumn(lastColumnIndex));
+    connectViewHeadersSignals();
+
+    int nTableWidth = tableView->horizontalHeader()->width();
+    int nColsWidth = getColumnsWidth();
+    if (nColsWidth > nTableWidth)
+    {
+        resizeColumn(secondToLastColumnIndex,getAvailableWidthForColumn(secondToLastColumnIndex));
+    }
+}
+
+// Make column use all the space available, useful during window resizing.
+void TableViewLastColumnResizingFixer::stretchColumnWidth(int column)
+{
+    disconnectViewHeadersSignals();
+    resizeColumn(column, getAvailableWidthForColumn(column));
+    connectViewHeadersSignals();
+}
+
+// When a section is resized this is a slot-proxy for ajustAmountColumnWidth().
+void TableViewLastColumnResizingFixer::on_sectionResized(int logicalIndex, int oldSize, int newSize)
+{
+    adjustTableColumnsWidth();
+    int remainingWidth = getAvailableWidthForColumn(logicalIndex);
+    if (newSize > remainingWidth)
+    {
+       resizeColumn(logicalIndex, remainingWidth);
+    }
+}
+
+// When the table's geometry is ready, we manually perform the stretch of the "Message" column,
+// as the "Stretch" resize mode does not allow for interactive resizing.
+void TableViewLastColumnResizingFixer::on_geometriesChanged()
+{
+    if ((getColumnsWidth() - this->tableView->horizontalHeader()->width()) != 0)
+    {
+        disconnectViewHeadersSignals();
+        resizeColumn(secondToLastColumnIndex, getAvailableWidthForColumn(secondToLastColumnIndex));
+        connectViewHeadersSignals();
+    }
+}
+
+/**
+ * Initializes all internal variables and prepares the
+ * the resize modes of the last 2 columns of the table and
+ */
+TableViewLastColumnResizingFixer::TableViewLastColumnResizingFixer(QTableView* table, int lastColMinimumWidth, int allColsMinimumWidth, QObject *parent) :
+    QObject(parent),
+    tableView(table),
+    lastColumnMinimumWidth(lastColMinimumWidth),
+    allColumnsMinimumWidth(allColsMinimumWidth)
+{
+    columnCount = tableView->horizontalHeader()->count();
+    lastColumnIndex = columnCount - 1;
+    secondToLastColumnIndex = columnCount - 2;
+    tableView->horizontalHeader()->setMinimumSectionSize(allColumnsMinimumWidth);
+    setViewHeaderResizeMode(secondToLastColumnIndex, QHeaderView::Interactive);
+    setViewHeaderResizeMode(lastColumnIndex, QHeaderView::Interactive);
+}
+
 #ifdef WIN32
 fs::path static StartupShortcutPath()
 {
@@ -630,11 +743,8 @@ bool SetStartOnSystemStartup(bool fAutoStart) { return false; }
 
 void setClipboard(const QString& str)
 {
-    QClipboard* clipboard = QApplication::clipboard();
-    clipboard->setText(str, QClipboard::Clipboard);
-    if (clipboard->supportsSelection()) {
-        clipboard->setText(str, QClipboard::Selection);
-    }
+    QApplication::clipboard()->setText(str, QClipboard::Clipboard);
+    QApplication::clipboard()->setText(str, QClipboard::Selection);
 }
 
 fs::path qstringToBoostPath(const QString &path)
@@ -645,6 +755,60 @@ fs::path qstringToBoostPath(const QString &path)
 QString boostPathToQString(const fs::path &path)
 {
     return QString::fromStdString(path.string());
+}
+
+QString formatAssetAmount(const CAsset& asset, const CAmount& amount, const int rain_unit, RainUnits::SeparatorStyle separators, bool include_asset_name)
+{
+    qlonglong abs = qAbs(amount);
+    qlonglong whole = abs / 100000000;
+    qlonglong fraction = abs % 100000000;
+    QString str = QString("%1").arg(whole);
+    if (amount < 0) {
+        str.insert(0, '-');
+    }
+    if (fraction) {
+        str += QString(".%1").arg(fraction, 8, 10, QLatin1Char('0'));
+    }
+    if (include_asset_name) {
+        str += QString(" ") + QString::fromStdString(asset.getShortName());
+    }
+//    return str;
+    return RainUnits::simplestFormat(rain_unit, amount, 4, false, separators) + QString(" ") + QString::fromStdString(asset.getShortName());
+}
+
+QString formatMultiAssetAmount(const CAmountMap& amountmap, const int rain_unit, RainUnits::SeparatorStyle separators, QString line_separator)
+{
+    QStringList ret;
+    if (rain_unit >= 0) {
+        ret << formatAssetAmount(Params().GetConsensus().subsidy_asset, amountmap.count(Params().GetConsensus().subsidy_asset) ? amountmap.at(Params().GetConsensus().subsidy_asset) : 0, rain_unit, separators);
+        if(amountmap.size()==1)
+        return ret.join(line_separator);
+    }
+    
+    QString rmp = ret.join(line_separator);
+    for (const auto& assetamount : amountmap) {
+        if (assetamount.first == Params().GetConsensus().subsidy_asset) {
+            // Already handled first
+            continue;
+        }
+        if (!assetamount.second) {
+            // Don't include zero-amount assets
+            continue;
+        }
+        ret << formatAssetAmount(assetamount.first, assetamount.second, rain_unit, separators);
+    }
+    QString tmp = ret.join(line_separator);
+
+    return ret.join(line_separator);
+}
+
+bool parseAssetAmount(const CAsset& asset, const QString& text, const int rain_unit, CAmount *val_out)
+{
+    if (asset == Params().GetConsensus().subsidy_asset) {
+        return RainUnits::parse(rain_unit, text, val_out);
+    }
+
+    return RainUnits::parse(RainUnits::COIN, text, val_out);
 }
 
 QString NetworkToQString(Network net)
@@ -662,19 +826,15 @@ QString NetworkToQString(Network net)
     assert(false);
 }
 
-QString ConnectionTypeToQString(ConnectionType conn_type, bool prepend_direction)
+QString ConnectionTypeToQString(ConnectionType conn_type)
 {
-    QString prefix;
-    if (prepend_direction) {
-        prefix = (conn_type == ConnectionType::INBOUND) ? QObject::tr("Inbound") : QObject::tr("Outbound") + " ";
-    }
     switch (conn_type) {
-    case ConnectionType::INBOUND: return prefix;
-    case ConnectionType::OUTBOUND_FULL_RELAY: return prefix + QObject::tr("Full Relay");
-    case ConnectionType::BLOCK_RELAY: return prefix + QObject::tr("Block Relay");
-    case ConnectionType::MANUAL: return prefix + QObject::tr("Manual");
-    case ConnectionType::FEELER: return prefix + QObject::tr("Feeler");
-    case ConnectionType::ADDR_FETCH: return prefix + QObject::tr("Address Fetch");
+    case ConnectionType::INBOUND: return QObject::tr("Inbound");
+    case ConnectionType::OUTBOUND_FULL_RELAY: return QObject::tr("Outbound Full Relay");
+    case ConnectionType::BLOCK_RELAY: return QObject::tr("Outbound Block Relay");
+    case ConnectionType::MANUAL: return QObject::tr("Outbound Manual");
+    case ConnectionType::FEELER: return QObject::tr("Outbound Feeler");
+    case ConnectionType::ADDR_FETCH: return QObject::tr("Outbound Address Fetch");
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
@@ -688,13 +848,13 @@ QString formatDurationStr(int secs)
     int seconds = secs % 60;
 
     if (days)
-        strList.append(QObject::tr("%1 d").arg(days));
+        strList.append(QString(QObject::tr("%1 d")).arg(days));
     if (hours)
-        strList.append(QObject::tr("%1 h").arg(hours));
+        strList.append(QString(QObject::tr("%1 h")).arg(hours));
     if (mins)
-        strList.append(QObject::tr("%1 m").arg(mins));
+        strList.append(QString(QObject::tr("%1 m")).arg(mins));
     if (seconds || (!days && !hours && !mins))
-        strList.append(QObject::tr("%1 s").arg(seconds));
+        strList.append(QString(QObject::tr("%1 s")).arg(seconds));
 
     return strList.join(" ");
 }
@@ -713,16 +873,14 @@ QString formatServicesStr(quint64 mask)
         return QObject::tr("None");
 }
 
-QString formatPingTime(std::chrono::microseconds ping_time)
+QString formatPingTime(int64_t ping_usec)
 {
-    return (ping_time == std::chrono::microseconds::max() || ping_time == 0us) ?
-        QObject::tr("N/A") :
-        QObject::tr("%1 ms").arg(QString::number((int)(count_microseconds(ping_time) / 1000), 10));
+    return (ping_usec == std::numeric_limits<int64_t>::max() || ping_usec == 0) ? QObject::tr("N/A") : QString(QObject::tr("%1 ms")).arg(QString::number((int)(ping_usec / 1000), 10));
 }
 
 QString formatTimeOffset(int64_t nTimeOffset)
 {
-  return QObject::tr("%1 s").arg(QString::number((int)nTimeOffset, 10));
+  return QString(QObject::tr("%1 s")).arg(QString::number((int)nTimeOffset, 10));
 }
 
 QString formatNiceTimeOffset(qint64 secs)
@@ -764,14 +922,14 @@ QString formatNiceTimeOffset(qint64 secs)
 
 QString formatBytes(uint64_t bytes)
 {
-    if (bytes < 1'000)
-        return QObject::tr("%1 B").arg(bytes);
-    if (bytes < 1'000'000)
-        return QObject::tr("%1 kB").arg(bytes / 1'000);
-    if (bytes < 1'000'000'000)
-        return QObject::tr("%1 MB").arg(bytes / 1'000'000);
+    if(bytes < 1024)
+        return QString(QObject::tr("%1 B")).arg(bytes);
+    if(bytes < 1024 * 1024)
+        return QString(QObject::tr("%1 KB")).arg(bytes / 1024);
+    if(bytes < 1024 * 1024 * 1024)
+        return QString(QObject::tr("%1 MB")).arg(bytes / 1024 / 1024);
 
-    return QObject::tr("%1 GB").arg(bytes / 1'000'000'000);
+    return QString(QObject::tr("%1 GB")).arg(bytes / 1024 / 1024 / 1024);
 }
 
 qreal calculateIdealFontSize(int width, const QString& text, QFont font, qreal minPointSize, qreal font_size) {
@@ -896,24 +1054,6 @@ QImage GetImage(const QLabel* label)
 #else
     return label->pixmap()->toImage();
 #endif
-}
-
-QString MakeHtmlLink(const QString& source, const QString& link)
-{
-    return QString(source).replace(
-        link,
-        QLatin1String("<a href=\"") % link % QLatin1String("\">") % link % QLatin1String("</a>"));
-}
-
-void PrintSlotException(
-    const std::exception* exception,
-    const QObject* sender,
-    const QObject* receiver)
-{
-    std::string description = sender->metaObject()->className();
-    description += "->";
-    description += receiver->metaObject()->className();
-    PrintExceptionContinue(exception, description.c_str());
 }
 
 } // namespace GUIUtil

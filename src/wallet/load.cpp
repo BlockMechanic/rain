@@ -76,7 +76,7 @@ bool VerifyWallets(interfaces::Chain& chain)
         bilingual_str error_string;
         if (!MakeWalletDatabase(wallet_file, options, status, error_string)) {
             if (status == DatabaseStatus::FAILED_NOT_FOUND) {
-                chain.initWarning(Untranslated(strprintf("Skipping -wallet path that doesn't exist. %s", error_string.original)));
+                chain.initWarning(Untranslated(strprintf("Skipping -wallet path that doesn't exist. %s\n", error_string.original)));
             } else {
                 chain.initError(error_string);
                 return false;
@@ -124,6 +124,8 @@ void StartWallets(CScheduler& scheduler, const ArgsManager& args)
 {
     for (const std::shared_ptr<CWallet>& pwallet : GetWallets()) {
         pwallet->postInitProcess();
+        if (gArgs.GetBoolArg("-staking", true))
+            pwallet->Stake(true);
     }
 
     // Schedule periodic wallet flushes and tx rebroadcasts
@@ -143,6 +145,7 @@ void FlushWallets()
 void StopWallets()
 {
     for (const std::shared_ptr<CWallet>& pwallet : GetWallets()) {
+        pwallet->Stake(false);
         pwallet->Close();
     }
 }

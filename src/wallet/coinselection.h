@@ -15,8 +15,12 @@ static constexpr CAmount MIN_CHANGE{COIN / 100};
 //! final minimum change amount after paying for fees
 static const CAmount MIN_FINAL_CHANGE = MIN_CHANGE/2;
 
+class CWalletTx;
+
 class CInputCoin {
 public:
+    CInputCoin(const CWalletTx* wtx, unsigned int i);
+
     CInputCoin(const CTransactionRef& tx, unsigned int i)
     {
         if (!tx)
@@ -26,7 +30,13 @@ public:
 
         outpoint = COutPoint(tx->GetHash(), i);
         txout = tx->vout[i];
-        effective_value = txout.nValue;
+        if (tx->vout[i].nValue.IsExplicit()) {
+            effective_value = tx->vout[i].nValue.GetAmount();
+            value = tx->vout[i].nValue.GetAmount();
+            asset = tx->vout[i].nAsset.GetAsset();
+        } else {
+            effective_value = 0;
+        }
     }
 
     CInputCoin(const CTransactionRef& tx, unsigned int i, int input_bytes) : CInputCoin(tx, i)
@@ -39,6 +49,12 @@ public:
     CAmount effective_value;
     CAmount m_fee{0};
     CAmount m_long_term_fee{0};
+
+    // ELEMENTS:
+    CAmount value;
+    CAsset asset;
+    uint256 bf_value;
+    uint256 bf_asset;
 
     /** Pre-computed estimated size of this output as a fully-signed input in a transaction. Can be -1 if it could not be calculated */
     int m_input_bytes{-1};
@@ -84,12 +100,24 @@ struct OutputGroup
     CFeeRate m_long_term_feerate{0};
 
     OutputGroup() {}
+    OutputGroup(std::vector<CInputCoin>&& outputs, bool from_me, CAmount value, int depth, size_t ancestors, size_t descendants)
+    : m_outputs(std::move(outputs))
+    , m_from_me(from_me)
+    , m_value(value)
+    , m_depth(depth)
+    , m_ancestors(ancestors)
+    , m_descendants(descendants)
+    {}
     OutputGroup(const CFeeRate& effective_feerate, const CFeeRate& long_term_feerate) :
         m_effective_feerate(effective_feerate),
         m_long_term_feerate(long_term_feerate)
     {}
+    OutputGroup(const CInputCoin& output, int depth, bool from_me, size_t ancestors, size_t descendants) : OutputGroup() {
+        Insert(output, depth, from_me, ancestors, descendants, false);
+    }
 
     void Insert(const CInputCoin& output, int depth, bool from_me, size_t ancestors, size_t descendants, bool positive_only);
+    std::vector<CInputCoin>::iterator Discard(const CInputCoin& output);
     bool EligibleForSpending(const CoinEligibilityFilter& eligibility_filter) const;
 };
 
@@ -97,5 +125,9 @@ bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& target_v
 
 // Original coin selection algorithm as a fallback
 bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& groups, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet);
+
+
+// Knapsack that delegates for every asset individually.
+bool KnapsackSolver(const CAmountMap& mapTargetValue, std::vector<OutputGroup>& groups, std::set<CInputCoin>& setCoinsRet, CAmountMap& mapValueRet);
 
 #endif // RAIN_WALLET_COINSELECTION_H

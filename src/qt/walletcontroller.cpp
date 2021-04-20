@@ -4,9 +4,7 @@
 
 #include <qt/walletcontroller.h>
 
-#include <qt/askpassphrasedialog.h>
 #include <qt/clientmodel.h>
-#include <qt/createwalletdialog.h>
 #include <qt/guiconstants.h>
 #include <qt/guiutil.h>
 #include <qt/walletmodel.h>
@@ -224,13 +222,13 @@ CreateWalletActivity::CreateWalletActivity(WalletController* wallet_controller, 
 
 CreateWalletActivity::~CreateWalletActivity()
 {
-    delete m_create_wallet_dialog;
-    delete m_passphrase_dialog;
+   // delete m_create_wallet_dialog;
+   // delete m_passphrase_dialog;
 }
 
 void CreateWalletActivity::askPassphrase()
 {
-    m_passphrase_dialog = new AskPassphraseDialog(AskPassphraseDialog::Encrypt, m_parent_widget, &m_passphrase);
+/*    m_passphrase_dialog = new AskPassphraseDialog(AskPassphraseDialog::Encrypt, m_parent_widget, &m_passphrase);
     m_passphrase_dialog->setWindowModality(Qt::ApplicationModal);
     m_passphrase_dialog->show();
 
@@ -243,24 +241,25 @@ void CreateWalletActivity::askPassphrase()
     connect(m_passphrase_dialog, &QDialog::rejected, [this] {
         Q_EMIT finished();
     });
+*/
 }
 
 void CreateWalletActivity::createWallet()
 {
-    showProgressDialog(tr("Creating Wallet <b>%1</b>...").arg(m_create_wallet_dialog->walletName().toHtmlEscaped()));
+//    showProgressDialog(tr("Creating Wallet <b>%1</b>...").arg(m_create_wallet_dialog->walletName().toHtmlEscaped()));
 
-    std::string name = m_create_wallet_dialog->walletName().toStdString();
+//    std::string name = m_create_wallet_dialog->walletName().toStdString();
     uint64_t flags = 0;
-    if (m_create_wallet_dialog->isDisablePrivateKeysChecked()) {
-        flags |= WALLET_FLAG_DISABLE_PRIVATE_KEYS;
-    }
-    if (m_create_wallet_dialog->isMakeBlankWalletChecked()) {
-        flags |= WALLET_FLAG_BLANK_WALLET;
-    }
-    if (m_create_wallet_dialog->isDescriptorWalletChecked()) {
-        flags |= WALLET_FLAG_DESCRIPTORS;
-    }
-
+//    if (m_create_wallet_dialog->isDisablePrivateKeysChecked()) {
+//        flags |= WALLET_FLAG_DISABLE_PRIVATE_KEYS;
+//    }
+//    if (m_create_wallet_dialog->isMakeBlankWalletChecked()) {
+//        flags |= WALLET_FLAG_BLANK_WALLET;
+//    }
+//    if (m_create_wallet_dialog->isDescriptorWalletChecked()) {
+//        flags |= WALLET_FLAG_DESCRIPTORS;
+//    }
+/*
     QTimer::singleShot(500, worker(), [this, name, flags] {
         std::unique_ptr<interfaces::Wallet> wallet = node().walletClient().createWallet(name, m_passphrase, flags, m_error_message, m_warning_message);
 
@@ -268,6 +267,7 @@ void CreateWalletActivity::createWallet()
 
         QTimer::singleShot(500, this, &CreateWalletActivity::finish);
     });
+    */
 }
 
 void CreateWalletActivity::finish()
@@ -287,23 +287,23 @@ void CreateWalletActivity::finish()
 
 void CreateWalletActivity::create()
 {
-    m_create_wallet_dialog = new CreateWalletDialog(m_parent_widget);
-    m_create_wallet_dialog->setWindowModality(Qt::ApplicationModal);
-    m_create_wallet_dialog->show();
+//    m_create_wallet_dialog = new CreateWalletDialog(m_parent_widget);
+//    m_create_wallet_dialog->setWindowModality(Qt::ApplicationModal);
+//    m_create_wallet_dialog->show();
 
-    connect(m_create_wallet_dialog, &QObject::destroyed, [this] {
-        m_create_wallet_dialog = nullptr;
-    });
-    connect(m_create_wallet_dialog, &QDialog::rejected, [this] {
-        Q_EMIT finished();
-    });
-    connect(m_create_wallet_dialog, &QDialog::accepted, [this] {
-        if (m_create_wallet_dialog->isEncryptWalletChecked()) {
-            askPassphrase();
-        } else {
-            createWallet();
-        }
-    });
+//    connect(m_create_wallet_dialog, &QObject::destroyed, [this] {
+//        m_create_wallet_dialog = nullptr;
+//    });
+//    connect(m_create_wallet_dialog, &QDialog::rejected, [this] {
+//        Q_EMIT finished();
+//    });
+//    connect(m_create_wallet_dialog, &QDialog::accepted, [this] {
+//        if (m_create_wallet_dialog->isEncryptWalletChecked()) {
+//            askPassphrase();
+//        } else {
+//            createWallet();
+//        }
+//    });
 }
 
 OpenWalletActivity::OpenWalletActivity(WalletController* wallet_controller, QWidget* parent_widget)

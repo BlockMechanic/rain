@@ -18,7 +18,6 @@
 #include <test/util/net.h>
 #include <test/util/setup_common.h>
 #include <test/util/validation.h>
-#include <txorphanage.h>
 #include <validationinterface.h>
 #include <version.h>
 
@@ -56,7 +55,7 @@ void initialize_process_message()
 {
     Assert(GetNumMsgTypes() == getAllNetMessageTypes().size()); // If this fails, add or remove the message type below
 
-    static const auto testing_setup = MakeNoLogFileContext<const TestingSetup>();
+    static const auto testing_setup = MakeFuzzingContext<const TestingSetup>();
     g_setup = testing_setup.get();
     for (int i = 0; i < 2 * COINBASE_MATURITY; i++) {
         MineBlock(g_setup->m_node, CScript() << OP_TRUE);
@@ -68,8 +67,8 @@ void fuzz_target(FuzzBufferType buffer, const std::string& LIMIT_TO_MESSAGE_TYPE
 {
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
 
-    ConnmanTestMsg& connman = *static_cast<ConnmanTestMsg*>(g_setup->m_node.connman.get());
-    TestChainState& chainstate = *static_cast<TestChainState*>(&g_setup->m_node.chainman->ActiveChainstate());
+    ConnmanTestMsg& connman = *(ConnmanTestMsg*)g_setup->m_node.connman.get();
+    TestChainState& chainstate = *(TestChainState*)&g_setup->m_node.chainman->ActiveChainstate();
     SetMockTime(1610000000); // any time to successfully reset ibd
     chainstate.ResetIbd();
 

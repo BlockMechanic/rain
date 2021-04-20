@@ -14,7 +14,13 @@
 
 static void DuplicateInputs(benchmark::Bench& bench)
 {
-    const auto testing_setup = MakeNoLogFileContext<const TestingSetup>();
+    TestingSetup test_setup{
+        CBaseChainParams::REGTEST,
+        /* extra_args */ {
+            "-nodebuglogfile",
+            "-nodebug",
+        },
+    };
 
     const CScript SCRIPT_PUB{CScript(OP_TRUE)};
 
@@ -27,7 +33,7 @@ static void DuplicateInputs(benchmark::Bench& bench)
     LOCK(cs_main);
     CBlockIndex* pindexPrev = ::ChainActive().Tip();
     assert(pindexPrev != nullptr);
-    block.nBits = GetNextWorkRequired(pindexPrev, &block, chainparams.GetConsensus());
+    block.nBits = GetNextWorkRequired(pindexPrev, chainparams.GetConsensus(), false);
     block.nNonce = 0;
     auto nHeight = pindexPrev->nHeight + 1;
 
@@ -36,7 +42,7 @@ static void DuplicateInputs(benchmark::Bench& bench)
     coinbaseTx.vin[0].prevout.SetNull();
     coinbaseTx.vout.resize(1);
     coinbaseTx.vout[0].scriptPubKey = SCRIPT_PUB;
-    coinbaseTx.vout[0].nValue = GetBlockSubsidy(nHeight, chainparams.GetConsensus());
+    coinbaseTx.vout[0].nValue =0;// GetBlockSubsidy(nHeight, chainparams.GetConsensus(), false, 0, populateMap(0));
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
 
 

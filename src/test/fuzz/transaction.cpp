@@ -75,7 +75,7 @@ FUZZ_TARGET_INIT(transaction, initialize_transaction)
     (void)tx.GetHash();
     (void)tx.GetTotalSize();
     try {
-        (void)tx.GetValueOut();
+      //  (void)tx.GetValueOut();
     } catch (const std::runtime_error&) {
     }
     (void)tx.GetWitnessHash();
@@ -100,9 +100,16 @@ FUZZ_TARGET_INIT(transaction, initialize_transaction)
     (void)IsWitnessStandard(tx, coins_view_cache);
 
     UniValue u(UniValue::VOBJ);
-    TxToUniv(tx, /* hashBlock */ {}, /* include_addresses */ true, u);
-    TxToUniv(tx, /* hashBlock */ {}, /* include_addresses */ false, u);
-    static const uint256 u256_max(uint256S("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"));
-    TxToUniv(tx, u256_max, /* include_addresses */ true, u);
-    TxToUniv(tx, u256_max, /* include_addresses */ false, u);
+    // ValueFromAmount(i) not defined when i == std::numeric_limits<int64_t>::min()
+    bool skip_tx_to_univ = false;
+    for (const CTxOut& txout : tx.vout) {
+        if (txout.nValue.GetAmount() == std::numeric_limits<int64_t>::min()) {
+            skip_tx_to_univ = true;
+        }
+    }
+    if (!skip_tx_to_univ) {
+        TxToUniv(tx, /* hashBlock */ {}, u);
+        static const uint256 u256_max(uint256S("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"));
+        TxToUniv(tx, u256_max, u);
+    }
 }

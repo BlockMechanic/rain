@@ -87,8 +87,8 @@ std::string CRPCTable::help(const std::string& strCommand, const JSONRPCRequest&
         vCommands.push_back(make_pair(entry.second.front()->category + entry.first, entry.second.front()));
     sort(vCommands.begin(), vCommands.end());
 
-    JSONRPCRequest jreq = helpreq;
-    jreq.mode = JSONRPCRequest::GET_HELP;
+    JSONRPCRequest jreq(helpreq);
+    jreq.fHelp = true;
     jreq.params = UniValue();
 
     for (const std::pair<std::string, const CRPCCommand*>& command : vCommands)
@@ -135,11 +135,10 @@ static RPCHelpMan help()
     return RPCHelpMan{"help",
                 "\nList all commands, or get help for a specified command.\n",
                 {
-                    {"command", RPCArg::Type::STR, RPCArg::DefaultHint{"all commands"}, "The command to get help on"},
+                    {"command", RPCArg::Type::STR, /* default */ "all commands", "The command to get help on"},
                 },
-                {
-                    RPCResult{RPCResult::Type::STR, "", "The help text"},
-                    RPCResult{RPCResult::Type::ANY, "", ""},
+                RPCResult{
+                    RPCResult::Type::STR, "", "The help text"
                 },
                 RPCExamples{""},
         [&](const RPCHelpMan& self, const JSONRPCRequest& jsonRequest) -> UniValue
@@ -150,7 +149,7 @@ static RPCHelpMan help()
     }
     if (strCommand == "dump_all_command_conversions") {
         // Used for testing only, undocumented
-        return tableRPC.dumpArgMap(jsonRequest);
+        return tableRPC.dumpArgMap();
     }
 
     return tableRPC.help(strCommand, jsonRequest);
@@ -438,16 +437,6 @@ static inline JSONRPCRequest transformNamedArguments(const JSONRPCRequest& in, c
     return out;
 }
 
-static bool ExecuteCommands(const std::vector<const CRPCCommand*>& commands, const JSONRPCRequest& request, UniValue& result)
-{
-    for (const auto& command : commands) {
-        if (ExecuteCommand(*command, request, result, &command == &commands.back())) {
-            return true;
-        }
-    }
-    return false;
-}
-
 UniValue CRPCTable::execute(const JSONRPCRequest &request) const
 {
     // Return immediately if in warmup
@@ -461,8 +450,10 @@ UniValue CRPCTable::execute(const JSONRPCRequest &request) const
     auto it = mapCommands.find(request.strMethod);
     if (it != mapCommands.end()) {
         UniValue result;
-        if (ExecuteCommands(it->second, request, result)) {
-            return result;
+        for (const auto& command : it->second) {
+            if (ExecuteCommand(*command, request, result, &command == &it->second.back())) {
+                return result;
+            }
         }
     }
     throw JSONRPCError(RPC_METHOD_NOT_FOUND, "Method not found");
@@ -493,18 +484,13 @@ std::vector<std::string> CRPCTable::listCommands() const
     return commandList;
 }
 
-UniValue CRPCTable::dumpArgMap(const JSONRPCRequest& args_request) const
+UniValue CRPCTable::dumpArgMap() const
 {
-    JSONRPCRequest request = args_request;
-    request.mode = JSONRPCRequest::GET_ARGS;
-
     UniValue ret{UniValue::VARR};
     for (const auto& cmd : mapCommands) {
-        UniValue result;
-        if (ExecuteCommands(cmd.second, request, result)) {
-            for (const auto& values : result.getValues()) {
-                ret.push_back(values);
-            }
+        for (const auto& c : cmd.second) {
+            const auto help = RpcMethodFnType(c->unique_id)();
+            help.AppendArgMap(ret);
         }
     }
     return ret;
@@ -544,5 +530,36 @@ int RPCSerializationFlags()
         flag |= SERIALIZE_TRANSACTION_NO_WITNESS;
     return flag;
 }
+
+void PushTime(UniValue &o, const char *name, int64_t nTime)
+{
+    o.pushKV(name, nTime);
+
+    char cTime[256];
+
+    static bool fHumanReadableLocal = gArgs.GetBoolArg("-displaylocaltime", false);
+    if (fHumanReadableLocal)
+    {
+        struct tm *ptm;
+        time_t tmp = nTime;
+        ptm = localtime(&tmp);
+        strftime(cTime, sizeof(cTime), "%Y-%m-%d %H:%M:%S %Z", ptm);
+
+        std::string sName = std::string(name) + "_local";
+        o.pushKV(sName, cTime);
+    };
+
+    static bool fHumanReadableUTC = gArgs.GetBoolArg("-displayutctime", false);
+    if (fHumanReadableUTC)
+    {
+        struct tm *ptm;
+        time_t tmp = nTime;
+        ptm = gmtime(&tmp);
+        strftime(cTime, sizeof(cTime), "%Y-%m-%d %H:%M:%S", ptm);
+
+        std::string sName = std::string(name) + "_utc";
+        o.pushKV(sName, cTime);
+    };
+};
 
 CRPCTable tableRPC;

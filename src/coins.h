@@ -26,8 +26,9 @@ class ChainstateManager;
  * A UTXO entry.
  *
  * Serialized format:
- * - VARINT((coinbase ? 1 : 0) | (height << 1))
- * - the non-spent CTxOut (via TxOutCompression)
+ * - VARINT((coinbase ? 1 : 0) | (height << 2))
+ * - VARINT((coinstake ? 2 : 0) | (height << 2))
+ * - the non-spent CTxOut (via CTxOutCompressor)
  */
 class Coin
 {
@@ -35,49 +36,72 @@ public:
     //! unspent transaction output
     CTxOut out;
 
+    //! at which height this containing transaction was included in the active block chain
+    uint32_t nHeight : 30;
+
     //! whether containing transaction was a coinbase
     unsigned int fCoinBase : 1;
+    unsigned int fCoinStake : 1;
 
-    //! at which height this containing transaction was included in the active block chain
-    uint32_t nHeight : 31;
+    //! version of the CTransaction; accesses to this value should probably check for nHeight as well,
+    //! as new tx version will probably only be introduced at certain heights
+    int nVersion;
+
+    unsigned int nTime;
+
+    void FromTx(const CTransaction &tx, int nHeightIn) {
+        fCoinBase = tx.IsCoinBase();
+        fCoinStake = tx.IsCoinStake();
+        // Within an asset definition transaction, the asset being defined is identified with a 0.
+
+        nHeight = nHeightIn;
+        nVersion = tx.nVersion;
+        nTime = tx.nTime;
+    }
 
     //! construct a Coin from a CTxOut and height/coinbase information.
-    Coin(CTxOut&& outIn, int nHeightIn, bool fCoinBaseIn) : out(std::move(outIn)), fCoinBase(fCoinBaseIn), nHeight(nHeightIn) {}
-    Coin(const CTxOut& outIn, int nHeightIn, bool fCoinBaseIn) : out(outIn), fCoinBase(fCoinBaseIn),nHeight(nHeightIn) {}
+    Coin(CTxOut&& outIn, int nHeightIn, bool fCoinBaseIn, bool fCoinStakeIn, int nTimeIn) : out(std::move(outIn)), nHeight(nHeightIn), fCoinBase(fCoinBaseIn), fCoinStake(fCoinStakeIn), nTime(nTimeIn) {}
+    Coin(const CTxOut& outIn, int nHeightIn, bool fCoinBaseIn, bool fCoinStakeIn, int nTimeIn) : out(outIn), nHeight(nHeightIn), fCoinBase(fCoinBaseIn), fCoinStake(fCoinStakeIn), nTime(nTimeIn) {}
 
     void Clear() {
         out.SetNull();
         fCoinBase = false;
+        fCoinStake = false;
         nHeight = 0;
+        nTime = 0;
     }
 
     //! empty constructor
-    Coin() : fCoinBase(false), nHeight(0) { }
+    Coin() : nHeight(0), fCoinBase(false), fCoinStake(false), nTime(0) { }
 
     bool IsCoinBase() const {
         return fCoinBase;
     }
 
+    bool IsCoinStake() const { // peercoin: coinstake
+        return fCoinStake;
+    }
+
     template<typename Stream>
     void Serialize(Stream &s) const {
         assert(!IsSpent());
-        uint32_t code = nHeight * uint32_t{2} + fCoinBase;
+        uint32_t code = (nHeight << 2) + (fCoinBase ? 1 : 0) + (fCoinStake ? 2 : 0);
         ::Serialize(s, VARINT(code));
         ::Serialize(s, Using<TxOutCompression>(out));
+        ::Serialize(s, VARINT(nTime));
     }
 
     template<typename Stream>
     void Unserialize(Stream &s) {
         uint32_t code = 0;
         ::Unserialize(s, VARINT(code));
-        nHeight = code >> 1;
+        nHeight = code >> 2;
         fCoinBase = code & 1;
+        fCoinStake = (code >> 1) & 1;
         ::Unserialize(s, Using<TxOutCompression>(out));
+        ::Unserialize(s, VARINT(nTime));
     }
 
-    /** Either this coin never existed (see e.g. coinEmpty in coins.cpp), or it
-      * did exist and has been spent.
-      */
     bool IsSpent() const {
         return out.IsNull();
     }
@@ -303,6 +327,17 @@ public:
     //! Calculate the size of the cache (in bytes)
     size_t DynamicMemoryUsage() const;
 
+    /**
+     * Amount of rains coming in to a transaction
+     * Note that lightweight clients may not know anything besides the hash of previous transactions,
+     * so may not be able to calculate this.
+     *
+     * @param[in] tx    transaction for which we are checking input total
+     * @return  Sum of value of all inputs (scriptSigs)
+     */
+    CAmount GetValueIn(const CTransaction& tx) const;
+    CAmountMap GetValueInMap(const CTransaction& tx) const;
+
     //! Check whether all prevouts of the transaction are present in the UTXO set represented by this view
     bool HaveInputs(const CTransaction& tx) const;
 
@@ -312,6 +347,12 @@ public:
     //!
     //! See: https://stackoverflow.com/questions/42114044/how-to-release-unordered-map-memory
     void ReallocateCache();
+
+    /*
+     * Return the depth of a coin at height nHeight, or -1 if not found
+     */
+    int GetCoinDepthAtHeight(const COutPoint& output, int nHeight) const;
+
 
 private:
     /**

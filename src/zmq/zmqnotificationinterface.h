@@ -10,6 +10,9 @@
 #include <memory>
 
 class CBlockIndex;
+namespace smsg {
+class SecureMessage;
+}
 class CZMQAbstractNotifier;
 
 class CZMQNotificationInterface final : public CValidationInterface
@@ -31,6 +34,8 @@ protected:
     void BlockConnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex* pindexConnected) override;
     void BlockDisconnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex* pindexDisconnected) override;
     void UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload) override;
+
+    void NewSecureMessage(const smsg::SecureMessage *psmsg, const uint160 &hash) override;
 
 private:
     CZMQNotificationInterface();

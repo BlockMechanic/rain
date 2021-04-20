@@ -12,6 +12,8 @@
 #include <string>
 #include <variant>
 
+#include <pubkey.h> // blinding_pubkey
+
 static const bool DEFAULT_ACCEPT_DATACARRIER = true;
 
 class CKeyID;
@@ -80,6 +82,8 @@ public:
 
     unsigned char* data() { return m_hash.data(); }
     const unsigned char* data() const { return m_hash.data(); }
+
+    SERIALIZE_METHODS(BaseHash, obj) { READWRITE(obj.m_hash); }
 };
 
 /** A reference to a CScript: the Hash160 of its serialization (see script.h) */
@@ -129,6 +133,10 @@ enum class TxoutType {
     WITNESS_V0_KEYHASH,
     WITNESS_V1_TAPROOT,
     WITNESS_UNKNOWN, //!< Only for Witness versions not already defined above
+    FEE,
+    HTLC,
+    CLTV,
+    MULTISIG_CLTV
 };
 
 class CNoDestination {
@@ -143,7 +151,11 @@ struct PKHash : public BaseHash<uint160>
     explicit PKHash(const uint160& hash) : BaseHash(hash) {}
     explicit PKHash(const CPubKey& pubkey);
     explicit PKHash(const CKeyID& pubkey_id);
+    explicit PKHash(const CPubKey& pubkey, const CPubKey& blinding_pubkey);
+    explicit PKHash(const uint160& hash, const CPubKey& blinding_pubkey);
+    CPubKey blinding_pubkey;
 };
+
 CKeyID ToKeyID(const PKHash& key_hash);
 
 struct WitnessV0KeyHash;
@@ -158,6 +170,9 @@ struct ScriptHash : public BaseHash<uint160>
     explicit ScriptHash(const uint160& hash) : BaseHash(hash) {}
     explicit ScriptHash(const CScript& script);
     explicit ScriptHash(const CScriptID& script);
+    explicit ScriptHash(const CScript& script, const CPubKey& blinding_pubkey);
+    explicit ScriptHash(const uint160& hash, const CPubKey& blinding_pubkey);
+    CPubKey blinding_pubkey;
 };
 
 struct WitnessV0ScriptHash : public BaseHash<uint256>
@@ -165,6 +180,8 @@ struct WitnessV0ScriptHash : public BaseHash<uint256>
     WitnessV0ScriptHash() : BaseHash() {}
     explicit WitnessV0ScriptHash(const uint256& hash) : BaseHash(hash) {}
     explicit WitnessV0ScriptHash(const CScript& script);
+    explicit WitnessV0ScriptHash(const CScript& script, const CPubKey& blinding_pubkey);
+    CPubKey blinding_pubkey;
 };
 
 struct WitnessV0KeyHash : public BaseHash<uint160>
@@ -173,6 +190,8 @@ struct WitnessV0KeyHash : public BaseHash<uint160>
     explicit WitnessV0KeyHash(const uint160& hash) : BaseHash(hash) {}
     explicit WitnessV0KeyHash(const CPubKey& pubkey);
     explicit WitnessV0KeyHash(const PKHash& pubkey_hash);
+    explicit WitnessV0KeyHash(const uint160& hash, const CPubKey& blinding_pubkey_in) : BaseHash(hash), blinding_pubkey(blinding_pubkey_in) {}
+    CPubKey blinding_pubkey;
 };
 CKeyID ToKeyID(const WitnessV0KeyHash& key_hash);
 
@@ -182,6 +201,7 @@ struct WitnessUnknown
     unsigned int version;
     unsigned int length;
     unsigned char program[40];
+    CPubKey blinding_pubkey;
 
     friend bool operator==(const WitnessUnknown& w1, const WitnessUnknown& w2) {
         if (w1.version != w2.version) return false;
@@ -198,6 +218,21 @@ struct WitnessUnknown
     }
 };
 
+// ELEMENTS:
+class NullData
+{
+public:
+    std::vector<std::vector<unsigned char>> null_data;
+    friend bool operator==(const NullData &a, const NullData &b) { return  true; }
+    friend bool operator<(const NullData &a, const NullData &b) { return  true; }
+
+    NullData& operator<<(std::vector<unsigned char> b)
+    {
+        null_data.push_back(b);
+        return *this;
+    }
+};
+
 /**
  * A txout script template with a specific destination. It is either:
  *  * CNoDestination: no destination set
@@ -207,9 +242,10 @@ struct WitnessUnknown
  *  * WitnessV0KeyHash: TxoutType::WITNESS_V0_KEYHASH destination (P2WPKH)
  *  * WitnessUnknown: TxoutType::WITNESS_UNKNOWN/WITNESS_V1_TAPROOT destination (P2W???)
  *    (taproot outputs do not require their own type as long as no wallet support exists)
+ *  * NullData: TX_NULL_DATA destination (OP_RETURN)
  *  A CTxDestination is the internal data type encoded in a rain address
  */
-using CTxDestination = std::variant<CNoDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash, WitnessUnknown>;
+using CTxDestination = std::variant<CNoDestination, PKHash, ScriptHash, WitnessV0ScriptHash, WitnessV0KeyHash, WitnessUnknown, NullData>;
 
 /** Check whether a CTxDestination is a CNoDestination. */
 bool IsValidDestination(const CTxDestination& dest);
@@ -247,8 +283,6 @@ bool ExtractDestination(const CScript& scriptPubKey, CTxDestination& addressRet)
  * Note: this function confuses destinations (a subset of CScripts that are
  * encodable as an address) with key identifiers (of keys involved in a
  * CScript), and its use should be phased out.
- *
- * TODO: from v23 ("addresses" and "reqSigs" deprecated) "ExtractDestinations" should be removed
  */
 bool ExtractDestinations(const CScript& scriptPubKey, TxoutType& typeRet, std::vector<CTxDestination>& addressRet, int& nRequiredRet);
 
@@ -263,6 +297,33 @@ CScript GetScriptForDestination(const CTxDestination& dest);
 CScript GetScriptForRawPubKey(const CPubKey& pubkey);
 
 /** Generate a multisig script. */
-CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys);
+CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey>& keys, const int64_t cltv_height=0, const int64_t cltv_time=0);
+
+/**
+ * Generate a pay-to-witness script for the given redeem script. If the redeem
+ * script is P2PK or P2PKH, this returns a P2WPKH script, otherwise it returns a
+ * P2WSH script.
+ *
+ * TODO: replace calls to GetScriptForWitness with GetScriptForDestination using
+ * the various witness-specific CTxDestination subtypes.
+ */
+CScript GetScriptForWitness(const CScript& redeemscript);
+
+CScript GetScriptForHTLC(const CPubKey& seller,
+                         const CPubKey& refund,
+                         const std::vector<unsigned char> image,
+                         uint32_t timeout,
+                         opcodetype hasher_type,
+                         opcodetype timeout_type);
+
+CScript GetScriptForCLTV(CScriptNum nLockTime, const CPubKey& pubKey);
+CScript GetScriptForPvP(CScriptNum nFreezeLockTime, const CPubKey& p1pubKey, const CPubKey& p2pubKey, const CPubKey& recoverypubKey, uint256 & p1image, uint256& p2image);
+CScript GetScriptForCoinFlip(const CPubKey& p1pubKey, const CPubKey& p2pubKey, uint256 & p1image, uint256& p2image);
+CScript GetBinaryOptionScript(CScriptNum snum, const CPubKey& p1pubKey, const CPubKey& p2pubKey, const CPubKey& oraclepubKey);
+CScript GetNormalStealthScript (std::vector<unsigned char> vch, CScript scriptPubKey);
+ 
+CScript GetScriptForP2ES(std::vector<std::pair<std::string,CPubKey> > parties, const CPubKey& oraclepubKey);
+
+bool IsSimpleCLTV(const CScript& script, int64_t& cltv_height, int64_t& cltv_time);
 
 #endif // RAIN_SCRIPT_STANDARD_H

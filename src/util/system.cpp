@@ -5,9 +5,9 @@
 
 #include <util/system.h>
 
-#ifdef ENABLE_EXTERNAL_SIGNER
+#ifdef HAVE_BOOST_PROCESS
 #include <boost/process.hpp>
-#endif // ENABLE_EXTERNAL_SIGNER
+#endif // HAVE_BOOST_PROCESS
 
 #include <chainparamsbase.h>
 #include <sync.h>
@@ -224,7 +224,7 @@ static util::SettingsValue InterpretOption(std::string& section, std::string& ke
  *
  * TODO: Add more meaningful error checks here in the future
  * See "here's how the flags are meant to behave" in
- * https://github.com/rain/rain/pull/16097#issuecomment-514627823
+ * https://github.com/bitcoin/bitcoin/pull/16097#issuecomment-514627823
  */
 static bool CheckValid(const std::string& key, const util::SettingsValue& val, unsigned int flags, std::string& error)
 {
@@ -626,6 +626,9 @@ std::string ArgsManager::GetHelpMessage() const
                 break;
             case OptionsCategory::REGISTER_COMMANDS:
                 usage += HelpMessageGroup("Register Commands:");
+                break;
+            case OptionsCategory::SMSG:
+                usage += HelpMessageGroup("SMSG Commands:");
                 break;
             default:
                 break;
@@ -1247,7 +1250,7 @@ void runCommand(const std::string& strCommand)
 }
 #endif
 
-#ifdef ENABLE_EXTERNAL_SIGNER
+#ifdef HAVE_BOOST_PROCESS
 UniValue RunCommandParseJSON(const std::string& str_command, const std::string& str_std_in)
 {
     namespace bp = boost::process;
@@ -1282,7 +1285,7 @@ UniValue RunCommandParseJSON(const std::string& str_command, const std::string& 
 
     return result_json;
 }
-#endif // ENABLE_EXTERNAL_SIGNER
+#endif // HAVE_BOOST_PROCESS
 
 void SetupEnvironment()
 {

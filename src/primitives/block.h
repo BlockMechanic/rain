@@ -25,15 +25,18 @@ public:
     uint256 hashPrevBlock;
     uint256 hashMerkleRoot;
     uint32_t nTime;
+    uint32_t nHeight;
     uint32_t nBits;
     uint32_t nNonce;
+    COutPoint prevoutStake;
+    std::vector<unsigned char> vchBlockSig;
 
     CBlockHeader()
     {
         SetNull();
     }
 
-    SERIALIZE_METHODS(CBlockHeader, obj) { READWRITE(obj.nVersion, obj.hashPrevBlock, obj.hashMerkleRoot, obj.nTime, obj.nBits, obj.nNonce); }
+    SERIALIZE_METHODS(CBlockHeader, obj) { READWRITE(obj.nVersion, obj.hashPrevBlock, obj.hashMerkleRoot, obj.nTime, obj.nHeight, obj.nBits, obj.nNonce, obj.prevoutStake, obj.vchBlockSig); }
 
     void SetNull()
     {
@@ -41,8 +44,11 @@ public:
         hashPrevBlock.SetNull();
         hashMerkleRoot.SetNull();
         nTime = 0;
+        nHeight = 0;
         nBits = 0;
         nNonce = 0;
+        vchBlockSig.clear();
+        prevoutStake.SetNull();
     }
 
     bool IsNull() const
@@ -52,9 +58,23 @@ public:
 
     uint256 GetHash() const;
 
+    uint256 GetHashWithoutSign() const;
+
     int64_t GetBlockTime() const
     {
         return (int64_t)nTime;
+    }
+    std::string ToString() const;
+
+    // ppcoin: two types of block: proof-of-work or proof-of-stake
+    bool IsProofOfStake() const 
+    {
+        return !prevoutStake.IsNull();
+    }
+
+    bool IsProofOfWork() const
+    {
+        return !IsProofOfStake();
     }
 };
 
@@ -92,6 +112,16 @@ public:
         fChecked = false;
     }
 
+    bool IsNull() const
+    {
+        return CBlockHeader::IsNull();
+    }
+
+    std::pair<COutPoint, unsigned int> GetProofOfStake() const 
+    {
+        return IsProofOfStake()? std::make_pair(prevoutStake, nTime) : std::make_pair(COutPoint(), (unsigned int)0);
+    }
+
     CBlockHeader GetBlockHeader() const
     {
         CBlockHeader block;
@@ -99,8 +129,11 @@ public:
         block.hashPrevBlock  = hashPrevBlock;
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
+        block.nHeight        = nHeight;
         block.nBits          = nBits;
         block.nNonce         = nNonce;
+        block.vchBlockSig    = vchBlockSig;
+        block.prevoutStake   = prevoutStake;
         return block;
     }
 

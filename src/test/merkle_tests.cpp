@@ -4,7 +4,7 @@
 
 #include <consensus/merkle.h>
 #include <test/util/setup_common.h>
-
+#include <hash.h>
 #include <boost/test/unit_test.hpp>
 
 BOOST_FIXTURE_TEST_SUITE(merkle_tests, TestingSetup)

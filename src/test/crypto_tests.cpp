@@ -19,7 +19,7 @@
 #include <streams.h>
 #include <test/util/setup_common.h>
 #include <util/strencodings.h>
-
+#include <hash.h>
 #include <vector>
 
 #include <boost/test/unit_test.hpp>

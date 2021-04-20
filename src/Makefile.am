@@ -4,7 +4,7 @@
 
 # Pattern rule to print variables, e.g. make print-top_srcdir
 print-%:
-	@echo '$*'='$($*)'
+	@echo '$*' = '$($*)'
 
 DIST_SUBDIRS = secp256k1 univalue
 
@@ -36,6 +36,7 @@ LIBRAIN_UTIL=librain_util.a
 LIBRAIN_CRYPTO_BASE=crypto/librain_crypto_base.a
 LIBRAINQT=qt/librainqt.a
 LIBSECP256K1=secp256k1/libsecp256k1.la
+LIBRAIN_SMSG=librain_smsg.a
 
 if ENABLE_ZMQ
 LIBRAIN_ZMQ=librain_zmq.a
@@ -76,6 +77,7 @@ EXTRA_LIBRARIES += \
   $(LIBRAIN_CLI) \
   $(LIBRAIN_WALLET) \
   $(LIBRAIN_WALLET_TOOL) \
+  $(LIBRAIN_SMSG) \
   $(LIBRAIN_ZMQ)
 
 lib_LTLIBRARIES = $(LIBRAINCONSENSUS)
@@ -115,11 +117,20 @@ endif
 # rain core #
 RAIN_CORE_H = \
   addrdb.h \
+  addressindex.h \
+  assetdb.h \
+  spentindex.h \
+  timestampindex.h \
+  addressbook.h \
   addrman.h \
+  asset.h \
+  assetsdir.h \
   attributes.h \
   banman.h \
   base58.h \
   bech32.h \
+  blech32.h \
+  blind.h \
   blockencodings.h \
   blockfilter.h \
   bloom.h \
@@ -137,6 +148,7 @@ RAIN_CORE_H = \
   compat/endian.h \
   compat/sanity.h \
   compressor.h \
+  confidential_validation.h \
   consensus/consensus.h \
   consensus/tx_check.h \
   consensus/tx_verify.h \
@@ -144,12 +156,10 @@ RAIN_CORE_H = \
   core_memusage.h \
   cuckoocache.h \
   dbwrapper.h \
-  external_signer.h \
   flatfile.h \
   fs.h \
   httprpc.h \
   httpserver.h \
-  i2p.h \
   index/base.h \
   index/blockfilterindex.h \
   index/disktxpos.h \
@@ -160,6 +170,7 @@ RAIN_CORE_H = \
   interfaces/handler.h \
   interfaces/node.h \
   interfaces/wallet.h \
+  issuance.h \
   key.h \
   key_io.h \
   logging.h \
@@ -175,7 +186,6 @@ RAIN_CORE_H = \
   netaddress.h \
   netbase.h \
   netmessagemaker.h \
-  node/blockstorage.h \
   node/coin.h \
   node/coinstats.h \
   node/context.h \
@@ -190,6 +200,7 @@ RAIN_CORE_H = \
   policy/policy.h \
   policy/rbf.h \
   policy/settings.h \
+  pos.h \
   pow.h \
   protocol.h \
   psbt.h \
@@ -206,15 +217,23 @@ RAIN_CORE_H = \
   rpc/server.h \
   rpc/util.h \
   scheduler.h \
+  script/compiler.h \
   script/descriptor.h \
   script/keyorigin.h \
+  script/miniscript.h \
   script/sigcache.h \
+  script/sigencoding.h \
+  script/sighashtype.h \
   script/sign.h \
   script/signingprovider.h \
   script/standard.h \
   shutdown.h \
   signet.h \
   streams.h \
+  smsg/db.h \
+  smsg/crypter.h \
+  smsg/net.h \
+  smsg/smessage.h \
   support/allocators/secure.h \
   support/allocators/zeroafterfree.h \
   support/cleanse.h \
@@ -226,15 +245,13 @@ RAIN_CORE_H = \
   timedata.h \
   torcontrol.h \
   txdb.h \
-  txmempool.h \
-  txorphanage.h \
   txrequest.h \
+  txmempool.h \
   undo.h \
   util/asmap.h \
   util/bip32.h \
   util/bytevectorhash.h \
   util/check.h \
-  util/epochguard.h \
   util/error.h \
   util/fees.h \
   util/getuniquepath.h \
@@ -244,7 +261,7 @@ RAIN_CORE_H = \
   util/message.h \
   util/moneystr.h \
   util/rbf.h \
-  util/readwritefile.h \
+  util/ref.h \
   util/settings.h \
   util/sock.h \
   util/spanparsing.h \
@@ -252,7 +269,6 @@ RAIN_CORE_H = \
   util/system.h \
   util/threadnames.h \
   util/time.h \
-  util/tokenpipe.h \
   util/trace.h \
   util/translation.h \
   util/ui_change_type.h \
@@ -269,7 +285,6 @@ RAIN_CORE_H = \
   wallet/crypter.h \
   wallet/db.h \
   wallet/dump.h \
-  wallet/external_signer_scriptpubkeyman.h \
   wallet/feebumper.h \
   wallet/fees.h \
   wallet/ismine.h \
@@ -301,21 +316,23 @@ librain_util_a-clientversion.$(OBJEXT): obj/build.h
 # Contains code accessing mempool and chain state that is meant to be separated
 # from wallet and gui code (see node/README.md). Shared code should go in
 # librain_common or librain_util libraries, instead.
-librain_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES) $(MINIUPNPC_CPPFLAGS) $(NATPMP_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
+librain_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES) $(MINIUPNPC_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
 librain_server_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_server_a_SOURCES = \
   addrdb.cpp \
   addrman.cpp \
+  assetdb.cpp \
+  primitives/assetsdir.cpp \
   banman.cpp \
   blockencodings.cpp \
   blockfilter.cpp \
   chain.cpp \
+  confidential_validation.cpp \
   consensus/tx_verify.cpp \
   dbwrapper.cpp \
   flatfile.cpp \
   httprpc.cpp \
   httpserver.cpp \
-  i2p.cpp \
   index/base.cpp \
   index/blockfilterindex.cpp \
   index/txindex.cpp \
@@ -324,7 +341,6 @@ librain_server_a_SOURCES = \
   miner.cpp \
   net.cpp \
   net_processing.cpp \
-  node/blockstorage.cpp \
   node/coin.cpp \
   node/coinstats.cpp \
   node/context.cpp \
@@ -336,9 +352,11 @@ librain_server_a_SOURCES = \
   policy/fees.cpp \
   policy/rbf.cpp \
   policy/settings.cpp \
+  pos.cpp \
   pow.cpp \
   rest.cpp \
   rpc/blockchain.cpp \
+  rpc/contracts.cpp \
   rpc/mining.cpp \
   rpc/misc.cpp \
   rpc/net.cpp \
@@ -350,9 +368,8 @@ librain_server_a_SOURCES = \
   timedata.cpp \
   torcontrol.cpp \
   txdb.cpp \
-  txmempool.cpp \
-  txorphanage.cpp \
   txrequest.cpp \
+  txmempool.cpp \
   validation.cpp \
   validationinterface.cpp \
   versionbits.cpp \
@@ -382,12 +399,13 @@ endif
 librain_wallet_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES) $(SQLITE_CFLAGS)
 librain_wallet_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_wallet_a_SOURCES = \
+  addressbook.cpp \
+  blind.cpp \
   wallet/coincontrol.cpp \
   wallet/context.cpp \
   wallet/crypter.cpp \
   wallet/db.cpp \
   wallet/dump.cpp \
-  wallet/external_signer_scriptpubkeyman.cpp \
   wallet/feebumper.cpp \
   wallet/fees.cpp \
   wallet/interfaces.cpp \
@@ -485,19 +503,29 @@ librain_consensus_a_SOURCES = \
   hash.cpp \
   hash.h \
   prevector.h \
+  primitives/asset.cpp \
   primitives/block.cpp \
   primitives/block.h \
+  primitives/chainid.cpp \
+  primitives/chainid.h \
+  primitives/confidential.cpp \
+  primitives/confidential.h \
+  primitives/contract.h \
+  primitives/txwitness.cpp \
+  primitives/txwitness.h \
   primitives/transaction.cpp \
   primitives/transaction.h \
   pubkey.cpp \
   pubkey.h \
   script/rainconsensus.cpp \
+  script/compiler.cpp \
   script/interpreter.cpp \
   script/interpreter.h \
   script/script.cpp \
   script/script.h \
   script/script_error.cpp \
   script/script_error.h \
+  script/sigencoding.cpp \
   serialize.h \
   span.h \
   tinyformat.h \
@@ -513,14 +541,16 @@ librain_common_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 librain_common_a_SOURCES = \
   base58.cpp \
   bech32.cpp \
+  blech32.cpp \
   bloom.cpp \
   chainparams.cpp \
   coins.cpp \
   compressor.cpp \
   core_read.cpp \
   core_write.cpp \
-  external_signer.cpp \
+  issuance.cpp \
   key.cpp \
+  smsg/crypter.cpp \
   key_io.cpp \
   merkleblock.cpp \
   netaddress.cpp \
@@ -532,10 +562,10 @@ librain_common_a_SOURCES = \
   protocol.cpp \
   psbt.cpp \
   rpc/rawtransaction_util.cpp \
-  rpc/external_signer.cpp \
   rpc/util.cpp \
   scheduler.cpp \
   script/descriptor.cpp \
+  script/miniscript.cpp \
   script/sign.cpp \
   script/signingprovider.cpp \
   script/standard.cpp \
@@ -552,6 +582,7 @@ librain_util_a_SOURCES = \
   support/lockedpool.cpp \
   chainparamsbase.cpp \
   clientversion.cpp \
+  compat/glibc_sanity.cpp \
   compat/glibcxx_sanity.cpp \
   compat/strnlen.cpp \
   fs.cpp \
@@ -575,19 +606,33 @@ librain_util_a_SOURCES = \
   util/message.cpp \
   util/moneystr.cpp \
   util/rbf.cpp \
-  util/readwritefile.cpp \
   util/settings.cpp \
   util/threadnames.cpp \
   util/spanparsing.cpp \
   util/strencodings.cpp \
   util/string.cpp \
   util/time.cpp \
-  util/tokenpipe.cpp \
   $(RAIN_CORE_H)
 
 if USE_LIBEVENT
 librain_util_a_SOURCES += util/url.cpp
 endif
+
+librain_smsg_a_CPPFLAGS = $(AM_CPPFLAGS) $(RAIN_INCLUDES)
+librain_smsg_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+librain_smsg_a_CFLAGS = $(AM_CFLAGS) $(PIE_FLAGS)
+librain_smsg_a_SOURCES = \
+  lz4/lz4.h \
+  lz4/lz4.c \
+  xxhash/xxhash.h \
+  xxhash/xxhash.c \
+  interfaces/handler.cpp \
+  smsg/crypter.cpp \
+  smsg/keystore.h \
+  smsg/keystore.cpp \
+  smsg/db.cpp \
+  smsg/smessage.cpp \
+  smsg/rpcsmessage.cpp
 
 if GLIBC_BACK_COMPAT
 librain_util_a_SOURCES += compat/glibc_compat.cpp
@@ -617,6 +662,8 @@ rain_daemon_sources += raind-res.rc
 endif
 
 rain_bin_ldadd = \
+  $(LIBRAIN_SMSG) \
+  $(LIBRAIN_SERVER) \
   $(LIBRAIN_WALLET) \
   $(LIBRAIN_COMMON) \
   $(LIBRAIN_UTIL) \

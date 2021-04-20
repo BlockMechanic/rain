@@ -23,11 +23,17 @@ typedef enum ScriptError_t
     SCRIPT_ERR_SIG_COUNT,
     SCRIPT_ERR_PUBKEY_COUNT,
 
+    /* Operands checks */
+    SCRIPT_ERR_INVALID_NUMBER_RANGE,
+    SCRIPT_ERR_IMPOSSIBLE_ENCODING,
+    SCRIPT_ERR_INVALID_SPLIT_RANGE,
+
     /* Failed verify operations */
     SCRIPT_ERR_VERIFY,
     SCRIPT_ERR_EQUALVERIFY,
     SCRIPT_ERR_CHECKMULTISIGVERIFY,
     SCRIPT_ERR_CHECKSIGVERIFY,
+    SCRIPT_ERR_CHECKDATASIGVERIFY,
     SCRIPT_ERR_NUMEQUALVERIFY,
 
     /* Logical/Format/Canonical errors */
@@ -78,15 +84,38 @@ typedef enum ScriptError_t
     SCRIPT_ERR_TAPSCRIPT_CHECKMULTISIG,
     SCRIPT_ERR_TAPSCRIPT_MINIMALIF,
 
+    SCRIPT_ERR_SIG_BADLENGTH,
+
     /* Constant scriptCode */
     SCRIPT_ERR_OP_CODESEPARATOR,
     SCRIPT_ERR_SIG_FINDANDDELETE,
 
-    SCRIPT_ERR_ERROR_COUNT
+    SCRIPT_ERR_ERROR_COUNT,
+
+    SCRIPT_ERR_RANGEPROOF,
+    SCRIPT_ERR_PEDERSEN_TALLY
 } ScriptError;
 
 #define SCRIPT_ERR_LAST SCRIPT_ERR_ERROR_COUNT
 
 std::string ScriptErrorString(const ScriptError error);
+
+namespace {
+
+inline bool set_success(ScriptError* ret)
+{
+    if (ret)
+        *ret = SCRIPT_ERR_OK;
+    return true;
+}
+
+inline bool set_error(ScriptError* ret, const ScriptError serror)
+{
+    if (ret)
+        *ret = serror;
+    return false;
+}
+
+} // namespace
 
 #endif // RAIN_SCRIPT_SCRIPT_ERROR_H

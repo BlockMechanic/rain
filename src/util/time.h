@@ -26,16 +26,9 @@ void UninterruptibleSleep(const std::chrono::microseconds& n);
  * This helper is used to convert durations before passing them over an
  * interface that doesn't support std::chrono (e.g. RPC, debug log, or the GUI)
  */
-constexpr int64_t count_seconds(std::chrono::seconds t) { return t.count(); }
-constexpr int64_t count_milliseconds(std::chrono::milliseconds t) { return t.count(); }
-constexpr int64_t count_microseconds(std::chrono::microseconds t) { return t.count(); }
-
-using SecondsDouble = std::chrono::duration<double, std::chrono::seconds::period>;
-
-/**
- * Helper to count the seconds in any std::chrono::duration type
- */
-inline double CountSecondsDouble(SecondsDouble t) { return t.count(); }
+inline int64_t count_seconds(std::chrono::seconds t) { return t.count(); }
+inline int64_t count_milliseconds(std::chrono::milliseconds t) { return t.count(); }
+inline int64_t count_microseconds(std::chrono::microseconds t) { return t.count(); }
 
 /**
  * DEPRECATED
@@ -86,7 +79,10 @@ struct timeval MillisToTimeval(int64_t nTimeout);
  */
 struct timeval MillisToTimeval(std::chrono::milliseconds ms);
 
-/** Sanity check epoch match normal Unix epoch */
-bool ChronoSanityCheck();
+namespace part
+{
+    std::string GetTimeString(int64_t timestamp, char *buffer, size_t nBuffer);
+    int64_t strToEpoch(const char *input, bool fFillMax=false);
+}
 
 #endif // RAIN_UTIL_TIME_H

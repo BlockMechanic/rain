@@ -6,6 +6,7 @@
 #define RAIN_QT_TRANSACTIONRECORD_H
 
 #include <amount.h>
+#include <primitives/asset.h>
 #include <uint256.h>
 
 #include <QList>
@@ -76,31 +77,34 @@ public:
     {
         Other,
         Generated,
+        Staked,
         SendToAddress,
         SendToOther,
         RecvWithAddress,
         RecvFromOther,
-        SendToSelf
+        SendToSelf,
+        Fee,
+        IssuedAsset,
     };
 
     /** Number of confirmation recommended for accepting a transaction */
     static const int RecommendedNumConfirmations = 6;
 
     TransactionRecord():
-            hash(), time(0), type(Other), address(""), debit(0), credit(0), idx(0)
+            hash(), time(0), type(Other), address(""), debit(CAmountMap()), credit(CAmountMap()), idx(0)
     {
     }
 
     TransactionRecord(uint256 _hash, qint64 _time):
-            hash(_hash), time(_time), type(Other), address(""), debit(0),
-            credit(0), idx(0)
+            hash(_hash), time(_time), type(Other), address(""), debit(CAmountMap()), credit(CAmountMap()), idx(0)
     {
     }
 
     TransactionRecord(uint256 _hash, qint64 _time,
                 Type _type, const std::string &_address,
-                const CAmount& _debit, const CAmount& _credit):
+                const CAmountMap& _debit, const CAmountMap& _credit, const CAsset& _asset):
             hash(_hash), time(_time), type(_type), address(_address), debit(_debit), credit(_credit),
+            asset(_asset),
             idx(0)
     {
     }
@@ -116,8 +120,9 @@ public:
     qint64 time;
     Type type;
     std::string address;
-    CAmount debit;
-    CAmount credit;
+    CAmountMap debit;
+    CAmountMap credit;
+    CAsset asset;
     /**@}*/
 
     /** Subtransaction index, for sort key */
@@ -138,6 +143,10 @@ public:
     /** Update status from core wallet tx.
      */
     void updateStatus(const interfaces::WalletTxStatus& wtx, const uint256& block_hash, int numBlocks, int64_t block_time);
+
+    /** Return true if the tx is a coinstake
+     */
+    bool isCoinStake() const;
 
     /** Return whether a status update is needed.
      */

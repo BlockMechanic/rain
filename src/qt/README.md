@@ -61,7 +61,7 @@ To run:
 
 * UI elements like RainAmountField, which inherit from QWidget.
 * `rainstrings.cpp`: automatically generated
-* `rainunits.(h/cpp)`: RAIN / mRAIN / etc. handling
+* `rainunits.(h/cpp)`: BTC / mBTC / etc. handling
 * `callback.h`
 * `guiconstants.h`: UI colors, app name, etc.
 * `guiutil.h`: several helper functions

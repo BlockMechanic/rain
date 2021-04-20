@@ -87,20 +87,36 @@ struct AmountCompression
 {
     template<typename Stream, typename I> void Ser(Stream& s, I val)
     {
-        s << VARINT(CompressAmount(val));
+        //s << VARINT(CompressAmount(val));
+                if (val.IsExplicit()) {
+                    uint8_t b = 0;
+                    s << (b);
+                    uint64_t nVal = CompressAmount(val.GetAmount());
+                    s << (VARINT(nVal));
+                } else {
+                    uint8_t b = 1;
+                    s << (b);
+                    s << (val);
+                }
     }
     template<typename Stream, typename I> void Unser(Stream& s, I& val)
     {
-        uint64_t v;
-        s >> VARINT(v);
-        val = DecompressAmount(v);
+                uint8_t type = 0;
+                s >> (type);
+                if (type == 0) {
+                    uint64_t nVal = 0;
+                    s >> (VARINT(nVal));
+                    val = DecompressAmount(nVal);
+                } else {
+                    s >> (val);
+                }
     }
 };
 
 /** wrapper for CTxOut that provides a more compact serialization */
 struct TxOutCompression
 {
-    FORMATTER_METHODS(CTxOut, obj) { READWRITE(Using<AmountCompression>(obj.nValue), Using<ScriptCompression>(obj.scriptPubKey)); }
+    FORMATTER_METHODS(CTxOut, obj) { READWRITE(Using<AmountCompression>(obj.nValue), obj.nAsset, Using<ScriptCompression>(obj.scriptPubKey), obj.nNonce); }
 };
 
 #endif // RAIN_COMPRESSOR_H

@@ -15,7 +15,6 @@
 
 #include <map>
 
-// Database-independent metric indicating the UTXO set size
 static uint64_t GetBogoSize(const CScript& scriptPubKey)
 {
     return 32 /* txid */ +
@@ -30,12 +29,12 @@ static void ApplyHash(CCoinsStats& stats, CHashWriter& ss, const uint256& hash, 
 {
     if (it == outputs.begin()) {
         ss << hash;
-        ss << VARINT(it->second.nHeight * 2 + it->second.fCoinBase ? 1u : 0u);
+        ss << VARINT((outputs.begin()->second.nHeight << 2) + (outputs.begin()->second.fCoinBase ? 1u : 0u) + (outputs.begin()->second.fCoinStake ? 2u : 0u));
     }
 
     ss << VARINT(it->first + 1);
     ss << it->second.out.scriptPubKey;
-    ss << VARINT_MODE(it->second.out.nValue, VarIntMode::NONNEGATIVE_SIGNED);
+    ss << VARINT_MODE(it->second.out.nValue.GetAmount(), VarIntMode::NONNEGATIVE_SIGNED);
 
     if (it == std::prev(outputs.end())) {
         ss << VARINT(0u);
@@ -51,7 +50,7 @@ static void ApplyHash(CCoinsStats& stats, MuHash3072& muhash, const uint256& has
 
     CDataStream ss(SER_DISK, PROTOCOL_VERSION);
     ss << outpoint;
-    ss << static_cast<uint32_t>(coin.nHeight * 2 + coin.fCoinBase);
+    ss << static_cast<uint32_t>(coin.nHeight * 2 + coin.fCoinBase + coin.fCoinStake);
     ss << coin.out;
     muhash.Insert(MakeUCharSpan(ss));
 }
@@ -77,14 +76,14 @@ static void ApplyStats(CCoinsStats& stats, T& hash_obj, const uint256& hash, con
         ApplyHash(stats, hash_obj, hash, outputs, it);
 
         stats.nTransactionOutputs++;
-        stats.nTotalAmount += it->second.out.nValue;
+        stats.nTotalAmount += it->second.out.nValue.GetAmount();
         stats.nBogoSize += GetBogoSize(it->second.out.scriptPubKey);
     }
 }
 
 //! Calculate statistics about the unspent transaction output set
 template <typename T>
-static bool GetUTXOStats(CCoinsView* view, BlockManager& blockman, CCoinsStats& stats, T hash_obj, const std::function<void()>& interruption_point)
+static bool GetUTXOStats(CCoinsView* view, CCoinsStats& stats, T hash_obj, const std::function<void()>& interruption_point)
 {
     stats = CCoinsStats();
     std::unique_ptr<CCoinsViewCursor> pcursor(view->Cursor());
@@ -93,9 +92,7 @@ static bool GetUTXOStats(CCoinsView* view, BlockManager& blockman, CCoinsStats& 
     stats.hashBlock = pcursor->GetBestBlock();
     {
         LOCK(cs_main);
-        assert(std::addressof(g_chainman.m_blockman) == std::addressof(blockman));
-        const CBlockIndex* block = blockman.LookupBlockIndex(stats.hashBlock);
-        stats.nHeight = Assert(block)->nHeight;
+        stats.nHeight = g_chainman.m_blockman.LookupBlockIndex(stats.hashBlock)->nHeight;
     }
 
     PrepareHash(hash_obj, stats);
@@ -129,19 +126,19 @@ static bool GetUTXOStats(CCoinsView* view, BlockManager& blockman, CCoinsStats& 
     return true;
 }
 
-bool GetUTXOStats(CCoinsView* view, BlockManager& blockman, CCoinsStats& stats, CoinStatsHashType hash_type, const std::function<void()>& interruption_point)
+bool GetUTXOStats(CCoinsView* view, CCoinsStats& stats, CoinStatsHashType hash_type, const std::function<void()>& interruption_point)
 {
     switch (hash_type) {
     case(CoinStatsHashType::HASH_SERIALIZED): {
         CHashWriter ss(SER_GETHASH, PROTOCOL_VERSION);
-        return GetUTXOStats(view, blockman, stats, ss, interruption_point);
+        return GetUTXOStats(view, stats, ss, interruption_point);
     }
     case(CoinStatsHashType::MUHASH): {
         MuHash3072 muhash;
-        return GetUTXOStats(view, blockman, stats, muhash, interruption_point);
+        return GetUTXOStats(view, stats, muhash, interruption_point);
     }
     case(CoinStatsHashType::NONE): {
-        return GetUTXOStats(view, blockman, stats, nullptr, interruption_point);
+        return GetUTXOStats(view, stats, nullptr, interruption_point);
     }
     } // no default case, so the compiler can warn about missing cases
     assert(false);

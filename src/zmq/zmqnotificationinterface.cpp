@@ -38,6 +38,8 @@ CZMQNotificationInterface* CZMQNotificationInterface::Create()
     factories["pubrawtx"] = CZMQAbstractNotifier::Create<CZMQPublishRawTransactionNotifier>;
     factories["pubsequence"] = CZMQAbstractNotifier::Create<CZMQPublishSequenceNotifier>;
 
+    factories["pubsmsg"] = CZMQAbstractNotifier::Create<CZMQPublishSMSGNotifier>;
+
     std::list<std::unique_ptr<CZMQAbstractNotifier>> notifiers;
     for (const auto& entry : factories)
     {
@@ -188,4 +190,10 @@ void CZMQNotificationInterface::BlockDisconnected(const std::shared_ptr<const CB
     });
 }
 
+void CZMQNotificationInterface::NewSecureMessage(const smsg::SecureMessage *psmsg, const uint160 &hash)
+{
+    TryForEachAndRemoveFailed(notifiers, [psmsg, &hash](CZMQAbstractNotifier* notifier) {
+        return notifier->NotifySecureMessage(psmsg, hash);
+    });
+}
 CZMQNotificationInterface* g_zmq_notification_interface = nullptr;

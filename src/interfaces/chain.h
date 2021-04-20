@@ -7,7 +7,7 @@
 
 #include <primitives/transaction.h> // For CTransactionRef
 #include <util/settings.h>          // For util::SettingsValue
-
+#include <txmempool.h>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <util/ui_change_type.h>
 
 class ArgsManager;
 class CBlock;
@@ -22,7 +23,14 @@ class CFeeRate;
 class CRPCCommand;
 class CScheduler;
 class Coin;
+class CChain;
 class uint256;
+class CWallet;
+class CKeyID;
+//class SecureMessaging;
+//class MessageData;
+//class SecMsgStored;
+//class SecureMessageHeader;
 enum class MemPoolRemovalReason;
 enum class RBFTransactionState;
 struct bilingual_str;
@@ -96,9 +104,20 @@ public:
     //! any blocks)
     virtual std::optional<int> getHeight() = 0;
 
+    virtual size_t getNodes() = 0;
+    virtual CAsset getAsset(std::string sAssetName) = 0;
+    virtual std::vector<CAsset> getAllAssets() =0;
+
+    virtual CTxMemPool& getMempool() = 0;
+    virtual CBlockIndex * currentTip() = 0;
+    virtual CChain& chainActive() =0;
+    virtual void startStake(bool fStake, CWallet *pwallet, std::thread* stakeThread) = 0;
+    virtual bool getCoinStake(const uint256 &blockHash, CTransactionRef &tx) EXCLUSIVE_LOCKS_REQUIRED(cs_main)  =0;
+    virtual	bool checkKernel(unsigned int nBits, uint32_t nTimeBlock, const COutPoint& prevout) =0;    
+    virtual CAmountMap getBlockSubsidy(int nHeight, bool fProofofStake, int64_t coinage, CAmountMap supply) = 0;
+    virtual bool getCoinAge(const CTransaction& tx, uint64_t& nCoinAge) =0;
     //! Get block hash. Height must be valid or this function will abort.
     virtual uint256 getBlockHash(int height) = 0;
-
     //! Check that the block is available on disk (i.e. has not been
     //! pruned), and contains transactions.
     virtual bool haveBlockOnDisk(int height) = 0;
@@ -113,11 +132,15 @@ public:
 
     //! Check if transaction will be final given chain height current time.
     virtual bool checkFinalTx(const CTransaction& tx) = 0;
-
+    virtual bool isFinalTx(const CTransaction& tx, int& nBlockHeight, int64_t& nBlockTime) = 0;
     //! Return whether node has the block and optionally return block metadata
     //! or contents.
     virtual bool findBlock(const uint256& hash, const FoundBlock& block={}) = 0;
 
+    virtual int adjustDifficulty(int64_t time) =0;
+    virtual int walletKeyChanged(CKeyID &keyId, const std::string &sLabel, ChangeType mode) =0;
+    virtual int walletUnlocked(CWallet *pwallet) =0;
+    virtual int addLocalAddress(const std::string &sAddress) =0;
     //! Find first block in the chain with timestamp >= the given time
     //! and height >= than the given height, return false if there is no block
     //! with a high enough timestamp and height. Optionally return block
@@ -277,6 +300,7 @@ public:
     //! to be prepared to handle this by ignoring notifications about unknown
     //! removed transactions and already added new transactions.
     virtual void requestMempoolTransactions(Notifications& notifications) = 0;
+    virtual int64_t getSmsgFeeRate(const CBlockIndex *pindex, bool reduce_height=false) = 0;
 };
 
 //! Interface to let node manage chain clients (wallets, or maybe tools for

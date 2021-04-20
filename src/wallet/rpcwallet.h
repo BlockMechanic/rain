@@ -7,7 +7,6 @@
 
 #include <span.h>
 
-#include <any>
 #include <memory>
 #include <string>
 #include <vector>
@@ -20,7 +19,8 @@ class UniValue;
 class CTransaction;
 struct PartiallySignedTransaction;
 struct WalletContext;
-
+class CCoinControl;
+struct CRecipient;
 Span<const CRPCCommand> GetWalletRPCCommands();
 
 /**
@@ -30,11 +30,13 @@ Span<const CRPCCommand> GetWalletRPCCommands();
  * @return nullptr if no wallet should be used, or a pointer to the CWallet
  */
 std::shared_ptr<CWallet> GetWalletForJSONRPCRequest(const JSONRPCRequest& request);
-
-void EnsureWalletIsUnlocked(const CWallet&);
-WalletContext& EnsureWalletContext(const std::any& context);
+typedef std::map<std::string, std::string> mapValue_t;
+void EnsureWalletIsUnlocked(const CWallet*);
+WalletContext& EnsureWalletContext(const util::Ref& context);
 LegacyScriptPubKeyMan& EnsureLegacyScriptPubKeyMan(CWallet& wallet, bool also_create = false);
-
+UniValue SendMoney(CWallet* const pwallet, CTransactionRef& tx, const CCoinControl &coin_control, std::vector<CRecipient> &recipients, mapValue_t map_value, bool verbose);
 RPCHelpMan getaddressinfo();
 RPCHelpMan signrawtransactionwithwallet();
+void ParseCoinControlOptions(const UniValue &obj, CWallet *pwallet, CCoinControl &coin_control);
+
 #endif //RAIN_WALLET_RPCWALLET_H

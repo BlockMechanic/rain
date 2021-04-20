@@ -95,7 +95,7 @@ void AppTests::appTests()
 void AppTests::guiTests(RainGUI* window)
 {
     HandleCallback callback{"guiTests", *this};
-    connect(window, &RainGUI::consoleShown, this, &AppTests::consoleTests);
+    //connect(window, &RainMobileGUI::consoleShown, this, &AppTests::consoleTests);
     expectCallback("consoleTests");
     QAction* action = window->findChild<QAction*>("openRPCConsoleAction");
     action->activate(QAction::Trigger);

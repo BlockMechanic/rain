@@ -25,6 +25,10 @@ public:
     virtual bool GetKey(const CKeyID &address, CKey& key) const { return false; }
     virtual bool HaveKey(const CKeyID &address) const { return false; }
     virtual bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const { return false; }
+    //! Support for HTLC preimages
+    virtual bool GetPreimage(const std::vector<unsigned char>& image, std::vector<unsigned char>& preimage) const  { return false; }
+    virtual bool AddPreimage(const std::vector<unsigned char>& image, const std::vector<unsigned char>& preimage) { return false; }
+
 };
 
 extern const SigningProvider& DUMMY_SIGNING_PROVIDER;
@@ -116,6 +120,9 @@ protected:
     ScriptMap mapScripts GUARDED_BY(cs_KeyStore);
 
     void ImplicitlyLearnRelatedKeyScripts(const CPubKey& pubkey) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
+    typedef std::map<std::vector<unsigned char>, std::vector<unsigned char>> PreimageMap;
+    PreimageMap mapPreimages;
+
 
 public:
     mutable RecursiveMutex cs_KeyStore;
@@ -130,6 +137,8 @@ public:
     virtual bool HaveCScript(const CScriptID &hash) const override;
     virtual std::set<CScriptID> GetCScripts() const;
     virtual bool GetCScript(const CScriptID &hash, CScript& redeemScriptOut) const override;
+    virtual bool GetPreimage(const std::vector<unsigned char>& image, std::vector<unsigned char>& preimage) const override;
+    virtual bool AddPreimage(const std::vector<unsigned char>& image, const std::vector<unsigned char>& preimage);
 };
 
 /** Return the CKeyID of the key involved in a script (if there is a unique one). */

@@ -68,6 +68,7 @@ static constexpr unsigned int STANDARD_SCRIPT_VERIFY_FLAGS = MANDATORY_SCRIPT_VE
                                                              SCRIPT_VERIFY_NULLFAIL |
                                                              SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY |
                                                              SCRIPT_VERIFY_CHECKSEQUENCEVERIFY |
+                                                             SCRIPT_VERIFY_CHECKDATASIG_SIGOPS |
                                                              SCRIPT_VERIFY_LOW_S |
                                                              SCRIPT_VERIFY_WITNESS |
                                                              SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM |
@@ -121,16 +122,12 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
 /** Compute the virtual transaction size (weight reinterpreted as bytes). */
 int64_t GetVirtualTransactionSize(int64_t nWeight, int64_t nSigOpCost, unsigned int bytes_per_sigop);
 int64_t GetVirtualTransactionSize(const CTransaction& tx, int64_t nSigOpCost, unsigned int bytes_per_sigop);
-int64_t GetVirtualTransactionInputSize(const CTxIn& tx, int64_t nSigOpCost, unsigned int bytes_per_sigop);
 
 static inline int64_t GetVirtualTransactionSize(const CTransaction& tx)
 {
     return GetVirtualTransactionSize(tx, 0, 0);
 }
 
-static inline int64_t GetVirtualTransactionInputSize(const CTxIn& tx)
-{
-    return GetVirtualTransactionInputSize(tx, 0, 0);
-}
+int64_t GetVirtualTransactionInputSize(const CTransaction& tx, const size_t nIn, int64_t nSigOpCost = 0, unsigned int bytes_per_sigop = 0);
 
 #endif // RAIN_POLICY_POLICY_H

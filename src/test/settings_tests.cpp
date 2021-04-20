@@ -7,7 +7,7 @@
 #include <test/util/setup_common.h>
 #include <test/util/str.h>
 
-
+#include <hash.h>
 #include <boost/test/unit_test.hpp>
 #include <univalue.h>
 #include <util/strencodings.h>

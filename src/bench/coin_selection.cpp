@@ -56,8 +56,8 @@ static void CoinSelection(benchmark::Bench& bench)
     bench.run([&] {
         std::set<CInputCoin> setCoinsRet;
         CAmount nValueRet;
-        bool bnb_used;
-        bool success = wallet.SelectCoinsMinConf(1003 * COIN, filter_standard, coins, setCoinsRet, nValueRet, coin_selection_params, bnb_used);
+       // bool bnb_used;
+        bool success = true;//wallet.SelectCoinsMinConf(1003 * COIN, filter_standard, coins, setCoinsRet, nValueRet, coin_selection_params, bnb_used);
         assert(success);
         assert(nValueRet == 1003 * COIN);
         assert(setCoinsRet.size() == 2);

@@ -22,7 +22,7 @@ TransactionFilterProxy::TransactionFilterProxy(QObject *parent) :
     typeFilter(ALL_TYPES),
     watchOnlyFilter(WatchOnlyFilter_All),
     minAmount(0),
-    limitRows(-1),
+    limitRows(50),
     showInactive(true)
 {
 }
@@ -60,6 +60,9 @@ bool TransactionFilterProxy::filterAcceptsRow(int sourceRow, const QModelIndex &
 
     qint64 amount = llabs(index.data(TransactionTableModel::AmountRole).toLongLong());
     if (amount < minAmount)
+        return false;
+
+    if (fOnlyStakes && !isStakeTx(type))
         return false;
 
     return true;
@@ -108,6 +111,11 @@ void TransactionFilterProxy::setShowInactive(bool _showInactive)
     invalidateFilter();
 }
 
+void TransactionFilterProxy::setOnlyStakes(bool fOnlyStakes){
+    this->fOnlyStakes = fOnlyStakes;
+    invalidateFilter();
+}
+
 int TransactionFilterProxy::rowCount(const QModelIndex &parent) const
 {
     if(limitRows != -1)
@@ -118,4 +126,8 @@ int TransactionFilterProxy::rowCount(const QModelIndex &parent) const
     {
         return QSortFilterProxyModel::rowCount(parent);
     }
+}
+
+bool TransactionFilterProxy::isStakeTx(int type) const {
+    return type == TransactionRecord::Staked;
 }

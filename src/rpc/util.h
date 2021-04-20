@@ -78,18 +78,21 @@ extern std::vector<unsigned char> ParseHexV(const UniValue& v, std::string strNa
 extern std::vector<unsigned char> ParseHexO(const UniValue& o, std::string strKey);
 
 extern CAmount AmountFromValue(const UniValue& value);
-
-using RPCArgList = std::vector<std::pair<std::string, UniValue>>;
 extern std::string HelpExampleCli(const std::string& methodname, const std::string& args);
-extern std::string HelpExampleCliNamed(const std::string& methodname, const RPCArgList& args);
 extern std::string HelpExampleRpc(const std::string& methodname, const std::string& args);
-extern std::string HelpExampleRpcNamed(const std::string& methodname, const RPCArgList& args);
 
 CPubKey HexToPubKey(const std::string& hex_in);
 CPubKey AddrToPubKey(const FillableSigningProvider& keystore, const std::string& addr_in);
 CTxDestination AddAndGetMultisigDestination(const int required, const std::vector<CPubKey>& pubkeys, OutputType type, FillableSigningProvider& keystore, CScript& script_out);
 
 UniValue DescribeAddress(const CTxDestination& dest);
+UniValue DescribeBlindAddress(const CTxDestination& dest);
+CPubKey GetDestinationBlindingKey(const CTxDestination& dest);
+bool IsBlindDestination(const CTxDestination& dest);
+
+UniValue AmountMapToUniv(const CAmountMap& balanceOrig);
+
+bool GetBool(const UniValue &uv);
 
 //! Parse a confirm target option and raise an RPC error if it is invalid.
 unsigned int ParseConfirmTarget(const UniValue& value, unsigned int max_target);
@@ -145,9 +148,7 @@ struct RPCArg {
          */
         OMITTED,
     };
-    using DefaultHint = std::string;
-    using Default = UniValue;
-    using Fallback = std::variant<Optional, /* hint for default value */ DefaultHint, /* default constant value */ Default>;
+    using Fallback = std::variant<Optional, /* default value for optional args */ std::string>;
     const std::string m_names; //!< The name of the arg (can be empty for inner args, can contain multiple aliases separated by | for named request arguments)
     const Type m_type;
     const bool m_hidden;
@@ -229,7 +230,6 @@ struct RPCResult {
         NUM,
         BOOL,
         NONE,
-        ANY,        //!< Special type to disable type checks (for testing only)
         STR_AMOUNT, //!< Special string to represent a floating point amount
         STR_HEX,    //!< Special string with only hex chars
         OBJ_DYN,    //!< Special dictionary with keys that are not literals
@@ -285,8 +285,8 @@ struct RPCResult {
           m_description{std::move(description)},
           m_cond{}
     {
-        const bool inner_needed{type == Type::ARR || type == Type::ARR_FIXED || type == Type::OBJ || type == Type::OBJ_DYN};
-        CHECK_NONFATAL(inner_needed != inner.empty());
+      //  const bool inner_needed{type == Type::ARR || type == Type::ARR_FIXED || type == Type::OBJ || type == Type::OBJ_DYN};
+      //  CHECK_NONFATAL(inner_needed != inner.empty());
     }
 
     RPCResult(
@@ -302,8 +302,6 @@ struct RPCResult {
     std::string ToStringObj() const;
     /** Return the description string, including the result type. */
     std::string ToDescriptionString() const;
-    /** Check whether the result JSON type matches. */
-    bool MatchesType(const UniValue& result) const;
 };
 
 struct RPCResults {
@@ -342,12 +340,26 @@ public:
     using RPCMethodImpl = std::function<UniValue(const RPCHelpMan&, const JSONRPCRequest&)>;
     RPCHelpMan(std::string name, std::string description, std::vector<RPCArg> args, RPCResults results, RPCExamples examples, RPCMethodImpl fun);
 
-    UniValue HandleRequest(const JSONRPCRequest& request) const;
     std::string ToString() const;
-    /** Return the named args that need to be converted from string to another JSON type */
-    UniValue GetArgMap() const;
+    /** Append the named args that need to be converted from string to another JSON type */
+    void AppendArgMap(UniValue& arr) const;
+    UniValue HandleRequest(const JSONRPCRequest& request)
+    {
+        Check(request);
+        return m_fun(*this, request);
+    }
     /** If the supplied number of args is neither too small nor too high */
     bool IsValidNumArgs(size_t num_args) const;
+    /**
+     * Check if the given request is valid according to this command or if
+     * the user is asking for help information, and throw help when appropriate.
+     */
+    inline void Check(const JSONRPCRequest& request) const {
+        if (request.fHelp || !IsValidNumArgs(request.params.size())) {
+            throw std::runtime_error(ToString());
+        }
+    }
+
     std::vector<std::string> GetArgNames() const;
 
     const std::string m_name;

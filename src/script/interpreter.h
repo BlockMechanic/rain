@@ -20,18 +20,7 @@ class CTransaction;
 class CTxOut;
 class uint256;
 
-/** Signature hash types/flags */
-enum
-{
-    SIGHASH_ALL = 1,
-    SIGHASH_NONE = 2,
-    SIGHASH_SINGLE = 3,
-    SIGHASH_ANYONECANPAY = 0x80,
-
-    SIGHASH_DEFAULT = 0, //!< Taproot only; implied when sighash byte is missing, and equivalent to SIGHASH_ALL
-    SIGHASH_OUTPUT_MASK = 3,
-    SIGHASH_INPUT_MASK = 0x80,
-};
+typedef std::vector<unsigned char> valtype;
 
 /** Script verification flags.
  *
@@ -139,6 +128,16 @@ enum
 
     // Making unknown public key versions (in BIP 342 scripts) non-standard
     SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE = (1U << 20),
+
+    // Count sigops for OP_CHECKDATASIG and variant. The interpreter treats
+    // OP_CHECKDATASIG(VERIFY) as always valid. This flag only affects sigops
+    // counting, and will be removed during cleanup of the SigChecks upgrade.    
+    SCRIPT_VERIFY_CHECKDATASIG_SIGOPS = (1U << 21),
+
+    // Signature checking assumes no sighash byte after the DER signature
+    //
+    SCRIPT_NO_SIGHASH_BYTE = (1U << 22),
+
 };
 
 bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned int flags, ScriptError* serror);
@@ -146,17 +145,18 @@ bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned i
 struct PrecomputedTransactionData
 {
     // BIP341 precomputed data.
-    // These are single-SHA256, see https://github.com/rain/bips/blob/master/bip-0341.mediawiki#cite_note-15.
+    // These are single-SHA256, see https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#cite_note-15.
     uint256 m_prevouts_single_hash;
     uint256 m_sequences_single_hash;
     uint256 m_outputs_single_hash;
+    uint256 m_issuance_single_hash;
     uint256 m_spent_amounts_single_hash;
     uint256 m_spent_scripts_single_hash;
     //! Whether the 5 fields above are initialized.
     bool m_bip341_taproot_ready = false;
 
     // BIP143 precomputed data (double-SHA256).
-    uint256 hashPrevouts, hashSequence, hashOutputs;
+    uint256 hashPrevouts, hashSequence, hashOutputs, hashIssuance;
     //! Whether the 3 fields above are initialized.
     bool m_bip143_segwit_ready = false;
 
@@ -219,11 +219,15 @@ static constexpr size_t TAPROOT_CONTROL_MAX_NODE_COUNT = 128;
 static constexpr size_t TAPROOT_CONTROL_MAX_SIZE = TAPROOT_CONTROL_BASE_SIZE + TAPROOT_CONTROL_NODE_SIZE * TAPROOT_CONTROL_MAX_NODE_COUNT;
 
 template <class T>
-uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int nHashType, const CAmount& amount, SigVersion sigversion, const PrecomputedTransactionData* cache = nullptr);
+uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int nHashType, const CConfidentialValue& amount, SigVersion sigversion, const PrecomputedTransactionData* cache = nullptr);
 
 class BaseSignatureChecker
 {
 public:
+    virtual bool VerifySignature(const std::vector<uint8_t> &vchSig,
+                                 const CPubKey &vchPubKey,
+                                 const uint256 &sighash) const;
+
     virtual bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const
     {
         return false;
@@ -247,23 +251,13 @@ public:
     virtual ~BaseSignatureChecker() {}
 };
 
-/** Enum to specify what *TransactionSignatureChecker's behavior should be
- *  when dealing with missing transaction data.
- */
-enum class MissingDataBehavior
-{
-    ASSERT_FAIL,  //!< Abort execution through assertion failure (for consensus code)
-    FAIL,         //!< Just act as if the signature was invalid
-};
-
 template <class T>
 class GenericTransactionSignatureChecker : public BaseSignatureChecker
 {
 private:
     const T* txTo;
-    const MissingDataBehavior m_mdb;
     unsigned int nIn;
-    const CAmount amount;
+    const CConfidentialValue amount;
     const PrecomputedTransactionData* txdata;
 
 protected:
@@ -271,8 +265,8 @@ protected:
     virtual bool VerifySchnorrSignature(Span<const unsigned char> sig, const XOnlyPubKey& pubkey, const uint256& sighash) const;
 
 public:
-    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, MissingDataBehavior mdb) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), txdata(nullptr) {}
-    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn, MissingDataBehavior mdb) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
+    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CConfidentialValue& amountIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(nullptr) {}
+    GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CConfidentialValue& amountIn, const PrecomputedTransactionData& txdataIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
     bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override;
     bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, const ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override;
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
@@ -282,34 +276,6 @@ public:
 using TransactionSignatureChecker = GenericTransactionSignatureChecker<CTransaction>;
 using MutableTransactionSignatureChecker = GenericTransactionSignatureChecker<CMutableTransaction>;
 
-class DeferringSignatureChecker : public BaseSignatureChecker
-{
-protected:
-    BaseSignatureChecker& m_checker;
-
-public:
-    DeferringSignatureChecker(BaseSignatureChecker& checker) : m_checker(checker) {}
-
-    bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override
-    {
-        return m_checker.CheckECDSASignature(scriptSig, vchPubKey, scriptCode, sigversion);
-    }
-
-    bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, const ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override
-    {
-        return m_checker.CheckSchnorrSignature(sig, pubkey, sigversion, execdata, serror);
-    }
-
-    bool CheckLockTime(const CScriptNum& nLockTime) const override
-    {
-        return m_checker.CheckLockTime(nLockTime);
-    }
-    bool CheckSequence(const CScriptNum& nSequence) const override
-    {
-        return m_checker.CheckSequence(nSequence);
-    }
-};
-
 bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& script, unsigned int flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* error = nullptr);
 bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& script, unsigned int flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptError* error = nullptr);
 bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const CScriptWitness* witness, unsigned int flags, const BaseSignatureChecker& checker, ScriptError* serror = nullptr);
@@ -317,5 +283,13 @@ bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const C
 size_t CountWitnessSigOps(const CScript& scriptSig, const CScript& scriptPubKey, const CScriptWitness* witness, unsigned int flags);
 
 int FindAndDelete(CScript& script, const CScript& b);
+
+bool IsLowDERSignature(const valtype &vchSig, ScriptError* serror = nullptr, bool haveHashType = true);
+
+bool IsDERSignature(const valtype &vchSig, ScriptError* serror = nullptr, bool haveHashType = true);
+
+bool IsCompressedOrUncompressedPubKey(const valtype &vchPubKey);
+
+bool CheckMinimalPush(const std::vector<unsigned char>& data, opcodetype opcode);
 
 #endif // RAIN_SCRIPT_INTERPRETER_H

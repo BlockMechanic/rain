@@ -10,7 +10,6 @@
 #include <test/fuzz/FuzzedDataProvider.h>
 #include <test/fuzz/fuzz.h>
 #include <test/fuzz/util.h>
-#include <test/util/setup_common.h>
 
 #include <cstdint>
 #include <optional>
@@ -18,7 +17,7 @@
 
 void initialize_signet()
 {
-    static const auto testing_setup = MakeNoLogFileContext<>(CBaseChainParams::SIGNET);
+    static const auto testing_setup = MakeFuzzingContext<>(CBaseChainParams::SIGNET);
 }
 
 FUZZ_TARGET_INIT(signet, initialize_signet)

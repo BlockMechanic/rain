@@ -28,8 +28,10 @@ class ClientModel;
 class OptionsModel;
 class PlatformStyle;
 class RecentRequestsTableModel;
-class SendCoinsRecipient;
+class SendAssetsRecipient;
 class TransactionTableModel;
+class AssetTableModel;
+class CoinControlModel;
 class WalletModelTransaction;
 
 class CCoinControl;
@@ -64,25 +66,33 @@ public:
         AmountExceedsBalance,
         AmountWithFeeExceedsBalance,
         DuplicateAddress,
-        TransactionCreationFailed, // Error returned when wallet is still locked
+        TransactionCreationFailed,
+        TransactionCheckFailed,
+        TransactionCommitFailed,
+        StakingOnlyUnlocked,
         AbsurdFee,
+        CannotCreateInternalAddress,
         PaymentRequestExpired
     };
 
-    enum EncryptionStatus
-    {
-        Unencrypted,  // !wallet->IsCrypted()
-        Locked,       // wallet->IsCrypted() && wallet->IsLocked()
-        Unlocked      // wallet->IsCrypted() && !wallet->IsLocked()
+    enum EncryptionStatus {
+        Unencrypted,                 // !wallet->IsCrypted()
+        Locked,                      // wallet->IsCrypted() && wallet->IsLocked()
+        Unlocked,                    // wallet->IsCrypted() && !wallet->IsLocked()
+        UnlockedForStaking          // wallet->IsCrypted() && !wallet->IsLocked() && wallet->fWalletUnlockStaking
     };
 
-    OptionsModel *getOptionsModel();
-    AddressTableModel *getAddressTableModel();
-    TransactionTableModel *getTransactionTableModel();
-    RecentRequestsTableModel *getRecentRequestsTableModel();
+    OptionsModel* getOptionsModel();
+    AddressTableModel* getAddressTableModel();
+    TransactionTableModel* getTransactionTableModel();
+    AssetTableModel* getAssetTableModel();
+    CoinControlModel* getCoinControlModel();
+    RecentRequestsTableModel* getRecentRequestsTableModel();
 
+    std::set<CAsset> getAssetTypes() const;
     EncryptionStatus getEncryptionStatus() const;
-
+    bool isWalletUnlocked() const;
+    bool isWalletLocked(bool fFullUnlocked = true) const;
     // Check address for validity
     bool validateAddress(const QString &address);
 
@@ -107,14 +117,24 @@ public:
     // Wallet encryption
     bool setWalletEncrypted(const SecureString& passphrase);
     // Passphrase only needed when unlocking
-    bool setWalletLocked(bool locked, const SecureString &passPhrase=SecureString());
+    bool setWalletLocked(bool locked, const SecureString &passPhrase=SecureString(), bool stakingOnly = false);
     bool changePassphrase(const SecureString &oldPass, const SecureString &newPass);
+
+    bool getWalletUnlockStakingOnly();
+    void setWalletUnlockStakingOnly(bool unlock);
+
+    // Method used to "lock" the wallet only for staking purposes. Just a flag that should prevent possible movements in the wallet.
+    // Passphrase only needed when unlocking.
+    bool lockForStakingOnly(const SecureString& passPhrase = SecureString());
+
+    // Is wallet unlocked for staking only?
+    bool isStakingOnlyUnlocked();
 
     // RAI object for unlocking wallet, returned by requestUnlock()
     class UnlockContext
     {
     public:
-        UnlockContext(WalletModel *wallet, bool valid, bool relock);
+        UnlockContext(WalletModel *wallet, bool valid, const WalletModel::EncryptionStatus& status_before);
         ~UnlockContext();
 
         bool isValid() const { return valid; }
@@ -124,9 +144,11 @@ public:
         // Move operator and constructor transfer the context
         UnlockContext(UnlockContext&& obj) { CopyFrom(std::move(obj)); }
         UnlockContext& operator=(UnlockContext&& rhs) { CopyFrom(std::move(rhs)); return *this; }
+
     private:
         WalletModel *wallet;
         bool valid;
+        WalletModel::EncryptionStatus was_status;   // original status
         mutable bool relock; // mutable, as it can be set to false by copying
 
         UnlockContext& operator=(const UnlockContext&) = default;
@@ -134,6 +156,14 @@ public:
     };
 
     UnlockContext requestUnlock();
+
+    //bool getPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const;
+    void listCoins(std::map<QString, std::vector<COutput> >& mapCoins) const;
+
+    bool isLockedCoin(uint256 hash, unsigned int n) const;
+    void lockCoin(COutPoint& output);
+    void unlockCoin(COutPoint& output);
+    void listLockedCoins(std::vector<COutPoint>& vOutpts);
 
     void loadReceiveRequests(std::vector<std::string>& vReceiveRequests);
     bool saveReceiveRequest(const std::string &sAddress, const int64_t nId, const std::string &sRequest);
@@ -151,6 +181,7 @@ public:
     QString getDisplayName() const;
 
     bool isMultiwallet();
+    uint64_t getStakeWeight();
 
     AddressTableModel* getAddressTableModel() const { return addressTableModel; }
 
@@ -179,6 +210,8 @@ private:
 
     AddressTableModel *addressTableModel;
     TransactionTableModel *transactionTableModel;
+    AssetTableModel *assetTableModel;
+    CoinControlModel *coinControlModel;
     RecentRequestsTableModel *recentRequestsTableModel;
 
     // Cache some values to be able to detect changes
@@ -186,8 +219,11 @@ private:
     EncryptionStatus cachedEncryptionStatus;
     QTimer* timer;
 
+    uint64_t nWeight;
     // Block hash denoting when the last balance update was done.
     uint256 m_cached_last_update_tip{};
+
+    std::atomic<bool> updateStakeWeight;
 
     void subscribeToCoreSignals();
     void unsubscribeFromCoreSignals();
@@ -209,7 +245,7 @@ Q_SIGNALS:
     void message(const QString &title, const QString &message, unsigned int style);
 
     // Coins sent: from wallet, to recipient, in (serialized) transaction:
-    void coinsSent(WalletModel* wallet, SendCoinsRecipient recipient, QByteArray transaction);
+    void coinsSent(WalletModel* wallet, SendAssetsRecipient recipient, QByteArray transaction);
 
     // Show progress dialog e.g. for rescan
     void showProgress(const QString &title, int nProgress);
@@ -222,8 +258,6 @@ Q_SIGNALS:
 
     // Notify that there are now keys in the keypool
     void canGetAddressesChanged();
-
-    void timerTimeout();
 
 public Q_SLOTS:
     /* Starts a timer to periodically update the balance */
@@ -239,6 +273,8 @@ public Q_SLOTS:
     void updateWatchOnlyFlag(bool fHaveWatchonly);
     /* Current, immature or unconfirmed balance might have changed - emit 'balanceChanged' if so */
     void pollBalanceChanged();
+    /* Update stake weight when changed*/
+    void checkStakeWeightChanged();
 };
 
 #endif // RAIN_QT_WALLETMODEL_H

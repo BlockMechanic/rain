@@ -25,7 +25,7 @@ const std::string CLIENT_NAME("Satoshi");
 #endif
 
 //! git will put "#define GIT_COMMIT_ID ..." on the next line inside archives. 
-#define GIT_COMMIT_ID "13d27b452d4b60010c54d4f80757dea9805076be"
+#define GIT_COMMIT_ID "569b5ba1dc56ef1df2fc7dbf22b5fdbf35c87556"
 
 #ifdef BUILD_GIT_TAG
     #define BUILD_DESC BUILD_GIT_TAG

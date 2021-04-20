@@ -148,7 +148,7 @@ public:
     /**
      * Return all named arguments that need to be converted by the client from string to another JSON type
      */
-    UniValue dumpArgMap(const JSONRPCRequest& request) const;
+    UniValue dumpArgMap() const;
 
     /**
      * Appends a CRPCCommand to the dispatch table.
@@ -177,5 +177,7 @@ std::string JSONRPCExecBatch(const JSONRPCRequest& jreq, const UniValue& vReq);
 
 // Retrieves any serialization flags requested in command line argument
 int RPCSerializationFlags();
+
+void PushTime(UniValue &o, const char *name, int64_t nTime);
 
 #endif // RAIN_RPC_SERVER_H
