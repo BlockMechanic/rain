@@ -17,7 +17,7 @@ class CConfidentialCommitment
 {
 public:
     static const size_t nExplicitSize = ExplicitSize;
-    static const size_t nCommittedSize = 97;
+    static const size_t nCommittedSize = 65;
 
     std::vector<unsigned char> vchCommitment;
 
@@ -87,7 +87,7 @@ public:
 };
 
 /** A commitment to a blinded asset, or an explicit asset NUMS identifier */
-class CConfidentialAsset : public CConfidentialCommitment<97, 10, 11>
+class CConfidentialAsset : public CConfidentialCommitment<65, 10, 11>
 {
 public:
     CConfidentialAsset() {

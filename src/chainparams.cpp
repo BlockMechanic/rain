@@ -33,7 +33,7 @@ static CBlock CreateGenesisBlock(const CScript& genesisScriptSig, const CScript&
     AssetMetadata basemeta;
     basemeta.nVersion = 1;
     basemeta.setName("Rain");
-    basemeta.setShortName("HMS");
+    basemeta.setShortName("RAIN");
     basemeta.nFlags = AssetMetadata::AssetFlags::ASSET_TRANSFERABLE | AssetMetadata::AssetFlags::ASSET_CONVERTABLE | AssetMetadata::AssetFlags::ASSET_STAKEABLE;
     basemeta.nExpiry =0;
     basemeta.nType =1;
@@ -42,7 +42,7 @@ static CBlock CreateGenesisBlock(const CScript& genesisScriptSig, const CScript&
     AssetMetadata founder;
     founder.nVersion = 1;
     founder.setName("Founder");
-    founder.setShortName("XHMS");
+    founder.setShortName("XFRN");
     founder.nFlags = AssetMetadata::AssetFlags::ASSET_TRANSFERABLE | AssetMetadata::AssetFlags::ASSET_CONVERTABLE | AssetMetadata::AssetFlags::ASSET_STAKEABLE | AssetMetadata::AssetFlags::ASSET_LIMITED | AssetMetadata::AssetFlags::ASSET_RESTRICTED;
     founder.nExpiry =0;
     founder.nType =1;
@@ -210,22 +210,22 @@ public:
         pchMessageStart[1] = 0xab;
         pchMessageStart[2] = 0xac;
         pchMessageStart[3] = 0xaf;
-        nDefaultPort = 2021;
+        nDefaultPort = 2020;
         nPruneAfterHeight = 100000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        std::vector<unsigned char> addrdata(ParseHex("76a914913a02f203207febf92a5fb659be964bddfa7c3988ac"));
+        std::vector<unsigned char> addrdata(ParseHex("0014848a4a37883c295bc1dc021941e0f185fafc1aae"));
         CScript genscript(addrdata.begin(), addrdata.end());
 
         consensus.mandatory_coinbase_destination = genscript; // Blank script allows any coinbase destination
 
-        genesis = CreateGenesisBlock(1618511600, 418344, 0x1e0ffff0, 1, consensus);
+        genesis = CreateGenesisBlock(1618888100, 149115, 0x1e0ffff0, 1, consensus);
         consensus.hashGenesisBlock = genesis.GetHash();
         //MineNewGenesisBlock(consensus,genesis);
         //std::cout << genesis.ToString().c_str() << std::endl;
-        assert(consensus.hashGenesisBlock == uint256S("0x000003c936039dea84e7d4772888091152f2290b0a9578850e01c039788eef1b"));
-        assert(genesis.hashMerkleRoot == uint256S("0xae20108db6437df3e1e672b77f9d96b3d48f63a0ccc5c05b4a532f10238e7f8a"));
+        assert(consensus.hashGenesisBlock == uint256S("0x000008577f57c8d48d3fde19c3654b064dc9c50e48cc425a3ddb73591c1da026"));
+        assert(genesis.hashMerkleRoot == uint256S("0x75d77682adf3bb3a93d9e9999484f22eb53025a01fe153d8e498f0979c6c663d"));
 
         // Note that of those which support the service bits prefix, most only support a subset of
         // possible options.
