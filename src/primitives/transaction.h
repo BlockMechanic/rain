@@ -14,7 +14,6 @@
 #include <primitives/asset.h>
 #include <primitives/confidential.h>
 #include <primitives/txwitness.h>
-#include <primitives/contract.h>
 #include <tuple>
 
 /**
