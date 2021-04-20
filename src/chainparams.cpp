@@ -232,20 +232,20 @@ public:
         // This is fine at runtime as we'll fall back to using them as an addrfetch if they don't support the
         // service bits we want, but we should get them updated to support all service bits wanted by any
         // release ASAP to avoid it where possible.
-        vSeeds.emplace_back("45.86.162.195"); // BM
-        vSeeds.emplace_back("188.166.117.238"); // DL1
-        vSeeds.emplace_back("46.101.114.34"); // DL2
-        vSeeds.emplace_back("134.122.71.77");
+        vSeeds.emplace_back("157.245.239.62");
+        vSeeds.emplace_back("45.86.162.195");
+        vSeeds.emplace_back("167.172.111.247");
+        vSeeds.emplace_back("142.93.235.158");
 
-        base58Prefixes[PUBKEY_ADDRESS]  = std::vector<unsigned char>(1,40);     // starting with 'H'
+        base58Prefixes[PUBKEY_ADDRESS]  = std::vector<unsigned char>(1,60);     // starting with 'R'
         base58Prefixes[SCRIPT_ADDRESS]  = std::vector<unsigned char>(1,38);     // starting with 'G'
         base58Prefixes[BLINDED_ADDRESS] = std::vector<unsigned char>(1,25);     // starting with 'B'
         base58Prefixes[SECRET_KEY]      = std::vector<unsigned char>(1,128);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1E};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE4};
 
-        bech32_hrp = "hms";
-        blech32_hrp = "hem";
+        bech32_hrp = "cd";
+        blech32_hrp = "xd";
 
         vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_main, pnSeed6_main + ARRAYLEN(pnSeed6_main));
 

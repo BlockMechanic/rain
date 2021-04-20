@@ -165,9 +165,7 @@ private:
     QObject* m_pricesWidget;
 
     QObject* m_AppDrawer;
-    
-    QObject* gameMenu;
-    
+        
     QObject* m_pushButtonYears;
     QObject* m_pushButtonMonths;
     QObject* m_pushButtonAll;

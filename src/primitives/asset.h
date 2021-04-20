@@ -5,7 +5,6 @@
 #include <uint256.h>
 
 #include <amount.h>
-#include <primitives/contract.h>
 #include <script/script.h>
 #include <serialize.h>
 #include <tinyformat.h>
@@ -34,7 +33,6 @@ public:
     uint32_t nExpiry;
     unsigned char sAssetName[11] = {};
     unsigned char sAssetShortName[5] = {};
-    uint256 contract_hash;
 
     /** Asset flags */
     enum AssetFlags : uint64_t {
@@ -63,7 +61,7 @@ public:
 
     AssetMetadata(){ SetEmpty();}
 
-    SERIALIZE_METHODS(AssetMetadata, obj) { READWRITE(obj.nVersion, obj.nFlags, obj.nType, obj.nExpiry, obj.sAssetName, obj.sAssetShortName, obj.contract_hash); }
+    SERIALIZE_METHODS(AssetMetadata, obj) { READWRITE(obj.nVersion, obj.nFlags, obj.nType, obj.nExpiry, obj.sAssetName, obj.sAssetShortName); }
 
     void SetEmpty()
     {
@@ -71,7 +69,6 @@ public:
         nFlags=0;
         nType=0;
         nExpiry=0;
-        contract_hash.SetNull();
     }
 
     bool IsEmpty() const

@@ -3,8 +3,6 @@
 #include <init.h>
 #include <univalue.h>
 #include <node/ui_interface.h>
-#include <qt/dice/hexgrid.h>
-#include <qt/dice/hex.h>
 #include <qt/rain.h>
 #include <qt/guiutil.h>
 #include <qt/walletcontroller.h>
@@ -121,7 +119,6 @@ RainGUI::RainGUI(interfaces::Node& node, const PlatformStyle *_platformStyle, co
     engine->addImportPath("qrc:/qml/charts");
     engine->addImportPath("qrc:/qml/contacts");
     engine->addImportPath("qrc:/qml/messages");
-    engine->addImportPath("qrc:/qml/dice");
 
     QQuickStyle::setStyle("Default");
 
@@ -152,9 +149,6 @@ RainGUI::RainGUI(interfaces::Node& node, const PlatformStyle *_platformStyle, co
     this->rootContext()->setContextProperty("confirmationTargets", QVariant(confirmationTargets));
     this->rootContext()->setContextProperty("licenceInfo", licenseInfoHTML);
     this->rootContext()->setContextProperty("version", QString::fromStdString(FormatFullVersion()));
-
-    qmlRegisterType<HexGrid>("Hex", 1, 0, "HexGrid");
-    qmlRegisterType<Hex>("Hex", 1, 0, "Hex");
 
     const QUrl url(QStringLiteral("qrc:/qml/main.qml"));
     this->setSource(url);
@@ -188,13 +182,7 @@ RainGUI::RainGUI(interfaces::Node& node, const PlatformStyle *_platformStyle, co
     m_AppDrawer = this->rootObject()->findChild<QObject*>("drawer");
     m_stakeChartPane = this->rootObject()->findChild<QObject*>("stakeChart");
     m_pricesWidget = this->rootObject()->findChild<QObject*>("pricesWidget");
-    gameMenu = this->rootObject()->findChild<QObject*>("gameMenu");
     m_frontPage = this->rootObject()->findChild<QObject*>("frontPage");
-
-    if (gameMenu) {
-        connect(gameMenu, SIGNAL(requestAddr()), this, SLOT(requestAddress()));
-        connect(gameMenu, SIGNAL(setupBets(QString, QString, QString, QString, QString)), this, SLOT(setBets(QString, QString, QString, QString, QString)));
-    }
 
     if (m_AppDrawer) {
         connect(m_AppDrawer, SIGNAL(request()), this, SLOT(requestRain()));
@@ -466,7 +454,7 @@ void RainGUI::splashFinished()
 void RainGUI::requestRain()
 {
 	
-    QString address = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, "", "", OutputType::LEGACY);
+    QString address = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, "", "", OutputType::BECH32);
 
     QMetaObject::invokeMethod(m_AppDrawer, "showQr",
                               Q_ARG(QVariant, address));
@@ -474,10 +462,10 @@ void RainGUI::requestRain()
 
 void RainGUI::requestAddress(QString purpose)
 {
-    QString userAddress = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, purpose, "", OutputType::LEGACY);
-    QString aiAddress = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, purpose, "", OutputType::LEGACY);
+    QString userAddress = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, purpose, "", OutputType::BECH32);
+    QString aiAddress = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, purpose, "", OutputType::BECH32);
 
-    QMetaObject::invokeMethod(gameMenu, "setAddresses", Q_ARG(QVariant, userAddress), Q_ARG(QVariant, aiAddress));
+    //QMetaObject::invokeMethod(, "setAddresses", Q_ARG(QVariant, userAddress), Q_ARG(QVariant, aiAddress));
 }
 
 void RainGUI::createAsset(QString sAssetName, QString sAssetShortName , QString addressTo, QString inputamount, QString assetToUse, QString outputamount, bool transferable, bool convertable, bool restricted, bool limited)
@@ -501,7 +489,7 @@ void RainGUI::setBets(QString userAddress, QString aiAddress, QString amountt, Q
         return;
     }
 
-    QString recovAddress = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, "recovery", "", OutputType::LEGACY);
+    QString recovAddress = m_walletModel->getAddressTableModel()->addRow(AddressTableModel::Receive, "recovery", "", OutputType::BECH32);
 
     CTxDestination userdest = DecodeDestination(userAddress.toStdString());
     CTxDestination aidest = DecodeDestination(aiAddress.toStdString()), dest;

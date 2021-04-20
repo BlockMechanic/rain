@@ -40,12 +40,7 @@ QT_MOC_CPP = \
   qt/moc_transactionfilterproxy.cpp \
   qt/moc_transactiontablemodel.cpp \
   qt/moc_walletcontroller.cpp \
-  qt/moc_walletmodel.cpp \
-  qt/dice/moc_diceroll.cpp \
-  qt/dice/moc_hex.cpp \
-  qt/dice/moc_hexgrid.cpp \
-  qt/dice/moc_player.cpp \
-  qt/dice/moc_territory.cpp
+  qt/moc_walletmodel.cpp
         
 RAIN_MM = \
   qt/macdockiconhandler.mm \
@@ -91,12 +86,7 @@ RAIN_QT_H = \
   qt/walletcontroller.h \
   qt/walletmodel.h \
   qt/walletmodeltransaction.h \
-  qt/rpcconsole.h \
-  qt/dice/diceroll.h \
-  qt/dice/hex.h \
-  qt/dice/hexgrid.h \
-  qt/dice/player.h \
-  qt/dice/territory.h
+  qt/rpcconsole.h
 
 RES_ICONS = \
   qt/res/icons/add.png \
@@ -200,12 +190,7 @@ RAIN_QT_WALLET_CPP = \
   qt/transactiontablemodel.cpp \
   qt/walletcontroller.cpp \
   qt/walletmodel.cpp \
-  qt/walletmodeltransaction.cpp \
-  qt/dice/diceroll.cpp \
-  qt/dice/hex.cpp \
-  qt/dice/hexgrid.cpp \
-  qt/dice/player.cpp \
-  qt/dice/territory.cpp
+  qt/walletmodeltransaction.cpp
 
 RAIN_QT_CPP = $(RAIN_QT_BASE_CPP)
 if TARGET_WINDOWS
@@ -220,8 +205,7 @@ RES_ANIMATION = $(wildcard $(srcdir)/qt/res/animation/spinner-*.png)
 RES_QML = $(wildcard $(srcdir)/qt/qml/*.qml) \
   $(wildcard $(srcdir)/qt/qml/contacts/*.qml) \
   $(wildcard $(srcdir)/qt/qml/messages/*.qml) \
-  $(wildcard $(srcdir)/qt/qml/charts/*.qml) \
-  $(wildcard $(srcdir)/qt/qml/dice/*.qml)
+  $(wildcard $(srcdir)/qt/qml/charts/*.qml)
 
 RAIN_RC = qt/res/rain-qt-res.rc
 

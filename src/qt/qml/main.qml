@@ -5,7 +5,6 @@ import QtQuick.Layouts 1.3
 import "messages"
 import "charts"
 import "contacts"
-import "dice"
 
 Rectangle {
     id: appWindow
@@ -195,12 +194,11 @@ Rectangle {
             2: function()  { request() }, // receive
             3: function()  { stackView.push(messagesMain)  }, // Messages
             4: function()  { stackView.push(chartsPane) }, // Charts
-            5: function()  { stackView.push(dicePane) }, // Dice
-            6: function()  { stackView.push(contactsPane) }, // Contacts
+            5: function()  { stackView.push(contactsPane) }, // Contacts
 
-            8: function() { stackView.push(settingsPane) },  // Settings
-            9: function() { stackView.push(consolePane) },  // Settings
-            10: function() { },  // Help
+            7: function() { stackView.push(settingsPane) },  // Settings
+            8: function() { stackView.push(consolePane) },  // Settings
+            9: function() { },  // Help
         }
 
         items: ListModel {
@@ -390,11 +388,6 @@ Rectangle {
             MessagesMain {
               id: messagesMain
               objectName: "messagesMain"
-              visible: false
-            }
-
-            Dice {
-              id: dicePane
               visible: false
             }
 

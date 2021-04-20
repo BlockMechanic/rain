@@ -506,11 +506,8 @@ librain_consensus_a_SOURCES = \
   primitives/asset.cpp \
   primitives/block.cpp \
   primitives/block.h \
-  primitives/chainid.cpp \
-  primitives/chainid.h \
   primitives/confidential.cpp \
   primitives/confidential.h \
-  primitives/contract.h \
   primitives/txwitness.cpp \
   primitives/txwitness.h \
   primitives/transaction.cpp \

@@ -155,18 +155,7 @@ std::string CTxOut::ToString() const
 
 std::string CTxData::ToString() const
 {
-	std::string ret ="";
-	
-	if(!vData.empty())
-	   ret += strprintf("CTxData( Data= %s \n )", HexStr(vData));
-
-	if(!contract.IsEmpty())
-	   ret += strprintf("CTxData( Contract = %s \n )", contract.ToString());	
-
-	if(!chainid.IsEmpty())
-	   ret += strprintf("CTxData( ChainID = %s \n )", chainid.ToString());	
-
-    return ret;
+    return strprintf("CTxData( Data= %s \n )", HexStr(vData));
 }
 
 CMutableTransaction::CMutableTransaction() : nVersion(CTransaction::CURRENT_VERSION), nTime(GetTime()), nLockTime(0) {}
